@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QBoxLayout,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QTableWidget,
@@ -30,9 +32,9 @@ from PySide6.QtWidgets import (
     QGridLayout,
 )
 
-from models import Record, TimerItem
-from storage_service import StorageService
-from timer_service import TimerMode, TimerService
+from application_service import SessionLocation, StudyApplicationService
+from models import TimerItem
+from timer_service import TimerMode
 
 DEFAULT_SECTION_TYPE = "Guía"
 APP_TITLE = "Study Timetrial"
@@ -40,7 +42,7 @@ MAX_VALUE = 999_999
 
 
 def format_ms(milliseconds: int) -> str:
-    """Convierte un número de milisegundos a una cadena HH:MM:SS:SSS."""
+    """Convierte milisegundos al formato completo usado en registros."""
     milliseconds = max(0, int(milliseconds))
     hours, remainder = divmod(milliseconds, 3_600_000)
     minutes, remainder = divmod(remainder, 60_000)
@@ -48,13 +50,41 @@ def format_ms(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}:{millis:03d}"
 
 
-def parse_ms(value: str) -> int:
-    """Parsea una cadena HH:MM:SS:SSS y la convierte a milisegundos."""
-    parts = value.strip().split(":")
-    if len(parts) != 4:
-        raise ValueError("Use HH:MM:SS:SSS")
+def format_timer_ms(milliseconds: int) -> tuple[str, str]:
+    """Devuelve la parte principal y los milisegundos del reloj de sesión."""
+    milliseconds = max(0, int(milliseconds))
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    seconds, millis = divmod(remainder, 1_000)
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}", f".{millis:03d}"
+    return f"{minutes:02d}:{seconds:02d}", f".{millis:03d}"
 
-    hours, minutes, seconds, millis = (int(part) for part in parts)
+
+def timer_markup(milliseconds: int) -> str:
+    """Crea el reloj con milisegundos visualmente secundarios."""
+    main, millis = format_timer_ms(milliseconds)
+    return f'{main}<span style="font-size: 52%;">{millis}</span>'
+
+
+def parse_ms(value: str) -> int:
+    """Parsea un tiempo compacto o completo y lo convierte a milisegundos."""
+    parts = value.strip().split(":")
+    if len(parts) not in (2, 3, 4):
+        raise ValueError("Use SS:SSS, MM:SS:SSS o HH:MM:SS:SSS")
+
+    try:
+        values = [int(part) for part in parts]
+    except ValueError as error:
+        raise ValueError("El tiempo solo puede contener números") from error
+
+    if len(values) == 2:
+        hours, minutes, seconds, millis = 0, 0, *values
+    elif len(values) == 3:
+        hours, minutes, seconds, millis = 0, *values
+    else:
+        hours, minutes, seconds, millis = values
+
     if min(hours, minutes, seconds, millis) < 0 or minutes > 59 or seconds > 59 or millis > 999:
         raise ValueError("Tiempo inválido")
 
@@ -139,23 +169,26 @@ class MainWindow(QMainWindow):
         QLabel#brand { color: #18252b; font-size: 27px; font-weight: 800; letter-spacing: 1px; }
         QLabel#eyebrow { color: #75827f; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
         QLabel#record_meta { color: #75827f; font-size: 13px; }
-        QLabel#location { color: #18252b; font-size: 20px; font-weight: 700; }
+        QLabel#location { color: #18252b; font-size: 27px; font-weight: 800; qproperty-alignment: AlignCenter; }
         QLabel#status { color: #60706d; font-size: 13px; }
         QFrame#heroCard, QFrame#metricCard, QFrame#sectionCard { background: #ffffff; border: 1px solid #dfe6df; border-radius: 12px; }
         QFrame#heroCard { border-top: 4px solid #d7f56b; }
         QFrame#metricCard { padding: 4px; }
-        QLabel#metric_label { color: #75827f; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-        QLabel#metric_value { color: #18252b; font-size: 31px; font-weight: 700; }
+        QLabel#metric_label { color: #75827f; font-size: 11px; font-weight: 700; letter-spacing: 1px; qproperty-alignment: AlignCenter; }
+        QLabel#metric_value { color: #18252b; font-size: 43px; font-weight: 800; qproperty-alignment: AlignCenter; }
+        QLabel#break_label { color: #75827f; font-size: 10px; font-weight: 700; letter-spacing: 1px; qproperty-alignment: AlignCenter; }
+        QLabel#break_value { color: #60706d; font-size: 22px; font-weight: 700; qproperty-alignment: AlignCenter; }
         QLineEdit, QSpinBox { background: #fbfcfa; border: 1px solid #cbd6d0; border-radius: 7px; padding: 9px 10px; min-height: 18px; }
         QLineEdit:focus, QSpinBox:focus { border: 2px solid #8da844; padding: 8px 9px; }
         QLineEdit:disabled, QSpinBox:disabled { background: #edf1ed; color: #77827f; }
-        QPushButton { background: #ffffff; color: #263238; border: 1px solid #cbd6d0; border-radius: 7px; padding: 10px 15px; font-weight: 600; }
+        QPushButton { background: #ffffff; color: #263238; border: 1px solid #cbd6d0; border-radius: 7px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
         QPushButton:hover { border-color: #8da844; background: #f4f8e8; }
         QPushButton:pressed { background: #e8f0d2; }
-        QPushButton#primary { background: #18252b; color: #d7f56b; border: 1px solid #18252b; font-weight: 800; padding: 13px 24px; }
+        QPushButton#primary { background: #18252b; color: #d7f56b; border: 1px solid #18252b; font-weight: 800; padding: 10px 18px; }
         QPushButton#primary:hover { background: #2a3b40; }
         QPushButton#break { color: #a36a21; border-color: #e5c896; }
         QPushButton#danger { color: #a33c32; border-color: #e2b4af; }
+        QPushButton#stop { color: #a33c32; border-color: #e2b4af; }
         QPushButton#toolbar_primary { background: #d7f56b; color: #18252b; border: none; }
         QLabel#section_title { color: #18252b; font-size: 15px; font-weight: 700; }
         QTableWidget { background: #ffffff; border: 1px solid #dfe6df; border-radius: 8px; gridline-color: #edf1ed; alternate-background-color: #f7f9f6; selection-background-color: #eaf2d2; selection-color: #18252b; }
@@ -166,15 +199,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.storage = StorageService()
-        self.record = self.storage.create_automatic()
-        self.timer = TimerService()
-        self.section_type = DEFAULT_SECTION_TYPE
-        self.section_number = 1
-        self.exercise = 1
-        self.inciso: int | None = None
+        self.application = StudyApplicationService()
 
-        self.setMinimumSize(980, 650)
+        self.setMinimumSize(900, 700)
         self.setStyleSheet(self.STYLESHEET)
 
         self.tabs = QTabWidget()
@@ -221,6 +248,8 @@ class MainWindow(QMainWindow):
         hero_layout.addWidget(eyebrow)
         self.location_label = QLabel()
         self.location_label.setObjectName("location")
+        self.location_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.location_label.setWordWrap(True)
         hero_layout.addWidget(self.location_label)
 
         selectors = QGridLayout()
@@ -245,34 +274,63 @@ class MainWindow(QMainWindow):
         outer.addWidget(hero)
 
         metrics = QHBoxLayout()
-        metrics.setSpacing(14)
-        self.exercise_clock = QLabel("00:00:00:000")
-        self.break_clock = QLabel("00:00:00:000")
-        for title, clock in (("TIEMPO DE EJERCICIO", self.exercise_clock), ("RECESO ACUMULADO", self.break_clock)):
-            card = QFrame(); card.setObjectName("metricCard")
-            card_layout = QVBoxLayout(card); card_layout.setContentsMargins(18, 13, 18, 15); card_layout.setSpacing(4)
-            label = QLabel(title); label.setObjectName("metric_label")
-            clock.setObjectName("metric_value")
-            card_layout.addWidget(label); card_layout.addWidget(clock)
-            metrics.addWidget(card)
+        metrics.setContentsMargins(0, 2, 0, 2)
+        metrics.setSpacing(8)
+        metrics.setStretch(0, 3)
+        metrics.setStretch(1, 2)
+        self.metrics_layout = metrics
+        self.exercise_clock = QLabel(timer_markup(0))
+        self.break_clock = QLabel(timer_markup(0))
+        for clock in (self.exercise_clock, self.break_clock):
+            clock.setTextFormat(Qt.TextFormat.RichText)
+            clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            clock.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        exercise_card = QFrame(); exercise_card.setObjectName("metricCard")
+        exercise_layout = QVBoxLayout(exercise_card); exercise_layout.setContentsMargins(20, 14, 20, 15); exercise_layout.setSpacing(3)
+        exercise_label = QLabel("TIEMPO DE EJERCICIO"); exercise_label.setObjectName("metric_label")
+        self.exercise_clock.setObjectName("metric_value")
+        exercise_layout.addWidget(exercise_label); exercise_layout.addWidget(self.exercise_clock)
+        metrics.addWidget(exercise_card)
+
+        break_card = QFrame(); break_card.setObjectName("metricCard")
+        break_layout = QVBoxLayout(break_card); break_layout.setContentsMargins(20, 8, 20, 10); break_layout.setSpacing(2)
+        break_label = QLabel("RECESO ACUMULADO"); break_label.setObjectName("break_label")
+        self.break_clock.setObjectName("break_value")
+        break_layout.addWidget(break_label); break_layout.addWidget(self.break_clock)
+        metrics.addWidget(break_card)
         outer.addLayout(metrics)
 
         controls_card = QFrame(); controls_card.setObjectName("sectionCard")
         controls_layout = QVBoxLayout(controls_card); controls_layout.setContentsMargins(18, 16, 18, 16); controls_layout.setSpacing(12)
         controls_title = QLabel("CONTROLES DE SESIÓN"); controls_title.setObjectName("eyebrow")
         controls_layout.addWidget(controls_title)
-        primary_controls = QHBoxLayout(); primary_controls.setSpacing(10)
-        self.play_button = QPushButton("INICIAR CRONÓMETRO"); self.play_button.setObjectName("primary"); self.play_button.clicked.connect(self.play)
-        self.break_button = QPushButton("INICIAR RECESO"); self.break_button.setObjectName("break"); self.break_button.clicked.connect(self.toggle_break)
-        reset = QPushButton("REINICIAR"); reset.clicked.connect(self.reset_timer)
-        retry = QPushButton("GUARDAR COMO NO COMPLETADO"); retry.clicked.connect(lambda: self.finish_item(False, keep_location=True))
-        stop = QPushButton("DETENER"); stop.setObjectName("danger"); stop.clicked.connect(lambda: self.finish_item(False, stop=True))
-        for button in (self.play_button, self.break_button, reset, retry, stop):
-            primary_controls.addWidget(button)
+        primary_controls = QGridLayout(); primary_controls.setHorizontalSpacing(10); primary_controls.setVerticalSpacing(8)
+        self.primary_controls = primary_controls
+        self.session_button = QPushButton("INICIAR"); self.session_button.setObjectName("primary"); self.session_button.clicked.connect(self.toggle_session)
+        stop = QPushButton("DETENER"); stop.setObjectName("stop"); stop.clicked.connect(self.stop_timer)
+        incomplete = QPushButton("INCOMPLETO"); incomplete.setObjectName("danger"); incomplete.clicked.connect(lambda: self.finish_item(False, keep_location=True))
+        complete = QPushButton("COMPLETO"); complete.clicked.connect(lambda: self.finish_item(True, keep_location=True))
+        self.primary_buttons = (self.session_button, stop, complete, incomplete)
+        for column, button in enumerate(self.primary_buttons):
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            primary_controls.addWidget(button, 0 if column < 2 else 1, column % 2)
         controls_layout.addLayout(primary_controls)
-        navigation = QHBoxLayout(); navigation.setSpacing(10)
-        for text, callback in (("SIGUIENTE INCISO", self.next_inciso), ("SIGUIENTE EJERCICIO", self.next_exercise), ("SIGUIENTE SECCIÓN", self.next_section)):
-            button = QPushButton(text); button.clicked.connect(callback); navigation.addWidget(button)
+        navigation = QGridLayout(); navigation.setHorizontalSpacing(10); navigation.setVerticalSpacing(8)
+        self.navigation = navigation
+        self.navigation_buttons = []
+        for text, callback in (
+            ("ANTERIOR INCISO", self.previous_inciso),
+            ("SIGUIENTE INCISO", self.next_inciso),
+            ("ANTERIOR EJERCICIO", self.previous_exercise),
+            ("SIGUIENTE EJERCICIO", self.next_exercise),
+            ("ANTERIOR SECCIÓN", self.previous_section),
+            ("SIGUIENTE SECCIÓN", self.next_section),
+        ):
+            button = QPushButton(text); button.clicked.connect(callback)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self.navigation_buttons.append(button)
+        self._populate_grid(self.primary_controls, self.primary_buttons, 2)
+        self._populate_grid(self.navigation, self.navigation_buttons, 2)
         controls_layout.addLayout(navigation)
         self.status_label = QLabel("Listo para comenzar")
         self.status_label.setObjectName("status")
@@ -281,6 +339,28 @@ class MainWindow(QMainWindow):
         outer.addStretch()
         self.sync_location()
         return page
+
+    @staticmethod
+    def _populate_grid(layout: QGridLayout, widgets: tuple[QPushButton, ...] | list[QPushButton], columns: int) -> None:
+        """Coloca los botones en columnas que puedan cambiar con el ancho disponible."""
+        while layout.count():
+            layout.takeAt(0)
+        for index, widget in enumerate(widgets):
+            layout.addWidget(widget, index // columns, index % columns)
+        for column in range(columns):
+            layout.setColumnStretch(column, 1)
+
+    def resizeEvent(self, event) -> None:
+        """Refluye controles y reduce los relojes antes de que su contenido se recorte."""
+        super().resizeEvent(event)
+        compact = self.width() < 1_020
+        self._populate_grid(self.primary_controls, self.primary_buttons, 1 if compact else 2)
+        self._populate_grid(self.navigation, self.navigation_buttons, 1 if compact else 2)
+        self.metrics_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight
+        )
+        clock_size = 34 if compact else 43
+        self.update_timer_visual_state()
 
     def build_records(self) -> QWidget:
         """Construye la vista donde se muestran y gestionan los registros guardados."""
@@ -337,13 +417,16 @@ class MainWindow(QMainWindow):
 
     def sync_location(self) -> None:
         """Actualiza el estado actual del ejercicio, sección e inciso en la UI."""
-        self.section_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
-        self.section_number = self.section_number_input.value()
-        self.exercise = self.exercise_input.value()
-        self.inciso = self.inciso_input.value() or None
+        location = SessionLocation(
+            section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
+            section_number=self.section_number_input.value(),
+            exercise=self.exercise_input.value(),
+            inciso=self.inciso_input.value() or None,
+        )
+        self.application.set_location(location)
 
-        suffix = f" · Inciso {self.inciso}" if self.inciso else ""
-        text = f"{self.section_type} {self.section_number} · Ejercicio {self.exercise}{suffix}"
+        suffix = f" · Inciso {location.inciso}" if location.inciso else ""
+        text = f"{location.section_type} {location.section_number} · Ejercicio {location.exercise}{suffix}"
         self.location_label.setText(text)
 
     def set_locked(self, locked: bool) -> None:
@@ -351,57 +434,45 @@ class MainWindow(QMainWindow):
         for widget in (self.section_input, self.section_number_input, self.exercise_input, self.inciso_input):
             widget.setEnabled(not locked)
 
-    def play(self) -> None:
-        """Inicia el cronómetro del ejercicio."""
-        if self.timer.mode is TimerMode.WAITING:
+    def toggle_session(self) -> None:
+        """Inicia, pausa en receso o reanuda la sesión según su estado."""
+        if self.application.mode is TimerMode.WAITING:
             self.sync_location()
-        self.timer.start()
+        self.application.toggle_session()
+
         self.set_locked(True)
-        self.play_button.setText("CONTINUAR CRONÓMETRO")
-        self.status_label.setText("Sesión en curso")
+        self.update_session_button()
+        self.update_timer_visual_state()
+        self.status_label.setText("Receso en curso" if self.application.mode is TimerMode.BREAK else "Sesión en curso")
 
-    def toggle_break(self) -> None:
-        """Activa o pausa el tiempo de descanso."""
-        if self.timer.mode is TimerMode.WAITING:
-            self.play()
-            return
+    def update_session_button(self) -> None:
+        """Actualiza el texto del control de sesión según el modo actual."""
+        labels = {
+            TimerMode.WAITING: "INICIAR",
+            TimerMode.PLAY: "RECESO",
+            TimerMode.BREAK: "CONTINUAR",
+        }
+        self.session_button.setText(labels[self.application.mode])
 
-        self.timer.toggle_break()
-        self.break_button.setText("FINALIZAR RECESO" if self.timer.mode is TimerMode.BREAK else "INICIAR RECESO")
-        self.status_label.setText("Receso en curso" if self.timer.mode is TimerMode.BREAK else "Sesión en curso")
-
-    def reset_timer(self) -> None:
-        """Reinicia el conteo de ejercicio y descanso actual."""
-        self.timer.reset()
+    def stop_timer(self) -> None:
+        """Detiene y descarta el conteo actual sin guardar un intento."""
+        self.application.stop_session()
         self.set_locked(False)
-        self.break_button.setText("INICIAR RECESO")
-        self.play_button.setText("INICIAR CRONÓMETRO")
+        self.update_session_button()
+        self.update_timer_visual_state()
         self.status_label.setText("Listo para comenzar")
 
     def finish_item(self, completed: bool, keep_location: bool = False, stop: bool = False) -> None:
         """Guarda el intento actual como item y limpia el estado del temporizador."""
-        if self.timer.mode is TimerMode.WAITING:
+        if self.application.mode is TimerMode.WAITING:
             return
 
-        exercise_ms, break_ms = self.timer.snapshot()
-        self.record.items.append(
-            TimerItem(
-                section_type=self.section_type,
-                section_number=self.section_number,
-                exercise=self.exercise,
-                inciso=self.inciso,
-                exercise_time_ms=exercise_ms,
-                break_time_ms=break_ms,
-                completed=completed,
-            )
-        )
-        self.autosave()
-
-        self.timer.reset()
+        self.application.finish_item(completed)
         self.set_locked(False)
-        self.break_button.setText("INICIAR RECESO")
-        self.play_button.setText("INICIAR CRONÓMETRO")
-        self.status_label.setText("Intento guardado. Listo para comenzar")
+        self.update_session_button()
+        self.update_timer_visual_state()
+        result = "completo" if completed else "incompleto"
+        self.status_label.setText(f"Intento {result}. Listo para comenzar")
 
         if not keep_location and not stop:
             self.sync_location()
@@ -411,58 +482,85 @@ class MainWindow(QMainWindow):
 
     def next_inciso(self) -> None:
         """Guarda el ejercicio actual y avanza al siguiente inciso."""
-        self.finish_item(True, keep_location=True)
-        self.inciso = (self.inciso or 0) + 1
-        self.inciso_input.setValue(self.inciso)
+        self.application.navigate("next_inciso")
+        self.inciso_input.setValue(self.application.location.inciso or 0)
+        self.sync_location()
+
+    def previous_inciso(self) -> None:
+        """Guarda el intento y vuelve al inciso anterior, si existe."""
+        if self.application.navigate("previous_inciso"):
+            self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
 
     def next_exercise(self) -> None:
         """Guarda el ejercicio y pasa al siguiente ejercicio de la sección."""
-        self.finish_item(True, keep_location=True)
-        self.exercise += 1
-        self.exercise_input.setValue(self.exercise)
-        self.inciso = None
+        self.application.navigate("next_exercise")
+        self.exercise_input.setValue(self.application.location.exercise)
+        self.inciso_input.setValue(0)
+        self.sync_location()
+
+    def previous_exercise(self) -> None:
+        """Guarda el intento y vuelve al ejercicio anterior, si existe."""
+        if self.application.navigate("previous_exercise"):
+            self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
         self.sync_location()
 
     def next_section(self) -> None:
         """Guarda el ejercicio actual y avanza a la siguiente sección."""
-        self.finish_item(True, keep_location=True)
-        self.section_number += 1
-        self.section_number_input.setValue(self.section_number)
-        self.exercise = 1
+        self.application.navigate("next_section")
+        self.section_number_input.setValue(self.application.location.section_number)
         self.exercise_input.setValue(1)
-        self.inciso = None
+        self.inciso_input.setValue(0)
+        self.sync_location()
+
+    def previous_section(self) -> None:
+        """Guarda el intento y vuelve a la sección anterior, si existe."""
+        if self.application.navigate("previous_section"):
+            self.section_number_input.setValue(self.application.location.section_number)
+        self.exercise_input.setValue(1)
         self.inciso_input.setValue(0)
         self.sync_location()
 
     def refresh_clock(self) -> None:
         """Actualiza los labels con los tiempos actuales del cronómetro."""
-        exercise_ms, break_ms = self.timer.snapshot()
-        self.exercise_clock.setText(format_ms(exercise_ms))
-        self.break_clock.setText(format_ms(break_ms))
-        if self.timer.mode is TimerMode.PLAY:
+        exercise_ms, break_ms = self.application.timer.snapshot()
+        self.exercise_clock.setText(timer_markup(exercise_ms))
+        self.break_clock.setText(timer_markup(break_ms))
+        self.update_timer_visual_state()
+        if self.application.mode is TimerMode.PLAY:
             self.status_label.setText("Sesión en curso")
-        elif self.timer.mode is TimerMode.BREAK:
+        elif self.application.mode is TimerMode.BREAK:
             self.status_label.setText("Receso en curso")
+
+    def update_timer_visual_state(self) -> None:
+        """Aplica el color de énfasis a la lectura que está avanzando."""
+        exercise_color = "#2f8f57" if self.application.mode is TimerMode.PLAY else "#18252b"
+        break_color = "#c64d4d" if self.application.mode is TimerMode.BREAK else "#60706d"
+        compact = self.width() < 1_020
+        clock_size = 34 if compact else 43
+        self.exercise_clock.setStyleSheet(f"color: {exercise_color}; font-size: {clock_size}px;")
+        self.break_clock.setStyleSheet(
+            f"color: {break_color}; font-size: {max(19, clock_size // 2)}px;"
+        )
 
     def autosave(self) -> None:
         """Guarda el registro activo en el archivo asociado."""
-        self.storage.save(self.record)
+        self.application.save()
 
     def update_title(self) -> None:
         """Actualiza el título de la ventana según el archivo de registro abierto."""
-        if self.storage.is_open:
-            self.setWindowTitle(f"{APP_TITLE} - {self.record.record_name}")
+        if self.application.is_record_open:
+            self.setWindowTitle(f"{APP_TITLE} - {self.application.record.record_name}")
         else:
             self.setWindowTitle(APP_TITLE)
 
     def refresh_table(self) -> None:
         """Vuelca a pintar la tabla con los registros ordenados por fecha."""
         self.table.setRowCount(0)
-        total_items = len(self.record.items)
+        ordered_items = self.application.ordered_items()
+        total_items = len(ordered_items)
         self.records_summary.setText(f"{total_items} intento{'s' if total_items != 1 else ''} guardado{'s' if total_items != 1 else ''}")
-        ordered_items = sorted(self.record.items, key=lambda item: item.created_at)
 
         for index, item in enumerate(ordered_items):
             self.table.insertRow(index)
@@ -487,47 +585,42 @@ class MainWindow(QMainWindow):
         """Añade un item manualmente desde el diálogo de edición."""
         dialog = ItemDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.record.items.append(dialog._validated)
-            self.autosave()
+            self.application.add_item(dialog._validated)
             self.refresh_table()
 
     def edit_item(self, row: int) -> None:
         """Edita un item existente en la fila indicada."""
-        item = sorted(self.record.items, key=lambda current: current.created_at)[row]
+        item = self.application.ordered_items()[row]
         dialog = ItemDialog(self, item)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.record.items[self.record.items.index(item)] = dialog._validated
-            self.autosave()
+            self.application.replace_item(item, dialog._validated)
             self.refresh_table()
 
     def reset_item(self, row: int) -> None:
         """Reinicia el tiempo de un item concreto."""
-        item = sorted(self.record.items, key=lambda current: current.created_at)[row]
+        item = self.application.ordered_items()[row]
         if QMessageBox.question(
             self,
             "Confirmar reset",
             "¿Está seguro de reiniciar este registro?",
         ) == QMessageBox.StandardButton.Yes:
-            item.exercise_time_ms = 0
-            item.break_time_ms = 0
-            self.autosave()
+            self.application.reset_item(item)
             self.refresh_table()
 
     def delete_item(self, row: int) -> None:
         """Elimina un item concreto tras confirmar la acción."""
-        item = sorted(self.record.items, key=lambda current: current.created_at)[row]
+        item = self.application.ordered_items()[row]
         if QMessageBox.question(
             self,
             "Confirmar eliminación",
             "¿Está seguro de eliminar este registro?\nEsta acción no se puede deshacer.",
         ) == QMessageBox.StandardButton.Yes:
-            self.record.items.remove(item)
-            self.autosave()
+            self.application.delete_item(item)
             self.refresh_table()
 
     def open_record(self) -> None:
         """Abre un fichero JSON para cargar un registro existente."""
-        if self.storage.is_open and (self.record.items or self.timer.mode is not TimerMode.WAITING):
+        if self.application.is_record_open and (self.application.record.items or self.application.mode is not TimerMode.WAITING):
             QMessageBox.warning(
                 self,
                 "Registro abierto",
@@ -540,7 +633,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            self.record = self.storage.load(Path(path))
+            self.application.load(Path(path))
             self.update_title()
             self.refresh_table()
         except (OSError, TypeError, ValueError) as error:
@@ -548,33 +641,28 @@ class MainWindow(QMainWindow):
 
     def save_as(self) -> None:
         """Guarda el registro actual en una ruta distinta indicada por el usuario."""
-        default = str(self.storage.path or Path.cwd() / "StudyTimetrial.json")
+        default = str(self.application.record_path or Path.cwd() / "StudyTimetrial.json")
         path, _ = QFileDialog.getSaveFileName(self, "Guardar registro", default, "JSON (*.json)")
         if path:
-            self.storage.save(self.record, Path(path))
-            self.record.record_name = self.storage.path.stem
-            self.autosave()
+            self.application.save_as(Path(path))
             self.update_title()
 
     def rename_record(self) -> None:
         """Renombra el fichero activo del registro."""
-        if self.storage.path is None:
+        if self.application.record_path is None:
             return
 
-        path, _ = QFileDialog.getSaveFileName(self, "Renombrar registro", str(self.storage.path), "JSON (*.json)")
+        path, _ = QFileDialog.getSaveFileName(self, "Renombrar registro", str(self.application.record_path), "JSON (*.json)")
         if not path:
             return
 
         new_path = Path(path)
         try:
-            self.storage.path.rename(new_path)
+            self.application.rename(new_path)
         except OSError as error:
             QMessageBox.critical(self, "No se pudo renombrar", str(error))
             return
 
-        self.storage.path = new_path
-        self.record.record_name = new_path.stem
-        self.autosave()
         self.update_title()
 
     def close_record(self) -> None:
@@ -582,14 +670,13 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self, "Cerrar registro", "¿Desea cerrar el registro actual?") != QMessageBox.StandardButton.Yes:
             return
 
-        self.storage.path = None
-        self.record = Record()
+        self.application.close_record()
         self.update_title()
         self.refresh_table()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """Confirma antes de cerrar si hay un intento activo en curso."""
-        if self.timer.mode is TimerMode.WAITING:
+        if self.application.mode is TimerMode.WAITING:
             event.accept()
             return
 

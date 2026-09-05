@@ -3,62 +3,6 @@
   "application": "Study Timetrial",
   "record_name": "Algebra_Demo",
   "created_at": "2026-09-02T16:36:28",
-  "updated_at": "2026-09-05T14:44:12",
-  "items": [
-    {
-      "section_type": "Guía",
-      "section_number": 1,
-      "exercise": 1,
-      "inciso": null,
-      "exercise_time_ms": 14957,
-      "break_time_ms": 6601,
-      "completed": true,
-      "id": "30a09aac-55ab-4aeb-ab0f-c66f6a906a23",
-      "created_at": "2026-09-02T16:37:12"
-    },
-    {
-      "section_type": "Guía",
-      "section_number": 1,
-      "exercise": 2,
-      "inciso": null,
-      "exercise_time_ms": 9424,
-      "break_time_ms": 0,
-      "completed": true,
-      "id": "7ccabb1f-1ec6-42e1-9004-653a4b4a4437",
-      "created_at": "2026-09-02T16:37:25"
-    },
-    {
-      "section_type": "Guía",
-      "section_number": 1,
-      "exercise": 3,
-      "inciso": null,
-      "exercise_time_ms": 3490,
-      "break_time_ms": 0,
-      "completed": true,
-      "id": "f460a7b7-09cb-4d32-bac6-6634a2a66d55",
-      "created_at": "2026-09-02T16:38:09"
-    },
-    {
-      "section_type": "Guía",
-      "section_number": 1,
-      "exercise": 3,
-      "inciso": 1,
-      "exercise_time_ms": 6171,
-      "break_time_ms": 0,
-      "completed": true,
-      "id": "6564fe46-3bb5-4b85-bd99-9f95d16d426a",
-      "created_at": "2026-09-02T16:37:42"
-    },
-    {
-      "section_type": "Guía",
-      "section_number": 2,
-      "exercise": 1,
-      "inciso": null,
-      "exercise_time_ms": 14252,
-      "break_time_ms": 6949,
-      "completed": false,
-      "id": "af7dc40a-38f0-4245-977e-eeddbdb49d18",
-      "created_at": "2026-09-05T14:44:12"
-    }
-  ]
+  "updated_at": "2026-09-05T16:25:20",
+  "items": []
 }

@@ -461,63 +461,53 @@ Si había un receso activo, también se cancela.
 
 ---
 
-# 12. Reintentar
+# 12. Incompleto y completo
 
-El botón:
-
-```text
-REINTENTAR
-```
-
-significa:
-
-> guardar el intento actual y comenzar inmediatamente otro intento del mismo ejercicio/inciso.
-
-Primero se guarda:
+El control de sesión se acompaña de dos acciones para finalizar el intento:
 
 ```text
-Tiempo actual
-Receso acumulado
-Sección
-Ejercicio
-Inciso
-Completado = false
+INCOMPLETO
+COMPLETO
 ```
 
-Luego:
+`INCOMPLETO` guarda el tiempo actual con `completado = false` y reinicia el
+cronómetro para comenzar otro intento de la misma ubicación. `COMPLETO` hace
+lo mismo, pero guarda `completado = true`.
 
-```text
-Tiempo de ejercicio = 00:00:00:000
-Tiempo de receso    = 00:00:00:000
-```
+Ambas acciones desbloquean la ubicación y conservan seleccionados la sección,
+el ejercicio y el inciso.
 
-y continúa en:
-
-```text
-misma sección
-mismo ejercicio
-mismo inciso
-```
-
-Ejemplo:
-
-```text
-Guía 1 - Ejercicio 8 - Inciso 2
-
-Intento anterior:
-Tiempo = 00:10:32
-Completado = false
-
-REINTENTAR
-
-Nuevo intento:
-Tiempo = 00:00:00
-Completado = false
-```
+Antes de guardar cualquiera de los dos estados se acumula el tiempo que esté
+corriendo, incluido un receso activo.
 
 ---
 
-# 13. Siguiente Inciso
+# 13. Navegación de incisos
+
+Los botones de navegación permiten avanzar o retroceder dentro de los tres
+niveles de ubicación:
+
+```text
+ANTERIOR INCISO       SIGUIENTE INCISO
+ANTERIOR EJERCICIO    SIGUIENTE EJERCICIO
+ANTERIOR SECCIÓN      SIGUIENTE SECCIÓN
+```
+
+Al moverse con cualquiera de estos botones, se guarda el intento actual como
+completado y se cambia la ubicación. Si no hay un intento activo, solamente se
+cambia la ubicación.
+
+## 13.1. Inciso anterior
+
+`ANTERIOR INCISO` reduce el inciso en uno. Si el inciso actual es `1`, vuelve a
+`null`, es decir, al ejercicio sin inciso. Si ya está en `null`, no retrocede.
+
+`SIGUIENTE INCISO` conserva el comportamiento descrito a continuación: desde
+`null` pasa al inciso `1` y después incrementa de uno en uno.
+
+---
+
+# 14. Siguiente Inciso
 
 El botón:
 
@@ -577,7 +567,16 @@ Esto permite convertir funcionalmente un ejercicio sin inciso en uno con inciso.
 
 ---
 
-# 14. Siguiente Ejercicio
+# 15. Navegación de ejercicios
+
+`ANTERIOR EJERCICIO` reduce el ejercicio en uno cuando el número actual es
+mayor que `1`. Al cambiar de ejercicio, el inciso vuelve a `null`.
+
+Si el ejercicio actual es `1`, el botón no realiza ningún cambio.
+
+---
+
+# 16. Siguiente Ejercicio
 
 El botón:
 
@@ -629,7 +628,15 @@ El programa nunca necesita conocer de antemano la estructura del ejercicio.
 
 ---
 
-# 15. Siguiente Sección
+# 17. Navegación de secciones
+
+`ANTERIOR SECCIÓN` reduce la sección en uno cuando el número actual es mayor
+que `1`. Al cambiar de sección, el ejercicio vuelve a `1` y el inciso a
+`null`. Si la sección actual es `1`, el botón no realiza ningún cambio.
+
+---
+
+# 18. Siguiente Sección
 
 El botón conceptualmente denominado:
 
@@ -691,37 +698,28 @@ se realiza mediante la configuración de la sección.
 
 ---
 
-# 16. Detener
+# 19. Cierre de la aplicación
 
-El botón:
+La acción de cierre de ventana utiliza internamente el mismo resultado que
+`INCOMPLETO`: guarda el intento con `completado = false`. Ya no existe un
+botón independiente `DETENER` en la interfaz.
 
-```text
-DETENER
-```
+Al cerrar la aplicación con un intento activo se solicita confirmación. La
+opción de guardar finaliza la ejecución actual como incompleta. La información
+seleccionada puede volver a modificarse y el registro generado permanece
+guardado.
 
-finaliza la ejecución actual y guarda el intento.
-
-El registro generado tendrá:
-
-```text
-completado = false
-```
-
-porque detener la aplicación no implica que el ejercicio haya sido completado.
-
-Después:
+Después de guardar:
 
 ```text
 PLAY → ESPERA
 ```
 
-La información seleccionada puede volver a modificarse.
-
 El registro generado permanece guardado.
 
 ---
 
-# 17. Regla general de completado
+# Regla general de completado
 
 El campo:
 
@@ -738,8 +736,11 @@ Se utilizará:
 | Siguiente inciso | Sí | `true` |
 | Siguiente ejercicio | Sí | `true` |
 | Siguiente sección | Sí | `true` |
-| Reintentar | Sí | `false` |
-| Detener | Sí | `false` |
+| Anterior inciso | Sí | `true` |
+| Anterior ejercicio | Sí | `true` |
+| Anterior sección | Sí | `true` |
+| Incompleto | Sí | `false` |
+| Completo | Sí | `true` |
 | Reiniciar | No | — |
 
 Esto permite distinguir, por ejemplo:
@@ -752,7 +753,7 @@ Intento 3 → 09:54 → true
 
 ---
 
-# 18. Guardado automático de los intentos
+# Guardado automático de los intentos
 
 Cada vez que una acción genera un registro:
 
@@ -760,15 +761,15 @@ Cada vez que una acción genera un registro:
 Siguiente inciso
 Siguiente ejercicio
 Siguiente sección
-Reintentar
-Detener
+Anterior inciso
+Anterior ejercicio
+Anterior sección
+Incompleto
+SIGUIENTE INCISO
 ```
 
-la información se escribe automáticamente en el archivo activo.
-
-El programa reutiliza el mismo archivo mientras ese registro permanezca abierto.
-
-Por ejemplo:
+guarda el intento actual como completado y avanza al siguiente inciso del mismo
+ejercicio. Primero se guarda:
 
 ```text
 Algebra.json
@@ -776,20 +777,13 @@ Algebra.json
 
 puede recibir:
 
-```text
+Completado = true
 Intento 1
 Intento 2
 Intento 3
 Intento 4
 ...
-```
-
-sin necesidad de pulsar manualmente "Guardar" después de cada ejercicio.
-
----
-
-# 19. Archivo automático
-
+inciso = inciso + 1
 Si el usuario todavía no ha elegido un archivo definitivo, el programa generará automáticamente un archivo local de trabajo.
 
 Ese archivo será el almacenamiento persistente del registro activo.
@@ -1254,6 +1248,60 @@ Si el archivo no es válido, se muestra un error y el registro actual no se modi
 
 Solo puede existir un registro activo simultáneamente.
 
+---
+
+# 33. Arquitectura por capas y roles
+
+La implementacion separa la aplicacion en capas con responsabilidades
+independientes. La interfaz no contiene las reglas que determinan como se
+finaliza una sesion o como se persiste un intento.
+
+```text
+Presentacion (PySide6)
+  |
+  v
+Aplicacion (casos de uso)
+  |                 |
+  v                 v
+Dominio temporal       Modelos de datos
+  |
+  v
+Infraestructura (JSON local)
+```
+
+## 33.1. Responsabilidades
+
+| Capa | Modulo | Responsabilidad |
+|---|---|---|
+| Presentacion | `main.py` | Construir widgets, reaccionar a señales, validar formularios visuales y mostrar estados. |
+| Aplicacion | `application_service.py` | Coordinar iniciar, pausar, finalizar, navegar, abrir, guardar, editar y eliminar. |
+| Dominio | `timer_service.py` | Medir tiempo monotónico y aplicar los estados `WAITING`, `PLAY` y `BREAK`. |
+| Dominio | `models.py` | Definir `TimerItem`, `Record` y la serialización del contrato de datos. |
+| Infraestructura | `storage_service.py` | Leer y escribir archivos JSON y administrar la ruta activa. |
+
+## 33.2. Flujo de una sesion
+
+1. `MainWindow` recoge la ubicacion desde los controles Qt.
+2. `StudyApplicationService` crea o cambia el estado de la sesion.
+3. `TimerService` acumula el tiempo de ejercicio o receso.
+4. Al finalizar, la capa de aplicacion crea un `TimerItem` y solicita el guardado.
+5. `StorageService` serializa el `Record` sin que la interfaz conozca el formato.
+
+`StudyApplicationService` recibe `StorageService` y `TimerService` por
+inyeccion. Esto permite probar los casos de uso sin crear una ventana y deja
+abierta la posibilidad de sustituir PySide6 o el almacenamiento local en el
+futuro.
+
+## 33.3. Regla para futuras modificaciones
+
+- Cambios visuales y de accesibilidad pertenecen a `main.py`.
+- Nuevos casos de uso deben agregarse a `application_service.py`.
+- Reglas del cronometro deben permanecer en `timer_service.py`.
+- Cambios del formato JSON requieren actualizar `models.py` y la version del
+  esquema de forma compatible.
+- El acceso al sistema de archivos debe permanecer encapsulado en
+  `storage_service.py`.
+
 Si ya existe uno abierto y el usuario intenta abrir otro:
 
 ```text
@@ -1581,22 +1629,24 @@ Desde PLAY también existen:
 
 ```text
 Reiniciar
-Reintentar
+Incompleto
+Completo
+Anterior inciso / ejercicio / sección
 Siguiente inciso
 Siguiente ejercicio
 Siguiente sección
-Detener
 ```
 
 Desde RECESO:
 
 ```text
 PLAY
-Reintentar
+Incompleto
+Completo
+Anterior inciso / ejercicio / sección
 Siguiente inciso
 Siguiente ejercicio
 Siguiente sección
-Detener
 ```
 
 En particular:
@@ -1709,11 +1759,12 @@ Para evitar ambigüedades al comenzar la implementación:
 
 8. Reiniciar no genera registro.
 
-9. Reintentar genera un registro no completado y comienza otro intento.
+9. Incompleto genera un registro no completado y comienza otro intento.
 
 10. Siguiente inciso/ejercicio/sección genera un registro completado.
 
-11. Detener genera un registro no completado.
+11. Completo genera un registro completado; el cierre de la aplicación guarda
+  como incompleto.
 
 12. Reset solamente pone tiempo y receso en cero.
 
@@ -1775,7 +1826,7 @@ Ejercicio
    ↕
 Receso
         ↓
-Siguiente / Reintentar / Detener
+Anterior / Siguiente / Incompleto / Completo
         ↓
 Item guardado automáticamente
         ↓
