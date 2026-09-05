@@ -3,8 +3,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, QUrl, Qt
 from PySide6.QtGui import QCloseEvent
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -200,6 +201,11 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.application = StudyApplicationService()
+        self.start_sound_player = QMediaPlayer(self)
+        self.start_sound_output = QAudioOutput(self)
+        self.start_sound_player.setAudioOutput(self.start_sound_output)
+        sound_path = Path(__file__).resolve().parent / "media" / "start_sound.mp3"
+        self.start_sound_player.setSource(QUrl.fromLocalFile(str(sound_path)))
 
         self.setMinimumSize(900, 700)
         self.setStyleSheet(self.STYLESHEET)
@@ -438,6 +444,8 @@ class MainWindow(QMainWindow):
         """Inicia, pausa en receso o reanuda la sesión según su estado."""
         if self.application.mode is TimerMode.WAITING:
             self.sync_location()
+            self.start_sound_player.setPosition(0)
+            self.start_sound_player.play()
         self.application.toggle_session()
 
         self.set_locked(True)
