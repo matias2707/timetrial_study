@@ -10,9 +10,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QRectF, QSettings, QTimer, QUrl, Qt
 from PySide6.QtGui import QAction, QActionGroup, QBrush, QCloseEvent, QColor, QFont, QPainter, QPen
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractSpinBox,
     QApplication,
     QBoxLayout,
     QDialog,
@@ -154,11 +155,15 @@ class MainWindow(QMainWindow):
             self.current_theme = THEME_LIGHT
 
         self.application = StudyApplicationService()
-        self.start_sound_player = QMediaPlayer(self)
-        self.start_sound_output = QAudioOutput(self)
-        self.start_sound_player.setAudioOutput(self.start_sound_output)
-        sound_path = Path(__file__).resolve().parent / "media" / "start_sound.mp3"
-        self.start_sound_player.setSource(QUrl.fromLocalFile(str(sound_path)))
+
+        media_dir = Path(__file__).resolve().parent / "media"
+        self.start_sound = QSoundEffect(self)
+        self.start_sound.setSource(QUrl.fromLocalFile(str(media_dir / "universfield-new-notification-040-493469.wav")))
+        self.start_sound.setVolume(1.0)
+
+        self.complete_sound = QSoundEffect(self)
+        self.complete_sound.setSource(QUrl.fromLocalFile(str(media_dir / "universfield-new-notification-051-494246.wav")))
+        self.complete_sound.setVolume(1.0)
 
         self.setMinimumSize(940, 700)
         stylesheet = get_theme_stylesheet(self.current_theme)
@@ -240,6 +245,20 @@ class MainWindow(QMainWindow):
             self.recent_file_action.setIcon(qta.icon("fa5s.history", color=toolbar_icon_color))
         if hasattr(self, "save_file_action"):
             self.save_file_action.setIcon(qta.icon("fa5s.save", color=toolbar_icon_color))
+
+        # Iconos de steppers numéricos (Sección Nº, Ejercicio, Inciso)
+        stepper_icon_color = "#94a3b8" if is_dark else "#475569"
+        if hasattr(self, "stepper_buttons"):
+            for i, btn in enumerate(self.stepper_buttons):
+                icon_name = "fa5s.minus" if (i % 2 == 0) else "fa5s.plus"
+                btn.setIcon(qta.icon(icon_name, color=stepper_icon_color))
+
+        # Iconos de botones de navegación rápida
+        nav_icon_color = "#94a3b8" if is_dark else "#475569"
+        if hasattr(self, "navigation_buttons"):
+            for i, btn in enumerate(self.navigation_buttons):
+                icon_name = "fa5s.chevron-left" if (i % 2 == 0) else "fa5s.chevron-right"
+                btn.setIcon(qta.icon(icon_name, color=nav_icon_color))
 
         self.update_session_button()
 
@@ -450,19 +469,25 @@ class MainWindow(QMainWindow):
         self.exercise_input.valueChanged.connect(self.sync_location)
         self.inciso_input.valueChanged.connect(self.sync_location)
 
+        self.stepper_buttons: list[QPushButton] = []
+        section_number_stepper = self._create_stepper(self.section_number_input, "número de sección")
+        exercise_stepper = self._create_stepper(self.exercise_input, "ejercicio")
+        inciso_stepper = self._create_stepper(self.inciso_input, "inciso")
+
         for column, (label, widget) in enumerate((
             ("Sección", self.section_input),
-            ("Nº", self.section_number_input),
-            ("Ejercicio", self.exercise_input),
-            ("Inciso", self.inciso_input),
+            ("Nº", section_number_stepper),
+            ("Ejercicio", exercise_stepper),
+            ("Inciso", inciso_stepper),
         )):
             field_label = QLabel(label.upper())
             field_label.setObjectName("eyebrow")
             selectors.addWidget(field_label, 0, column)
             selectors.addWidget(widget, 1, column)
         selectors.setColumnStretch(0, 2)
-        for column in range(1, 4):
-            selectors.setColumnStretch(column, 1)
+        selectors.setColumnStretch(1, 1)
+        selectors.setColumnStretch(2, 1)
+        selectors.setColumnStretch(3, 1)
         hero_layout.addLayout(selectors)
         outer.addWidget(hero)
 
@@ -540,74 +565,113 @@ class MainWindow(QMainWindow):
         controls_header.addWidget(self.status_pill)
         controls_layout.addLayout(controls_header)
 
-        # Primary Controls Grid
+        # Primary Controls Grid (Cuadrícula simétrica y ergonómica)
         self.primary_controls = QGridLayout()
         self.primary_controls.setHorizontalSpacing(10)
-        self.primary_controls.setVerticalSpacing(8)
+        self.primary_controls.setVerticalSpacing(10)
 
         self.session_button = QPushButton("  INICIAR")
         self.session_button.setObjectName("hero_start")
         self.session_button.setIcon(qta.icon("fa5s.play", color="#bef264"))
         self.session_button.clicked.connect(self.toggle_session)
 
-        stop = QPushButton("  DETENER")
-        stop.setObjectName("stop")
-        stop.setIcon(qta.icon("fa5s.stop", color="#dc2626"))
-        stop.clicked.connect(self.stop_timer)
+        self.stop_button = QPushButton("  DETENER")
+        self.stop_button.setObjectName("stop")
+        self.stop_button.setIcon(qta.icon("fa5s.stop", color="#dc2626"))
+        self.stop_button.clicked.connect(self.stop_timer)
 
-        complete = QPushButton("  COMPLETO")
-        complete.setObjectName("complete")
-        complete.setIcon(qta.icon("fa5s.check-circle", color="#ffffff"))
-        complete.clicked.connect(lambda: self.finish_item(True, keep_location=True))
+        self.complete_button = QPushButton("  COMPLETO")
+        self.complete_button.setObjectName("complete")
+        self.complete_button.setIcon(qta.icon("fa5s.check-circle", color="#ffffff"))
+        self.complete_button.clicked.connect(lambda: self.finish_item(True, keep_location=True))
 
-        incomplete = QPushButton("  INCOMPLETO")
-        incomplete.setObjectName("danger")
-        incomplete.setIcon(qta.icon("fa5s.times-circle", color="#ffffff"))
-        incomplete.clicked.connect(lambda: self.finish_item(False, keep_location=True))
+        self.incomplete_button = QPushButton("  INCOMPLETO")
+        self.incomplete_button.setObjectName("danger")
+        self.incomplete_button.setIcon(qta.icon("fa5s.times-circle", color="#ffffff"))
+        self.incomplete_button.clicked.connect(lambda: self.finish_item(False, keep_location=True))
 
-        self.primary_buttons = (self.session_button, stop, complete, incomplete)
-        for column, button in enumerate(self.primary_buttons):
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            self.primary_controls.addWidget(button, 0, column)
-        controls_layout.addLayout(self.primary_controls)
-
-        # Comment Button
         self.comment_button = QPushButton("  COMENTARIO")
         self.comment_button.setObjectName("comment_action")
         self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
         self.comment_button.clicked.connect(self.add_home_comment)
-        controls_layout.addWidget(self.comment_button)
+
+        self.primary_buttons = (
+            self.session_button,
+            self.stop_button,
+            self.complete_button,
+            self.incomplete_button,
+            self.comment_button,
+        )
+        for button in self.primary_buttons:
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        controls_layout.addLayout(self.primary_controls)
+        self._arrange_session_controls(compact=False, very_compact=False)
 
         # Navigation Header & Pods
         nav_header = QLabel("NAVEGACIÓN RÁPIDA")
         nav_header.setObjectName("eyebrow")
-        nav_header.setStyleSheet("margin-top: 4px;")
+        nav_header.setStyleSheet("margin-top: 6px;")
         controls_layout.addWidget(nav_header)
+
+        # Botones de navegación con iconos y tooltips claros
+        self.btn_prev_section = QPushButton("  Anterior")
+        self.btn_prev_section.setObjectName("nav_button")
+        self.btn_prev_section.setToolTip("Guardar intento y volver a la sección anterior")
+        self.btn_prev_section.setIcon(qta.icon("fa5s.chevron-left", color="#94a3b8"))
+        self.btn_prev_section.clicked.connect(self.previous_section)
+
+        self.btn_next_section = QPushButton("Siguiente  ")
+        self.btn_next_section.setObjectName("nav_button")
+        self.btn_next_section.setToolTip("Guardar intento y avanzar a la siguiente sección")
+        self.btn_next_section.setIcon(qta.icon("fa5s.chevron-right", color="#94a3b8"))
+        self.btn_next_section.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.btn_next_section.clicked.connect(self.next_section)
+
+        self.btn_prev_exercise = QPushButton("  Anterior")
+        self.btn_prev_exercise.setObjectName("nav_button")
+        self.btn_prev_exercise.setToolTip("Guardar intento y volver al ejercicio anterior")
+        self.btn_prev_exercise.setIcon(qta.icon("fa5s.chevron-left", color="#94a3b8"))
+        self.btn_prev_exercise.clicked.connect(self.previous_exercise)
+
+        self.btn_next_exercise = QPushButton("Siguiente  ")
+        self.btn_next_exercise.setObjectName("nav_button")
+        self.btn_next_exercise.setToolTip("Guardar intento y pasar al siguiente ejercicio")
+        self.btn_next_exercise.setIcon(qta.icon("fa5s.chevron-right", color="#94a3b8"))
+        self.btn_next_exercise.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.btn_next_exercise.clicked.connect(self.next_exercise)
+
+        self.btn_prev_inciso = QPushButton("  Anterior")
+        self.btn_prev_inciso.setObjectName("nav_button")
+        self.btn_prev_inciso.setToolTip("Guardar intento y volver al inciso anterior")
+        self.btn_prev_inciso.setIcon(qta.icon("fa5s.chevron-left", color="#94a3b8"))
+        self.btn_prev_inciso.clicked.connect(self.previous_inciso)
+
+        self.btn_next_inciso = QPushButton("Siguiente  ")
+        self.btn_next_inciso.setObjectName("nav_button")
+        self.btn_next_inciso.setToolTip("Guardar intento y avanzar al siguiente inciso")
+        self.btn_next_inciso.setIcon(qta.icon("fa5s.chevron-right", color="#94a3b8"))
+        self.btn_next_inciso.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        self.btn_next_inciso.clicked.connect(self.next_inciso)
+
+        self.navigation_buttons = [
+            self.btn_prev_section,
+            self.btn_next_section,
+            self.btn_prev_exercise,
+            self.btn_next_exercise,
+            self.btn_prev_inciso,
+            self.btn_next_inciso,
+        ]
+
+        # 3 Pods jerárquicos alineados: Sección, Ejercicio, Inciso
+        self.nav_pod_section = self._create_nav_pod("Sección", "fa5s.bookmark", self.btn_prev_section, self.btn_next_section)
+        self.nav_pod_exercise = self._create_nav_pod("Ejercicio", "fa5s.tasks", self.btn_prev_exercise, self.btn_next_exercise)
+        self.nav_pod_inciso = self._create_nav_pod("Inciso", "fa5s.list-ol", self.btn_prev_inciso, self.btn_next_inciso)
 
         self.navigation = QGridLayout()
         self.navigation.setHorizontalSpacing(10)
-        self.navigation.setVerticalSpacing(8)
-        self.navigation_buttons = []
-        for text, icon_left, callback in (
-            ("Anterior Inciso", True, self.previous_inciso),
-            ("Siguiente Inciso", False, self.next_inciso),
-            ("Anterior Ejercicio", True, self.previous_exercise),
-            ("Siguiente Ejercicio", False, self.next_exercise),
-            ("Anterior Sección", True, self.previous_section),
-            ("Siguiente Sección", False, self.next_section),
-        ):
-            button = QPushButton(f"  {text}  ")
-            button.setObjectName("nav_button")
-            icon_name = "fa5s.chevron-left" if icon_left else "fa5s.chevron-right"
-            button.setIcon(qta.icon(icon_name, color="#475569"))
-            if not icon_left:
-                button.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-            button.clicked.connect(callback)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            self.navigation_buttons.append(button)
-
-        self._populate_grid(self.primary_controls, self.primary_buttons, 4)
-        self._populate_grid(self.navigation, self.navigation_buttons, 3)
+        self.navigation.setVerticalSpacing(10)
+        self._arrange_navigation_pods(compact=False)
         controls_layout.addLayout(self.navigation)
 
         self.status_label = QLabel("Listo para comenzar")
@@ -622,30 +686,148 @@ class MainWindow(QMainWindow):
         self.sync_location()
         return scroll
 
-    @staticmethod
-    def _populate_grid(layout: QGridLayout, widgets: tuple[QPushButton, ...] | list[QPushButton], columns: int) -> None:
-        """Coloca los botones en columnas que puedan cambiar con el ancho disponible."""
-        while layout.count():
-            layout.takeAt(0)
-        for index, widget in enumerate(widgets):
-            layout.addWidget(widget, index // columns, index % columns)
-        for column in range(columns):
-            layout.setColumnStretch(column, 1)
+    def _create_stepper(self, spinbox: QSpinBox, tooltip_prefix: str) -> QWidget:
+        """Envuelve un QSpinBox con botones [-] y [+] táctiles y modernos."""
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        icon_color = "#94a3b8" if self.is_dark_mode else "#475569"
+
+        btn_minus = QPushButton()
+        btn_minus.setObjectName("stepper_button")
+        btn_minus.setToolTip(f"Decrementar {tooltip_prefix}")
+        btn_minus.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_minus.setIcon(qta.icon("fa5s.minus", color=icon_color))
+        btn_minus.clicked.connect(spinbox.stepDown)
+
+        btn_plus = QPushButton()
+        btn_plus.setObjectName("stepper_button")
+        btn_plus.setToolTip(f"Incrementar {tooltip_prefix}")
+        btn_plus.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_plus.setIcon(qta.icon("fa5s.plus", color=icon_color))
+        btn_plus.clicked.connect(spinbox.stepUp)
+
+        spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        spinbox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        layout.addWidget(btn_minus)
+        layout.addWidget(spinbox, 1)
+        layout.addWidget(btn_plus)
+
+        if not hasattr(self, "stepper_buttons"):
+            self.stepper_buttons = []
+        self.stepper_buttons.extend([btn_minus, btn_plus])
+
+        return container
+
+    def _create_nav_pod(
+        self,
+        title: str,
+        icon_name: str,
+        prev_btn: QPushButton,
+        next_btn: QPushButton,
+    ) -> QFrame:
+        """Crea un módulo visual agrupado para navegar por Sección, Ejercicio o Inciso."""
+        pod = QFrame()
+        pod.setObjectName("nav_pod")
+        pod_layout = QVBoxLayout(pod)
+        pod_layout.setContentsMargins(12, 10, 12, 12)
+        pod_layout.setSpacing(8)
+
+        # Encabezado del pod
+        header = QHBoxLayout()
+        header.setContentsMargins(2, 0, 2, 0)
+        header.setSpacing(6)
+        icon_label = QLabel()
+        icon_color = "#bef264" if self.is_dark_mode else "#65a30d"
+        icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(12, 12))
+        header.addWidget(icon_label)
+
+        lbl = QLabel(title.upper())
+        lbl.setObjectName("eyebrow")
+        lbl.setStyleSheet("font-size: 10px; font-weight: 800; letter-spacing: 1.2px;")
+        header.addWidget(lbl)
+        header.addStretch()
+        pod_layout.addLayout(header)
+
+        # Botones Anterior / Siguiente en fila
+        btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.setSpacing(8)
+        prev_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        next_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        btn_layout.addWidget(prev_btn)
+        btn_layout.addWidget(next_btn)
+        pod_layout.addLayout(btn_layout)
+
+        return pod
+
+    def _arrange_session_controls(self, compact: bool = False, very_compact: bool = False) -> None:
+        """Distribuye simétricamente los controles de sesión en cuadrícula según el ancho."""
+        while self.primary_controls.count():
+            self.primary_controls.takeAt(0)
+
+        for col in range(4):
+            self.primary_controls.setColumnStretch(col, 1)
+
+        if very_compact:
+            # 1 columna vertical para ventanas muy estrechas
+            for idx, btn in enumerate(self.primary_buttons):
+                self.primary_controls.addWidget(btn, idx, 0)
+        elif compact:
+            # 2 columnas equilibradas
+            # Fila 0: INICIAR (span 2)
+            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 2)
+            # Fila 1: DETENER, COMENTARIO
+            self.primary_controls.addWidget(self.stop_button, 1, 0)
+            self.primary_controls.addWidget(self.comment_button, 1, 1)
+            # Fila 2: COMPLETO, INCOMPLETO
+            self.primary_controls.addWidget(self.complete_button, 2, 0)
+            self.primary_controls.addWidget(self.incomplete_button, 2, 1)
+        else:
+            # 4 columnas, 2 filas simétricas
+            # Fila 0: INICIAR (span 2), DETENER (col 2), COMENTARIO (col 3)
+            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 2)
+            self.primary_controls.addWidget(self.stop_button, 0, 2)
+            self.primary_controls.addWidget(self.comment_button, 0, 3)
+            # Fila 1: COMPLETO (span 2), INCOMPLETO (span 2)
+            self.primary_controls.addWidget(self.complete_button, 1, 0, 1, 2)
+            self.primary_controls.addWidget(self.incomplete_button, 1, 2, 1, 2)
+
+    def _arrange_navigation_pods(self, compact: bool = False) -> None:
+        """Distribuye los 3 pods de navegación en 3 columnas o 3 filas según el ancho."""
+        while self.navigation.count():
+            self.navigation.takeAt(0)
+
+        pods = (self.nav_pod_section, self.nav_pod_exercise, self.nav_pod_inciso)
+        if compact:
+            # 3 filas de 1 pod cada una
+            for row, pod in enumerate(pods):
+                self.navigation.addWidget(pod, row, 0)
+            self.navigation.setColumnStretch(0, 1)
+            self.navigation.setColumnStretch(1, 0)
+            self.navigation.setColumnStretch(2, 0)
+        else:
+            # 3 columnas lado a lado (1 fila)
+            for col, pod in enumerate(pods):
+                self.navigation.addWidget(pod, 0, col)
+                self.navigation.setColumnStretch(col, 1)
 
     def resizeEvent(self, event) -> None:
         """Refluye controles y adapta los relojes y cuadrículas responsivamente."""
         super().resizeEvent(event)
         w = self.width()
-        compact = w < 1000
-        very_compact = w < 780
+        compact = w < 960
+        very_compact = w < 720
 
-        if hasattr(self, "primary_controls") and hasattr(self, "primary_buttons"):
-            cols = 1 if very_compact else (2 if compact else 4)
-            self._populate_grid(self.primary_controls, self.primary_buttons, cols)
+        if hasattr(self, "primary_controls"):
+            self._arrange_session_controls(compact, very_compact)
 
-        if hasattr(self, "navigation") and hasattr(self, "navigation_buttons"):
-            nav_cols = 1 if very_compact else (2 if compact else 3)
-            self._populate_grid(self.navigation, self.navigation_buttons, nav_cols)
+        if hasattr(self, "navigation"):
+            self._arrange_navigation_pods(compact)
 
         if hasattr(self, "metrics_layout"):
             self.metrics_layout.setDirection(
@@ -1065,13 +1247,14 @@ class MainWindow(QMainWindow):
         """Bloquea o desbloquea los controles de ubicación del ejercicio."""
         for widget in (self.section_input, self.section_number_input, self.exercise_input, self.inciso_input):
             widget.setEnabled(not locked)
+        for btn in getattr(self, "stepper_buttons", []):
+            btn.setEnabled(not locked)
 
     def toggle_session(self) -> None:
         """Inicia, pausa en receso o reanuda la sesión según su estado."""
         if self.application.mode is TimerMode.WAITING:
             self.sync_location()
-            self.start_sound_player.setPosition(0)
-            self.start_sound_player.play()
+            self.start_sound.play()
         self.application.toggle_session()
 
         self.set_locked(True)
@@ -1112,6 +1295,9 @@ class MainWindow(QMainWindow):
         if self.application.mode is TimerMode.WAITING:
             return
 
+        if completed:
+            self.complete_sound.play()
+
         self.application.finish_item(completed)
         self.set_locked(False)
         self.update_session_button()
@@ -1131,6 +1317,8 @@ class MainWindow(QMainWindow):
     def next_inciso(self) -> None:
         """Guarda el ejercicio actual y avanza al siguiente inciso."""
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active:
+            self.complete_sound.play()
         self.application.navigate("next_inciso")
         self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
@@ -1145,6 +1333,8 @@ class MainWindow(QMainWindow):
         """Guarda el intento y vuelve al inciso anterior, si existe."""
         was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_inciso"):
+            if was_active:
+                self.complete_sound.play()
             self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
         if was_active:
@@ -1157,6 +1347,8 @@ class MainWindow(QMainWindow):
     def next_exercise(self) -> None:
         """Guarda el ejercicio y pasa al siguiente ejercicio de la sección."""
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active:
+            self.complete_sound.play()
         self.application.navigate("next_exercise")
         self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
@@ -1172,6 +1364,8 @@ class MainWindow(QMainWindow):
         """Guarda el intento y vuelve al ejercicio anterior, si existe."""
         was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_exercise"):
+            if was_active:
+                self.complete_sound.play()
             self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
         self.sync_location()
@@ -1185,6 +1379,8 @@ class MainWindow(QMainWindow):
     def next_section(self) -> None:
         """Guarda el ejercicio actual y avanza a la siguiente sección."""
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active:
+            self.complete_sound.play()
         self.application.navigate("next_section")
         self.section_number_input.setValue(self.application.location.section_number)
         self.exercise_input.setValue(1)
@@ -1201,6 +1397,8 @@ class MainWindow(QMainWindow):
         """Guarda el intento y vuelve a la sección anterior, si existe."""
         was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_section"):
+            if was_active:
+                self.complete_sound.play()
             self.section_number_input.setValue(self.application.location.section_number)
         self.exercise_input.setValue(1)
         self.inciso_input.setValue(0)

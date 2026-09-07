@@ -68,6 +68,71 @@ class ThemeTests(unittest.TestCase):
         self.assertIn("LISTO PARA COMENZAR", window.status_pill.text())
         self.assertIn("#1e293b", window.status_pill.styleSheet())
 
+    def test_steppers_and_navigation_pods(self) -> None:
+        window = MainWindow()
+
+        # Stylesheet checks
+        light_css = get_theme_stylesheet(THEME_LIGHT)
+        dark_css = get_theme_stylesheet(THEME_DARK)
+        self.assertIn("QPushButton#stepper_button", light_css)
+        self.assertIn("QPushButton#stepper_button", dark_css)
+        self.assertIn("QFrame#nav_pod", light_css)
+        self.assertIn("QFrame#nav_pod", dark_css)
+
+        # Steppers exist and click logic
+        self.assertTrue(hasattr(window, "stepper_buttons"))
+        self.assertEqual(len(window.stepper_buttons), 6)  # 2 per spinbox (3 spinboxes)
+
+        # Exercise stepper: minus is button 2, plus is button 3
+        window.exercise_input.setValue(1)
+        btn_exercise_plus = window.stepper_buttons[3]
+        btn_exercise_minus = window.stepper_buttons[2]
+
+        btn_exercise_plus.click()
+        self.assertEqual(window.exercise_input.value(), 2)
+        btn_exercise_minus.click()
+        self.assertEqual(window.exercise_input.value(), 1)
+
+        # Inciso stepper: minus is 4, plus is 5
+        window.inciso_input.setValue(0)
+        btn_inciso_plus = window.stepper_buttons[5]
+        btn_inciso_minus = window.stepper_buttons[4]
+        btn_inciso_plus.click()
+        self.assertEqual(window.inciso_input.value(), 1)
+        btn_inciso_minus.click()
+        self.assertEqual(window.inciso_input.value(), 0)
+
+        # Lock controls test
+        window.set_locked(True)
+        self.assertFalse(window.exercise_input.isEnabled())
+        for btn in window.stepper_buttons:
+            self.assertFalse(btn.isEnabled())
+
+        window.set_locked(False)
+        self.assertTrue(window.exercise_input.isEnabled())
+        for btn in window.stepper_buttons:
+            self.assertTrue(btn.isEnabled())
+
+        # Navigation pods test
+        self.assertTrue(hasattr(window, "nav_pod_section"))
+        self.assertTrue(hasattr(window, "nav_pod_exercise"))
+        self.assertTrue(hasattr(window, "nav_pod_inciso"))
+        self.assertEqual(len(window.navigation_buttons), 6)
+
+        # Primary controls arrangement
+        self.assertTrue(hasattr(window, "primary_controls"))
+        self.assertTrue(hasattr(window, "stop_button"))
+        self.assertTrue(hasattr(window, "complete_button"))
+        self.assertTrue(hasattr(window, "incomplete_button"))
+        self.assertTrue(hasattr(window, "comment_button"))
+
+        # Test arrangement modes without exception
+        window._arrange_session_controls(compact=False, very_compact=False)
+        window._arrange_session_controls(compact=True, very_compact=False)
+        window._arrange_session_controls(compact=True, very_compact=True)
+        window._arrange_navigation_pods(compact=False)
+        window._arrange_navigation_pods(compact=True)
+
 
 if __name__ == "__main__":
     unittest.main()

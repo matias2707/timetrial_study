@@ -411,6 +411,41 @@ def get_theme_stylesheet(theme: str) -> str:
             border-color: #1f2937;
         }
 
+        /* Steppers y Pods de navegación */
+        QPushButton#stepper_button {
+            background: #1e293b;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            min-width: 32px;
+            max-width: 32px;
+            min-height: 32px;
+            max-height: 32px;
+            padding: 0px;
+        }
+        QPushButton#stepper_button:hover {
+            background: #273549;
+            border-color: #bef264;
+            color: #ffffff;
+        }
+        QPushButton#stepper_button:pressed {
+            background: #0f172a;
+        }
+        QPushButton#stepper_button:disabled {
+            background: #111827;
+            color: #475569;
+            border-color: #1f2937;
+        }
+
+        QFrame#nav_pod {
+            background: #070b14;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+        }
+        QFrame#nav_pod:hover {
+            border-color: #334155;
+        }
+
         QPushButton#toolbar_primary {
             background: #bef264;
             color: #090d16;
@@ -976,6 +1011,41 @@ def get_theme_stylesheet(theme: str) -> str:
             background: #f1f5f9;
             color: #94a3b8;
             border-color: #e2e8f0;
+        }
+
+        /* Steppers y Pods de navegación */
+        QPushButton#stepper_button {
+            background: #ffffff;
+            color: #1e293b;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            min-width: 32px;
+            max-width: 32px;
+            min-height: 32px;
+            max-height: 32px;
+            padding: 0px;
+        }
+        QPushButton#stepper_button:hover {
+            background: #f8fafc;
+            border-color: #84cc16;
+            color: #0f172a;
+        }
+        QPushButton#stepper_button:pressed {
+            background: #e2e8f0;
+        }
+        QPushButton#stepper_button:disabled {
+            background: #f1f5f9;
+            color: #94a3b8;
+            border-color: #e2e8f0;
+        }
+
+        QFrame#nav_pod {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+        }
+        QFrame#nav_pod:hover {
+            border-color: #cbd5e1;
         }
 
         QPushButton#toolbar_primary {
