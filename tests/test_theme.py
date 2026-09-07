@@ -27,13 +27,20 @@ class ThemeTests(unittest.TestCase):
         self.assertIn("#f8fafc", light_dialog)
         self.assertIn("#0f172a", dark_dialog)
 
-    def test_main_window_toolbar_view_menu(self) -> None:
+    def test_main_window_toolbar_config_menu(self) -> None:
         window = MainWindow()
+        self.assertTrue(hasattr(window, "config_button"))
         self.assertTrue(hasattr(window, "view_button"))
-        self.assertIn("Vista", window.view_button.text())
+        self.assertIn("Configuración", window.config_button.text())
+
+        self.assertTrue(hasattr(window, "config_menu"))
+        self.assertEqual(window.config_menu.title(), "Configuración")
 
         self.assertTrue(hasattr(window, "themes_menu"))
         self.assertEqual(window.themes_menu.title(), "Temas")
+
+        self.assertTrue(hasattr(window, "sound_action"))
+        self.assertIn("sonidos", window.sound_action.text().lower())
 
         self.assertTrue(hasattr(window, "theme_dark_action"))
         self.assertTrue(hasattr(window, "theme_light_action"))
@@ -53,6 +60,32 @@ class ThemeTests(unittest.TestCase):
         self.assertFalse(window.theme_dark_action.isChecked())
         self.assertTrue(window.theme_light_action.isChecked())
         self.assertFalse(window.weekly_chart.dark_mode)
+
+    def test_sound_mute_toggle(self) -> None:
+        window = MainWindow()
+        # Default state: unmuted
+        window.set_sound_muted(False)
+        self.assertFalse(window.is_sound_muted)
+        self.assertFalse(window.is_muted)
+        self.assertEqual(window.sound_action.text(), "Silenciar sonidos")
+        self.assertFalse(window.start_sound.isMuted())
+        self.assertFalse(window.complete_sound.isMuted())
+
+        # Toggle to muted
+        window.sound_action.trigger()
+        self.assertTrue(window.is_sound_muted)
+        self.assertTrue(window.is_muted)
+        self.assertEqual(window.sound_action.text(), "Activar sonidos")
+        self.assertTrue(window.start_sound.isMuted())
+        self.assertTrue(window.complete_sound.isMuted())
+
+        # Toggle back to unmuted
+        window.sound_action.trigger()
+        self.assertFalse(window.is_sound_muted)
+        self.assertFalse(window.is_muted)
+        self.assertEqual(window.sound_action.text(), "Silenciar sonidos")
+        self.assertFalse(window.start_sound.isMuted())
+        self.assertFalse(window.complete_sound.isMuted())
 
     def test_timer_states_and_table_badges(self) -> None:
         window = MainWindow()

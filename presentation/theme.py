@@ -43,7 +43,7 @@ def get_theme_stylesheet(theme: str) -> str:
             padding: 5px 12px;
             spacing: 8px;
         }
-        QToolButton#file_toolbar_button, QToolButton#view_toolbar_button {
+        QToolButton#file_toolbar_button, QToolButton#view_toolbar_button, QToolButton#config_toolbar_button {
             background: #1e293b;
             color: #e2e8f0;
             border: 1px solid #334155;
@@ -52,12 +52,12 @@ def get_theme_stylesheet(theme: str) -> str:
             font-size: 12px;
             font-weight: 700;
         }
-        QToolButton#file_toolbar_button:hover, QToolButton#view_toolbar_button:hover {
+        QToolButton#file_toolbar_button:hover, QToolButton#view_toolbar_button:hover, QToolButton#config_toolbar_button:hover {
             background: #273549;
             border-color: #a3e635;
             color: #ffffff;
         }
-        QToolButton#file_toolbar_button:pressed, QToolButton#view_toolbar_button:pressed {
+        QToolButton#file_toolbar_button:pressed, QToolButton#view_toolbar_button:pressed, QToolButton#config_toolbar_button:pressed {
             background: #172033;
         }
 
@@ -645,7 +645,7 @@ def get_theme_stylesheet(theme: str) -> str:
             padding: 5px 12px;
             spacing: 8px;
         }
-        QToolButton#file_toolbar_button, QToolButton#view_toolbar_button {
+        QToolButton#file_toolbar_button, QToolButton#view_toolbar_button, QToolButton#config_toolbar_button {
             background: #ffffff;
             color: #1e293b;
             border: 1px solid #cbd5e1;
@@ -654,12 +654,12 @@ def get_theme_stylesheet(theme: str) -> str:
             font-size: 12px;
             font-weight: 700;
         }
-        QToolButton#file_toolbar_button:hover, QToolButton#view_toolbar_button:hover {
+        QToolButton#file_toolbar_button:hover, QToolButton#view_toolbar_button:hover, QToolButton#config_toolbar_button:hover {
             background: #f8fafc;
             border-color: #84cc16;
             color: #0f172a;
         }
-        QToolButton#file_toolbar_button:pressed, QToolButton#view_toolbar_button:pressed {
+        QToolButton#file_toolbar_button:pressed, QToolButton#view_toolbar_button:pressed, QToolButton#config_toolbar_button:pressed {
             background: #f1f5f9;
         }
 

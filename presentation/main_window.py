@@ -157,13 +157,17 @@ class MainWindow(QMainWindow):
         self.application = StudyApplicationService()
 
         media_dir = Path(__file__).resolve().parent / "media"
+        self._sound_muted = self.settings.value("sound_muted", False, type=bool)
+
         self.start_sound = QSoundEffect(self)
         self.start_sound.setSource(QUrl.fromLocalFile(str(media_dir / "universfield-new-notification-040-493469.wav")))
         self.start_sound.setVolume(1.0)
+        self.start_sound.setMuted(self._sound_muted)
 
         self.complete_sound = QSoundEffect(self)
         self.complete_sound.setSource(QUrl.fromLocalFile(str(media_dir / "universfield-new-notification-051-494246.wav")))
         self.complete_sound.setVolume(1.0)
+        self.complete_sound.setMuted(self._sound_muted)
 
         self.setMinimumSize(940, 700)
         stylesheet = get_theme_stylesheet(self.current_theme)
@@ -201,6 +205,56 @@ class MainWindow(QMainWindow):
     def is_dark_mode(self) -> bool:
         return self.current_theme == THEME_DARK
 
+    @property
+    def is_sound_muted(self) -> bool:
+        return bool(self._sound_muted)
+
+    @is_sound_muted.setter
+    def is_sound_muted(self, value: bool) -> None:
+        self._sound_muted = bool(value)
+
+    @property
+    def is_muted(self) -> bool:
+        return self.is_sound_muted
+
+    def toggle_sound_muted(self) -> None:
+        """Alterna entre silenciar y activar los sonidos de la aplicación."""
+        self.set_sound_muted(not self.is_sound_muted)
+
+    def set_sound_muted(self, muted: bool) -> None:
+        """Establece si los sonidos están silenciados y guarda la preferencia."""
+        self.is_sound_muted = muted
+        self.settings.setValue("sound_muted", muted)
+        if hasattr(self, "start_sound"):
+            self.start_sound.setMuted(muted)
+        if hasattr(self, "complete_sound"):
+            self.complete_sound.setMuted(muted)
+        self.update_sound_action()
+
+    def update_sound_action(self) -> None:
+        """Actualiza el texto, icono y tooltip de la acción de sonido según el estado actual."""
+        if not hasattr(self, "sound_action"):
+            return
+        is_dark = self.is_dark_mode
+        if self.is_sound_muted:
+            self.sound_action.setText("Activar sonidos")
+            self.sound_action.setIcon(qta.icon("fa5s.volume-up", color="#34d399" if is_dark else "#10b981"))
+            self.sound_action.setToolTip("Activar las notificaciones de sonido del cronómetro")
+        else:
+            self.sound_action.setText("Silenciar sonidos")
+            self.sound_action.setIcon(qta.icon("fa5s.volume-mute", color="#f87171" if is_dark else "#e11d48"))
+            self.sound_action.setToolTip("Silenciar las notificaciones de sonido del cronómetro")
+
+    def play_start_sound(self) -> None:
+        """Reproduce el sonido de inicio si no está silenciado."""
+        if not self.is_sound_muted and hasattr(self, "start_sound"):
+            self.start_sound.play()
+
+    def play_complete_sound(self) -> None:
+        """Reproduce el sonido de completado si no está silenciado."""
+        if not self.is_sound_muted and hasattr(self, "complete_sound"):
+            self.complete_sound.play()
+
     def set_theme(self, theme: str) -> None:
         """Aplica el tema visual ('light' o 'dark') en toda la aplicación."""
         self.current_theme = theme
@@ -233,10 +287,14 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "file_button"):
             self.file_button.setIcon(qta.icon("fa5s.folder", color=toolbar_icon_color))
+        if hasattr(self, "config_button"):
+            self.config_button.setIcon(qta.icon("fa5s.cog", color=toolbar_icon_color))
         if hasattr(self, "view_button"):
-            self.view_button.setIcon(qta.icon("fa5s.eye", color=toolbar_icon_color))
+            self.view_button.setIcon(qta.icon("fa5s.cog", color=toolbar_icon_color))
         if hasattr(self, "themes_menu"):
             self.themes_menu.setIcon(qta.icon("fa5s.palette", color=toolbar_icon_color))
+        if hasattr(self, "sound_action"):
+            self.update_sound_action()
         if hasattr(self, "new_file_action"):
             self.new_file_action.setIcon(qta.icon("fa5s.file-medical", color=toolbar_icon_color))
         if hasattr(self, "open_file_action"):
@@ -333,10 +391,11 @@ class MainWindow(QMainWindow):
         self.file_button.setStyleSheet("QToolButton#file_toolbar_button::menu-indicator { image: none; }")
         toolbar.addWidget(self.file_button)
 
-        # --- Menú Vista (Temas: Modo oscuro y Modo claro) ---
-        self.view_menu = QMenu("Vista", self)
+        # --- Menú Configuración (Temas y Sonidos) ---
+        self.config_menu = QMenu("Configuración", self)
+        self.view_menu = self.config_menu  # alias para retrocompatibilidad
 
-        self.themes_menu = QMenu("Temas", self.view_menu)
+        self.themes_menu = QMenu("Temas", self.config_menu)
         self.themes_menu.setIcon(qta.icon("fa5s.palette", color=icon_color))
 
         theme_group = QActionGroup(self)
@@ -358,17 +417,29 @@ class MainWindow(QMainWindow):
         theme_group.addAction(self.theme_light_action)
         self.themes_menu.addAction(self.theme_light_action)
 
-        self.view_menu.addMenu(self.themes_menu)
+        self.config_menu.addMenu(self.themes_menu)
+        self.config_menu.addSeparator()
 
-        self.view_button = QToolButton(toolbar)
-        self.view_button.setObjectName("view_toolbar_button")
-        self.view_button.setText(" Vista")
-        self.view_button.setIcon(qta.icon("fa5s.eye", color=icon_color))
-        self.view_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.view_button.setMenu(self.view_menu)
-        self.view_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.view_button.setStyleSheet("QToolButton#view_toolbar_button::menu-indicator { image: none; }")
-        toolbar.addWidget(self.view_button)
+        # Acción silenciar/activar sonidos
+        self.sound_action = QAction(self)
+        self.mute_action = self.sound_action  # alias
+        self.sound_action.triggered.connect(self.toggle_sound_muted)
+        self.config_menu.addAction(self.sound_action)
+        self.update_sound_action()
+
+        self.config_button = QToolButton(toolbar)
+        self.view_button = self.config_button  # alias para retrocompatibilidad
+        self.config_button.setObjectName("config_toolbar_button")
+        self.config_button.setText(" Configuración")
+        self.config_button.setIcon(qta.icon("fa5s.cog", color=icon_color))
+        self.config_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.config_button.setMenu(self.config_menu)
+        self.config_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.config_button.setStyleSheet(
+            "QToolButton#config_toolbar_button::menu-indicator, "
+            "QToolButton#view_toolbar_button::menu-indicator { image: none; }"
+        )
+        toolbar.addWidget(self.config_button)
 
     def build_home(self) -> QWidget:
         """Construye la vista del cronómetro completamente responsiva."""
@@ -1254,7 +1325,7 @@ class MainWindow(QMainWindow):
         """Inicia, pausa en receso o reanuda la sesión según su estado."""
         if self.application.mode is TimerMode.WAITING:
             self.sync_location()
-            self.start_sound.play()
+            self.play_start_sound()
         self.application.toggle_session()
 
         self.set_locked(True)
@@ -1296,7 +1367,7 @@ class MainWindow(QMainWindow):
             return
 
         if completed:
-            self.complete_sound.play()
+            self.play_complete_sound()
 
         self.application.finish_item(completed)
         self.set_locked(False)
@@ -1318,7 +1389,7 @@ class MainWindow(QMainWindow):
         """Guarda el ejercicio actual y avanza al siguiente inciso."""
         was_active = self.application.mode is not TimerMode.WAITING
         if was_active:
-            self.complete_sound.play()
+            self.play_complete_sound()
         self.application.navigate("next_inciso")
         self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
@@ -1334,7 +1405,7 @@ class MainWindow(QMainWindow):
         was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_inciso"):
             if was_active:
-                self.complete_sound.play()
+                self.play_complete_sound()
             self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
         if was_active:
@@ -1348,7 +1419,7 @@ class MainWindow(QMainWindow):
         """Guarda el ejercicio y pasa al siguiente ejercicio de la sección."""
         was_active = self.application.mode is not TimerMode.WAITING
         if was_active:
-            self.complete_sound.play()
+            self.play_complete_sound()
         self.application.navigate("next_exercise")
         self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
@@ -1365,7 +1436,7 @@ class MainWindow(QMainWindow):
         was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_exercise"):
             if was_active:
-                self.complete_sound.play()
+                self.play_complete_sound()
             self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
         self.sync_location()
@@ -1380,7 +1451,7 @@ class MainWindow(QMainWindow):
         """Guarda el ejercicio actual y avanza a la siguiente sección."""
         was_active = self.application.mode is not TimerMode.WAITING
         if was_active:
-            self.complete_sound.play()
+            self.play_complete_sound()
         self.application.navigate("next_section")
         self.section_number_input.setValue(self.application.location.section_number)
         self.exercise_input.setValue(1)
@@ -1398,7 +1469,7 @@ class MainWindow(QMainWindow):
         was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_section"):
             if was_active:
-                self.complete_sound.play()
+                self.play_complete_sound()
             self.section_number_input.setValue(self.application.location.section_number)
         self.exercise_input.setValue(1)
         self.inciso_input.setValue(0)
