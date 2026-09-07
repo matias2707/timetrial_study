@@ -728,10 +728,16 @@ class MainWindow(QMainWindow):
             for path in recent_paths[:5]:
                 if path.exists():
                     recent_list.addItem(f"{path.name} — {path.parent}")
+                    item = recent_list.item(recent_list.count() - 1)
+                    item.setData(Qt.ItemDataRole.UserRole, str(path))
         else:
             recent_list.addItem("No hay archivos recientes todavía")
             recent_list.setEnabled(False)
-        recent_list.itemDoubleClicked.connect(lambda item: self._handle_initial_choice(dialog, "recent", item.text()))
+        recent_list.itemDoubleClicked.connect(
+            lambda item: self._handle_initial_choice(
+                dialog, "recent", item.data(Qt.ItemDataRole.UserRole)
+            )
+        )
         layout.addWidget(recent_list)
 
         buttons = QHBoxLayout()
@@ -743,7 +749,15 @@ class MainWindow(QMainWindow):
 
         open_button = QPushButton("Abrir archivo")
         open_button.setObjectName("secondary")
-        open_button.clicked.connect(lambda: self._handle_initial_choice(dialog, "open"))
+        open_button.clicked.connect(
+            lambda: self._handle_initial_choice(
+                dialog,
+                "open",
+                recent_list.currentItem().data(Qt.ItemDataRole.UserRole)
+                if recent_list.currentItem() is not None
+                else None,
+            )
+        )
 
         cancel_button = QPushButton("Cancelar")
         cancel_button.setObjectName("ghost")
@@ -757,14 +771,13 @@ class MainWindow(QMainWindow):
 
         dialog.exec()
 
-    def _handle_initial_choice(self, dialog: QDialog, choice: str, recent_label: str | None = None) -> None:
+    def _handle_initial_choice(self, dialog: QDialog, choice: str, recent_path: str | None = None) -> None:
         """Procesa la opción seleccionada en el diálogo de inicio."""
         default_name = self.application.record.record_name or "StudyTimetrial"
 
         if choice == "recent":
-            if recent_label is not None:
-                path_text = recent_label.rsplit(" — ", 1)[0]
-                candidate = Path(path_text)
+            if recent_path is not None:
+                candidate = Path(recent_path)
                 if candidate.exists():
                     self.application.load(candidate)
                     self.update_title()
@@ -793,7 +806,10 @@ class MainWindow(QMainWindow):
 
         if choice == "open":
             dialog.reject()
-            self.open_record()
+            if recent_path is not None:
+                self.open_recent_record(recent_path)
+            else:
+                self.open_record()
             return
 
         self.application.new_record(default_name)
