@@ -232,39 +232,43 @@ class MainWindow(QMainWindow):
     """Ventana principal de la aplicación Study Timetrial."""
 
     STYLESHEET = """
-        QWidget { background: #f4f6f2; color: #263238; font-size: 14px; }
-        QMainWindow { background: #f4f6f2; }
-        QTabWidget::pane { border: none; background: #f4f6f2; }
-        QTabBar { background: #18252b; }
-        QTabBar::tab { background: #18252b; color: #aeb9b6; padding: 14px 26px; border: none; font-weight: 600; }
-        QTabBar::tab:selected { color: #d7f56b; border-bottom: 3px solid #d7f56b; }
-        QLabel#brand { color: #18252b; font-size: 27px; font-weight: 800; letter-spacing: 1px; }
-        QLabel#eyebrow { color: #75827f; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-        QLabel#record_meta { color: #75827f; font-size: 13px; }
-        QLabel#location { color: #18252b; font-size: 27px; font-weight: 800; qproperty-alignment: AlignCenter; }
-        QLabel#status { color: #60706d; font-size: 13px; }
-        QFrame#heroCard, QFrame#metricCard, QFrame#sectionCard { background: #ffffff; border: 1px solid #dfe6df; border-radius: 12px; }
-        QFrame#heroCard { border-top: 4px solid #d7f56b; }
+        QWidget { background: #f3f6f1; color: #1f2a2d; font-size: 14px; }
+        QMainWindow { background: #edf3ee; }
+        QTabWidget::pane { border: none; background: #edf3ee; }
+        QTabBar { background: #16252d; border: none; }
+        QTabBar::tab { background: #16252d; color: #a8b8b4; padding: 14px 26px; border: none; font-weight: 700; min-width: 140px; }
+        QTabBar::tab:selected { color: #d9f76d; border-bottom: 3px solid #d9f76d; }
+        QTabBar::tab:hover { color: #edf5c0; }
+        QLabel#brand { color: #17242a; font-size: 28px; font-weight: 800; letter-spacing: 0.6px; }
+        QLabel#eyebrow { color: #788886; font-size: 11px; font-weight: 800; letter-spacing: 1.4px; }
+        QLabel#record_meta { color: #667b7a; font-size: 12px; font-weight: 700; }
+        QLabel#location { color: #1b2c32; font-size: 28px; font-weight: 800; qproperty-alignment: AlignCenter; }
+        QLabel#status { color: #546a68; font-size: 13px; font-weight: 600; }
+        QFrame#heroCard, QFrame#metricCard, QFrame#sectionCard, QFrame#panelCard { background: #ffffff; border: 1px solid #dfe7e1; border-radius: 16px; }
+        QFrame#heroCard { border-top: 4px solid #d9f76d; }
         QFrame#metricCard { padding: 4px; }
-        QLabel#metric_label { color: #75827f; font-size: 11px; font-weight: 700; letter-spacing: 1px; qproperty-alignment: AlignCenter; }
-        QLabel#metric_value { color: #18252b; font-size: 43px; font-weight: 800; qproperty-alignment: AlignCenter; }
-        QLabel#break_label { color: #75827f; font-size: 10px; font-weight: 700; letter-spacing: 1px; qproperty-alignment: AlignCenter; }
+        QLabel#metric_label { color: #75827f; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; qproperty-alignment: AlignCenter; }
+        QLabel#metric_value { color: #17242a; font-size: 43px; font-weight: 800; qproperty-alignment: AlignCenter; }
+        QLabel#break_label { color: #75827f; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; qproperty-alignment: AlignCenter; }
         QLabel#break_value { color: #60706d; font-size: 22px; font-weight: 700; qproperty-alignment: AlignCenter; }
-        QLineEdit, QSpinBox { background: #fbfcfa; border: 1px solid #cbd6d0; border-radius: 7px; padding: 9px 10px; min-height: 18px; }
-        QLineEdit:focus, QSpinBox:focus { border: 2px solid #8da844; padding: 8px 9px; }
+        QLineEdit, QSpinBox { background: #fbfcfa; border: 1px solid #cad4cf; border-radius: 10px; padding: 10px 11px; min-height: 22px; }
+        QLineEdit:focus, QSpinBox:focus { border: 2px solid #9abb3c; padding: 9px 10px; }
         QLineEdit:disabled, QSpinBox:disabled { background: #edf1ed; color: #77827f; }
-        QPushButton { background: #ffffff; color: #263238; border: 1px solid #cbd6d0; border-radius: 7px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
-        QPushButton:hover { border-color: #8da844; background: #f4f8e8; }
-        QPushButton:pressed { background: #e8f0d2; }
-        QPushButton#primary { background: #18252b; color: #d7f56b; border: 1px solid #18252b; font-weight: 800; padding: 10px 18px; }
-        QPushButton#primary:hover { background: #2a3b40; }
-        QPushButton#break { color: #a36a21; border-color: #e5c896; }
-        QPushButton#danger { color: #a33c32; border-color: #e2b4af; }
-        QPushButton#stop { color: #a33c32; border-color: #e2b4af; }
-        QPushButton#toolbar_primary { background: #d7f56b; color: #18252b; border: none; }
-        QLabel#section_title { color: #18252b; font-size: 15px; font-weight: 700; }
-        QTableWidget { background: #ffffff; border: 1px solid #dfe6df; border-radius: 8px; gridline-color: #edf1ed; alternate-background-color: #f7f9f6; selection-background-color: #eaf2d2; selection-color: #18252b; }
-        QHeaderView::section { background: #eef2ed; color: #60706d; border: none; border-bottom: 1px solid #dfe6df; padding: 11px 8px; font-size: 11px; font-weight: 700; }
+        QPushButton { background: #ffffff; color: #22333a; border: 1px solid #cbd7d2; border-radius: 10px; padding: 9px 14px; font-size: 12px; font-weight: 700; }
+        QPushButton:hover { border-color: #9abb3c; background: #f4f8e9; }
+        QPushButton:pressed { background: #ebf3d0; }
+        QPushButton#primary { background: #17242a; color: #d9f76d; border: 1px solid #17242a; font-weight: 800; padding: 10px 18px; }
+        QPushButton#primary:hover { background: #273e45; }
+        QPushButton#break { color: #b27722; border-color: #efc98a; }
+        QPushButton#danger { color: #b04642; border-color: #eab8b1; }
+        QPushButton#stop { color: #b04642; border-color: #eab8b1; }
+        QPushButton#toolbar_primary { background: #d9f76d; color: #17242a; border: none; }
+        QPushButton#secondary_action { background: #f5f8f5; }
+        QPushButton#table_action { background: #f0f5ed; border-color: #dfe7df; padding: 6px 9px; }
+        QPushButton#table_delete { background: #fff3f1; color: #b04642; border-color: #efc4be; padding: 6px 9px; }
+        QLabel#section_title { color: #17242a; font-size: 15px; font-weight: 700; }
+        QTableWidget { background: #ffffff; border: 1px solid #dfe7e1; border-radius: 12px; gridline-color: #edf1ed; alternate-background-color: #f9fbf8; selection-background-color: #e9f2d5; selection-color: #17242a; }
+        QHeaderView::section { background: #eef4ee; color: #617877; border: none; border-bottom: 1px solid #dfe7e1; padding: 11px 8px; font-size: 11px; font-weight: 800; }
         QTableWidget QPushButton { padding: 6px 8px; font-size: 11px; }
         QCheckBox { spacing: 8px; }
     """
@@ -344,7 +348,7 @@ class MainWindow(QMainWindow):
         """Construye la vista del cronómetro."""
         page = QWidget()
         outer = QVBoxLayout(page)
-        outer.setContentsMargins(48, 32, 48, 38)
+        outer.setContentsMargins(48, 28, 48, 38)
         outer.setSpacing(18)
 
         top = QHBoxLayout()
@@ -361,11 +365,12 @@ class MainWindow(QMainWindow):
         hero.setObjectName("heroCard")
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(28, 22, 28, 24)
-        hero_layout.setSpacing(18)
+        hero_layout.setSpacing(16)
 
         eyebrow = QLabel("UBICACIÓN ACTUAL")
         eyebrow.setObjectName("eyebrow")
         hero_layout.addWidget(eyebrow)
+
         self.location_label = QLabel()
         self.location_label.setObjectName("location")
         self.location_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -374,6 +379,7 @@ class MainWindow(QMainWindow):
 
         selectors = QGridLayout()
         selectors.setHorizontalSpacing(12)
+        selectors.setVerticalSpacing(8)
         self.section_input = QLineEdit(DEFAULT_SECTION_TYPE)
         self.section_input.setPlaceholderText("Tipo de sección")
         self.section_number_input = QSpinBox(); self.section_number_input.setRange(1, MAX_VALUE); self.section_number_input.setValue(1)
@@ -394,8 +400,8 @@ class MainWindow(QMainWindow):
         outer.addWidget(hero)
 
         metrics = QHBoxLayout()
-        metrics.setContentsMargins(0, 2, 0, 2)
-        metrics.setSpacing(8)
+        metrics.setContentsMargins(0, 0, 0, 0)
+        metrics.setSpacing(12)
         metrics.setStretch(0, 3)
         metrics.setStretch(1, 2)
         self.metrics_layout = metrics
@@ -407,7 +413,7 @@ class MainWindow(QMainWindow):
             clock.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         exercise_card = QFrame(); exercise_card.setObjectName("metricCard")
         exercise_layout = QVBoxLayout(exercise_card); exercise_layout.setContentsMargins(20, 14, 20, 15); exercise_layout.setSpacing(3)
-        exercise_label = QLabel("TIEMPO DE EJERCICIO"); exercise_label.setObjectName("metric_label")
+        exercise_label = QLabel("TIEMPO EJERCICIO"); exercise_label.setObjectName("metric_label")
         self.exercise_clock.setObjectName("metric_value")
         exercise_layout.addWidget(exercise_label); exercise_layout.addWidget(self.exercise_clock)
         metrics.addWidget(exercise_card)
@@ -421,9 +427,10 @@ class MainWindow(QMainWindow):
         outer.addLayout(metrics)
 
         controls_card = QFrame(); controls_card.setObjectName("sectionCard")
-        controls_layout = QVBoxLayout(controls_card); controls_layout.setContentsMargins(18, 16, 18, 16); controls_layout.setSpacing(12)
+        controls_layout = QVBoxLayout(controls_card); controls_layout.setContentsMargins(18, 16, 18, 18); controls_layout.setSpacing(16)
         controls_title = QLabel("CONTROLES DE SESIÓN"); controls_title.setObjectName("eyebrow")
         controls_layout.addWidget(controls_title)
+
         primary_controls = QGridLayout(); primary_controls.setHorizontalSpacing(10); primary_controls.setVerticalSpacing(8)
         self.primary_controls = primary_controls
         self.session_button = QPushButton("INICIAR"); self.session_button.setObjectName("primary"); self.session_button.clicked.connect(self.toggle_session)
@@ -435,9 +442,11 @@ class MainWindow(QMainWindow):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             primary_controls.addWidget(button, 0 if column < 2 else 1, column % 2)
         controls_layout.addLayout(primary_controls)
+
         comment_button = QPushButton("COMENTARIO")
         comment_button.clicked.connect(self.add_home_comment)
         controls_layout.addWidget(comment_button)
+
         navigation = QGridLayout(); navigation.setHorizontalSpacing(10); navigation.setVerticalSpacing(8)
         self.navigation = navigation
         self.navigation_buttons = []
@@ -491,6 +500,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(42, 28, 42, 36)
         layout.setSpacing(16)
+
         heading = QHBoxLayout()
         title = QLabel("Registros")
         title.setObjectName("brand")
@@ -500,18 +510,20 @@ class MainWindow(QMainWindow):
         self.records_summary.setObjectName("record_meta")
         heading.addWidget(self.records_summary)
         layout.addLayout(heading)
+
         toolbar = QHBoxLayout()
         open_button = QPushButton("Abrir registro")
+        open_button.setObjectName("secondary_action")
         self.recent_files_menu = QMenu(self)
         self.refresh_recent_files_menu()
         open_button.setMenu(self.recent_files_menu)
         open_button.clicked.connect(self.open_record)
 
         for text, callback, object_name in (
-            ("Importar registros", self.import_records, ""),
-            ("Guardar registro", self.save_as, ""),
-            ("Renombrar", self.rename_record, ""),
-            ("Cerrar registro", self.close_record, ""),
+            ("Importar registros", self.import_records, "secondary_action"),
+            ("Guardar registro", self.save_as, "secondary_action"),
+            ("Renombrar", self.rename_record, "secondary_action"),
+            ("Cerrar registro", self.close_record, "secondary_action"),
             ("Agregar intento", self.add_item, "toolbar_primary"),
         ):
             button = QPushButton(text)
@@ -867,10 +879,12 @@ class MainWindow(QMainWindow):
                 (9, "RESET", lambda _, row=index: self.reset_item(row)),
             ):
                 button = QPushButton(label)
+                button.setObjectName("table_action")
                 button.clicked.connect(callback)
                 self.table.setCellWidget(index, column, button)
 
             delete_button = QPushButton("ELIMINAR")
+            delete_button.setObjectName("table_delete")
             delete_button.clicked.connect(lambda _, row=index: self.delete_item(row))
             self.table.setCellWidget(index, 10, delete_button)
 
