@@ -31,6 +31,7 @@ class StudyApplicationService:
         self.timer = timer or TimerService()
         self.record = self.storage.create_automatic()
         self.location = SessionLocation()
+        self.pending_comment = ""
 
     @property
     def is_record_open(self) -> bool:
@@ -64,6 +65,10 @@ class StudyApplicationService:
         """Descarta el intento en curso sin crear un registro."""
         self.timer.reset()
 
+    def set_comment(self, comment: str) -> None:
+        """Define el comentario que se guardará con el intento actual."""
+        self.pending_comment = comment.strip()
+
     def finish_item(self, completed: bool) -> bool:
         """Guarda el intento activo y reinicia el cronómetro."""
         if self.mode is TimerMode.WAITING:
@@ -79,10 +84,12 @@ class StudyApplicationService:
                 exercise_time_ms=exercise_ms,
                 break_time_ms=break_ms,
                 completed=completed,
+                comment=self.pending_comment,
             )
         )
         self.save()
         self.timer.reset()
+        self.pending_comment = ""
         return True
 
     def navigate(self, target: str) -> bool:
@@ -154,6 +161,11 @@ class StudyApplicationService:
     def reset_item(self, item: TimerItem) -> None:
         item.exercise_time_ms = 0
         item.break_time_ms = 0
+        self.save()
+
+    def update_comment(self, item: TimerItem, comment: str) -> None:
+        """Actualiza el comentario de un item ya guardado."""
+        item.comment = comment.strip()
         self.save()
 
     def delete_item(self, item: TimerItem) -> None:

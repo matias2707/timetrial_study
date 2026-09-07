@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QFrame,
     QGridLayout,
+    QInputDialog,
 )
 
 from application_service import SessionLocation, StudyApplicationService
@@ -144,6 +145,7 @@ class ItemDialog(QDialog):
         if existing:
             result.id = existing.id
             result.created_at = existing.created_at
+            result.comment = existing.comment
 
         return result
 
@@ -321,6 +323,9 @@ class MainWindow(QMainWindow):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             primary_controls.addWidget(button, 0 if column < 2 else 1, column % 2)
         controls_layout.addLayout(primary_controls)
+        comment_button = QPushButton("COMENTARIO")
+        comment_button.clicked.connect(self.add_home_comment)
+        controls_layout.addWidget(comment_button)
         navigation = QGridLayout(); navigation.setHorizontalSpacing(10); navigation.setVerticalSpacing(8)
         self.navigation = navigation
         self.navigation_buttons = []
@@ -401,7 +406,7 @@ class MainWindow(QMainWindow):
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget(0, 9)
+        self.table = QTableWidget(0, 11)
         self.table.setHorizontalHeaderLabels([
             "Sección",
             "Ejercicio",
@@ -409,6 +414,8 @@ class MainWindow(QMainWindow):
             "Receso",
             "Tiempo",
             "Completado",
+            "Comentario",
+            "Comentar",
             "Editar",
             "Reset",
             "Eliminar",
@@ -579,15 +586,45 @@ class MainWindow(QMainWindow):
             self.table.setItem(index, 3, QTableWidgetItem(format_ms(item.break_time_ms)))
             self.table.setItem(index, 4, QTableWidgetItem(format_ms(item.exercise_time_ms)))
             self.table.setItem(index, 5, QTableWidgetItem("Sí" if item.completed else "No"))
+            self.table.setItem(index, 6, QTableWidgetItem(item.comment))
 
             for column, label, callback in (
-                (6, "EDITAR", lambda _, row=index: self.edit_item(row)),
-                (7, "RESET", lambda _, row=index: self.reset_item(row)),
-                (8, "ELIMINAR", lambda _, row=index: self.delete_item(row)),
+                (7, "COMENTAR", lambda _, row=index: self.comment_item(row)),
+                (8, "EDITAR", lambda _, row=index: self.edit_item(row)),
+                (9, "RESET", lambda _, row=index: self.reset_item(row)),
             ):
                 button = QPushButton(label)
                 button.clicked.connect(callback)
                 self.table.setCellWidget(index, column, button)
+
+            delete_button = QPushButton("ELIMINAR")
+            delete_button.clicked.connect(lambda _, row=index: self.delete_item(row))
+            self.table.setCellWidget(index, 10, delete_button)
+
+    def add_home_comment(self) -> None:
+        """Captura el comentario que se guardará al finalizar el intento actual."""
+        comment, accepted = QInputDialog.getMultiLineText(
+            self,
+            "Comentario del intento",
+            "Comentario:",
+            self.application.pending_comment,
+        )
+        if accepted:
+            self.application.set_comment(comment)
+            self.status_label.setText("Comentario preparado para el próximo registro")
+
+    def comment_item(self, row: int) -> None:
+        """Agrega o edita el comentario de un registro existente."""
+        item = self.application.ordered_items()[row]
+        comment, accepted = QInputDialog.getMultiLineText(
+            self,
+            "Comentario del registro",
+            "Comentario:",
+            item.comment,
+        )
+        if accepted:
+            self.application.update_comment(item, comment)
+            self.refresh_table()
 
     def add_item(self) -> None:
         """Añade un item manualmente desde el diálogo de edición."""

@@ -26,6 +26,7 @@ class TimerItem:
     exercise_time_ms: int
     break_time_ms: int
     completed: bool
+    comment: str = ""
     id: str = field(default_factory=lambda: str(uuid4()))
     created_at: str = field(default_factory=now_iso)
 
@@ -60,6 +61,7 @@ class TimerItem:
             exercise_time_ms=int(data["exercise_time_ms"]),
             break_time_ms=int(data["break_time_ms"]),
             completed=bool(data["completed"]),
+            comment=str(data.get("comment") or ""),
             created_at=str(data.get("created_at") or now_iso()),
         )
 
