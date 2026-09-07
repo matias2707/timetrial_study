@@ -1,58 +1,38 @@
 # Study Timetrial
 
-Aplicacion de escritorio local para cronometrar ejercicios y guardar intentos en JSON.
+Aplicación de escritorio local para cronometrar ejercicios, registrar intentos
+y guardarlos en archivos JSON.
 
-## Ejecutar
+## Inicio rápido
 
-En PowerShell, desde esta carpeta:
+En PowerShell, desde la raíz del proyecto:
 
 ```powershell
 python -m pip install -r requirements.txt
 python main.py
 ```
 
-La primera ejecucion crea automaticamente `StudyTimetrial_YYYYMMDD.json` en la carpeta actual. Desde **Registros** se puede abrir, guardar como, renombrar o cerrar el archivo activo.
+La primera ejecución crea un registro local. La aplicación no requiere servidor
+ni base de datos.
 
-## Estructura del proyecto
+## Estructura
 
-- `main.py`: composicion de la ventana, widgets, dialogos y adaptacion de eventos Qt.
-- `application_service.py`: casos de uso, estado de sesion, navegacion y coordinacion de persistencia.
-- `timer_service.py`: reloj monotonicamente medido y estados `WAITING`, `PLAY` y `BREAK`.
-- `storage_service.py`: persistencia local del registro en JSON.
-- `models.py`: entidades `TimerItem` y `Record`, junto con serializacion.
-- `tests/`: pruebas unitarias de la capa de aplicacion sin levantar Qt.
+- `main.py`: punto de entrada y composición mínima de Qt.
+- `presentation/`: ventana, diálogos y adaptadores visuales.
+- `application/`: casos de uso, sesión, navegación y coordinación.
+- `domain/`: modelos persistidos y estados del cronómetro.
+- `infrastructure/`: JSON local y archivos recientes.
+- `tests/`: pruebas unitarias sin levantar Qt.
+- `docs/`: documentación normativa y operativa.
 
-## Arquitectura y roles
+## Documentación
 
-El proyecto usa una separacion por responsabilidades, adecuada para una aplicacion de escritorio pequena sin introducir complejidad de infraestructura:
+Consulta el [índice documental](docs/README.md):
 
-```text
-PySide6 / main.py
-        |
-        v
-application_service.py  (casos de uso y estado de la aplicacion)
-        |                 |
-        v                 v
-timer_service.py       models.py
-        |
-        v
-storage_service.py --> archivos JSON locales
-```
-
-- **Presentacion:** `MainWindow` y `ItemDialog` traducen acciones del usuario a llamadas del servicio y actualizan la pantalla.
-- **Aplicacion:** `StudyApplicationService` coordina iniciar, pausar, finalizar, navegar, editar y eliminar. `SessionLocation` representa la ubicacion actual.
-- **Dominio:** `TimerService` contiene la medicion temporal y `models.py` define el contrato de los datos persistidos.
-- **Infraestructura:** `StorageService` conoce el sistema de archivos y el formato JSON.
-
-Las dependencias se inyectan en `StudyApplicationService`, por lo que la capa de aplicacion puede probarse sin levantar Qt.
-
-## Flujo implementado
-
-- PLAY, RECESO acumulado, REINICIAR, INCOMPLETO, COMPLETO, DETENER y navegacion por inciso, ejercicio y seccion.
-- Tiempos persistidos en milisegundos y mostrados como `HH:MM:SS:SSS`.
-- Items independientes con UUID, estado completado y fecha de creacion.
-- Edicion, reset, eliminacion y alta manual con validacion.
-- Confirmacion al cerrar la ventana mientras hay un intento activo.
+- [Arquitectura](docs/ARQUITECTURA_2026-09-07.md)
+- [Especificación funcional](docs/Study%20Timetrial%20%E2%80%94%20Especificaci%C3%B3n%20funcional%20y%20estructura%20de%20datos.md)
+- [Contrato JSON](docs/CONTRATO_JSON.md)
+- [Operación y validación](docs/OPERACION_Y_VALIDACION.md)
 
 ## Pruebas
 
@@ -60,4 +40,5 @@ Las dependencias se inyectan en `StudyApplicationService`, por lo que la capa de
 python -m unittest discover -s tests -v
 ```
 
-La capa de aplicacion recibe sus servicios de almacenamiento y cronometro por inyeccion. Esto permite probar los casos de uso con dobles en memoria y mantiene a PySide6 fuera de la logica de negocio.
+La inyección de `StorageService` y `TimerService` permite probar la capa de
+aplicación sin iniciar una ventana Qt.

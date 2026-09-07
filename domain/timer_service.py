@@ -1,9 +1,11 @@
+"""Reloj monotónico y estados de una sesión de estudio."""
+
 from __future__ import annotations
 
 import time
 from enum import Enum
 
-from models import TimerItem
+from domain.models import TimerItem
 
 
 class TimerMode(Enum):

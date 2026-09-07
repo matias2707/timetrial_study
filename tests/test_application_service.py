@@ -1,12 +1,14 @@
+"""Pruebas unitarias de aplicación e infraestructura sin levantar Qt."""
+
 import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from application_service import SessionLocation, StudyApplicationService
-from models import Record
-from storage_service import RecentFilesManager, StorageService
-from timer_service import TimerMode
+from application.application_service import SessionLocation, StudyApplicationService
+from domain.models import Record
+from domain.timer_service import TimerMode
+from infrastructure.storage_service import RecentFilesManager, StorageService
 
 
 class MemoryStorage:

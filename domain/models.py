@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Entidades del dominio y contrato de serialización JSON versionado."""
+
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any

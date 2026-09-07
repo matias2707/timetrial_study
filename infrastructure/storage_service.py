@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+"""Persistencia local de registros y gestión de archivos recientes."""
+
 import json
 from datetime import datetime
 from pathlib import Path
 
-from models import Record
+from domain.models import Record
 
 
 class RecentFilesManager:

@@ -1,11 +1,17 @@
+"""Casos de uso y estado de sesion, independientes de PySide6.
+
+Este modulo coordina dominio e infraestructura mediante dependencias
+inyectables. La interfaz solo traduce eventos y muestra sus resultados.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
-from models import Record, TimerItem
-from storage_service import StorageService
-from timer_service import TimerMode, TimerService
+from domain.models import Record, TimerItem
+from domain.timer_service import TimerMode, TimerService
+from infrastructure.storage_service import StorageService
 
 
 @dataclass
