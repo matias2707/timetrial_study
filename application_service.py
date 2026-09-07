@@ -135,6 +135,19 @@ class StudyApplicationService:
     def load(self, path: Path) -> None:
         self.record = self.storage.load(path)
 
+    def import_items(self, path: Path, item_indexes: list[int]) -> int:
+        """Añade copias de los items seleccionados sin cambiar el archivo activo."""
+        imported_record = self.storage.read(path)
+        selected_items = [imported_record.items[index] for index in item_indexes]
+        for item in selected_items:
+            item_data = item.to_dict()
+            item_data["id"] = None
+            self.record.items.append(TimerItem.from_dict(item_data))
+
+        if selected_items:
+            self.save()
+        return len(selected_items)
+
     def rename(self, path: Path) -> None:
         if self.storage.path is None:
             raise ValueError("No hay un archivo activo")

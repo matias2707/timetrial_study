@@ -37,7 +37,11 @@ class StorageService:
 
     def load(self, path: Path) -> Record:
         """Carga un registro desde disco y lo deja como activo."""
-        data = json.loads(path.read_text(encoding="utf-8"))
-        record = Record.from_dict(data)
+        record = self.read(path)
         self.path = path
         return record
+
+    def read(self, path: Path) -> Record:
+        """Lee un registro sin cambiar el archivo activo."""
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return Record.from_dict(data)

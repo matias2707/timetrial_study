@@ -1,8 +1,10 @@
+import tempfile
 import unittest
 from pathlib import Path
 
 from application_service import SessionLocation, StudyApplicationService
 from models import Record
+from storage_service import StorageService
 from timer_service import TimerMode
 
 
@@ -73,6 +75,47 @@ class ApplicationServiceTests(unittest.TestCase):
         }).items[0]
 
         self.assertEqual(item.comment, "")
+
+    def test_import_items_keeps_current_file_and_imports_only_selected_items(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory_path = Path(directory)
+            source_path = directory_path / "source.json"
+            current_path = directory_path / "current.json"
+            source = Record.from_dict({
+                "schema_version": 1,
+                "items": [
+                    {
+                        "section_type": "Guía",
+                        "section_number": 1,
+                        "exercise": 1,
+                        "inciso": None,
+                        "exercise_time_ms": 1000,
+                        "break_time_ms": 0,
+                        "completed": True,
+                    },
+                    {
+                        "section_type": "Guía",
+                        "section_number": 1,
+                        "exercise": 2,
+                        "inciso": None,
+                        "exercise_time_ms": 2000,
+                        "break_time_ms": 0,
+                        "completed": False,
+                    },
+                ],
+            })
+            storage = StorageService()
+            storage.save(source, source_path)
+            current = StudyApplicationService(storage=StorageService())
+            current.save_as(current_path)
+
+            imported_count = current.import_items(source_path, [1])
+
+            self.assertEqual(imported_count, 1)
+            self.assertEqual(current.record.items[0].exercise, 2)
+            self.assertEqual(current.record.items[0].exercise_time_ms, 2000)
+            self.assertNotEqual(current.record.items[0].id, source.items[1].id)
+            self.assertEqual(current.record_path, current_path)
 
 
 if __name__ == "__main__":

@@ -159,6 +159,70 @@ class ItemDialog(QDialog):
         super().accept()
 
 
+class ImportRecordsDialog(QDialog):
+    """Permite elegir items individuales de otro archivo de registro."""
+
+    def __init__(self, record, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Importar registros")
+        self.resize(650, 420)
+        self.table = QTableWidget(len(record.items), 6)
+        self.table.setHorizontalHeaderLabels([
+            "Añadir",
+            "Sección",
+            "Ejercicio",
+            "Inciso",
+            "Tiempo",
+            "Estado",
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+
+        for row, item in enumerate(record.items):
+            selected = QTableWidgetItem()
+            selected.setCheckState(Qt.CheckState.Checked)
+            selected.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            self.table.setItem(row, 0, selected)
+            self.table.setItem(row, 1, QTableWidgetItem(f"{item.section_type} {item.section_number}"))
+            self.table.setItem(row, 2, QTableWidgetItem(str(item.exercise)))
+            self.table.setItem(row, 3, QTableWidgetItem(str(item.inciso or "-")))
+            self.table.setItem(row, 4, QTableWidgetItem(format_ms(item.exercise_time_ms)))
+            self.table.setItem(row, 5, QTableWidgetItem("Sí" if item.completed else "No"))
+
+        select_all = QPushButton("Seleccionar todos")
+        select_all.clicked.connect(lambda: self.set_all_checked(True))
+        clear_selection = QPushButton("Limpiar selección")
+        clear_selection.clicked.connect(lambda: self.set_all_checked(False))
+        selection_buttons = QHBoxLayout()
+        selection_buttons.addWidget(select_all)
+        selection_buttons.addWidget(clear_selection)
+        selection_buttons.addStretch()
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Selecciona los registros que deseas añadir al archivo actual:"))
+        layout.addWidget(self.table)
+        layout.addLayout(selection_buttons)
+        layout.addWidget(buttons)
+
+    def set_all_checked(self, checked: bool) -> None:
+        """Marca o desmarca todos los items de la tabla."""
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for row in range(self.table.rowCount()):
+            self.table.item(row, 0).setCheckState(state)
+
+    def selected_indexes(self) -> list[int]:
+        """Devuelve los índices de los items seleccionados."""
+        return [
+            row for row in range(self.table.rowCount())
+            if self.table.item(row, 0).checkState() is Qt.CheckState.Checked
+        ]
+
+
 class MainWindow(QMainWindow):
     """Ventana principal de la aplicación Study Timetrial."""
 
@@ -392,6 +456,7 @@ class MainWindow(QMainWindow):
 
         for text, callback, object_name in (
             ("Abrir registro", self.open_record, ""),
+            ("Importar registros", self.import_records, ""),
             ("Guardar registro", self.save_as, ""),
             ("Renombrar", self.rename_record, ""),
             ("Cerrar registro", self.close_record, ""),
@@ -425,6 +490,7 @@ class MainWindow(QMainWindow):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.cellClicked.connect(self.show_comment_alert)
         layout.addWidget(self.table)
         return page
 
@@ -601,6 +667,18 @@ class MainWindow(QMainWindow):
             delete_button.clicked.connect(lambda _, row=index: self.delete_item(row))
             self.table.setCellWidget(index, 10, delete_button)
 
+    def show_comment_alert(self, row: int, column: int) -> None:
+        """Muestra el comentario completo al hacer click en su celda."""
+        if column != 6:
+            return
+
+        item = self.application.ordered_items()[row]
+        QMessageBox.information(
+            self,
+            "Comentario del registro",
+            item.comment or "Este registro no tiene comentario.",
+        )
+
     def add_home_comment(self) -> None:
         """Captura el comentario que se guardará al finalizar el intento actual."""
         comment, accepted = QInputDialog.getMultiLineText(
@@ -683,6 +761,41 @@ class MainWindow(QMainWindow):
             self.refresh_table()
         except (OSError, TypeError, ValueError) as error:
             QMessageBox.critical(self, "Archivo inválido", str(error))
+
+    def import_records(self) -> None:
+        """Selecciona y añade items individuales desde otro registro JSON."""
+        path, _ = QFileDialog.getOpenFileName(self, "Importar registros", str(Path.cwd()), "JSON (*.json)")
+        if not path:
+            return
+
+        try:
+            source_record = self.application.storage.read(Path(path))
+        except (OSError, TypeError, ValueError) as error:
+            QMessageBox.critical(self, "Archivo inválido", str(error))
+            return
+
+        if not source_record.items:
+            QMessageBox.information(self, "Sin registros", "El archivo seleccionado no contiene registros.")
+            return
+
+        dialog = ImportRecordsDialog(source_record, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected_indexes = dialog.selected_indexes()
+        if not selected_indexes:
+            QMessageBox.information(self, "Sin selección", "Selecciona al menos un registro para importar.")
+            return
+
+        try:
+            imported_count = self.application.import_items(Path(path), selected_indexes)
+        except (OSError, TypeError, ValueError, IndexError) as error:
+            QMessageBox.critical(self, "No se pudieron importar los registros", str(error))
+            return
+
+        self.refresh_table()
+        self.update_title()
+        QMessageBox.information(self, "Importación completada", f"Se importaron {imported_count} registros.")
 
     def save_as(self) -> None:
         """Guarda el registro actual en una ruta distinta indicada por el usuario."""
