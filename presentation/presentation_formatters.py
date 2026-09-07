@@ -14,6 +14,23 @@ def format_milliseconds(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}:{millis:03d}"
 
 
+def format_hh_mm(milliseconds: int) -> str:
+    """Convierte milisegundos al formato compacto de horas y minutos hh:mm."""
+    milliseconds = max(0, int(milliseconds))
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes = remainder // 60_000
+    return f"{hours:02d}:{minutes:02d}"
+
+
+def format_hh_mm_ss(milliseconds: int) -> str:
+    """Convierte milisegundos al formato de horas, minutos y segundos hh:mm:ss."""
+    milliseconds = max(0, int(milliseconds))
+    hours, remainder = divmod(milliseconds, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    seconds = remainder // 1_000
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
 def format_timer_milliseconds(milliseconds: int) -> tuple[str, str]:
     """Devuelve la parte principal y los milisegundos del reloj de sesion."""
     milliseconds = max(0, int(milliseconds))

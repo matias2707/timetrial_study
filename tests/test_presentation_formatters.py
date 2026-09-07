@@ -22,6 +22,23 @@ class PresentationFormatterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_milliseconds("01:60:000")
 
+    def test_format_hh_mm(self) -> None:
+        from presentation.presentation_formatters import format_hh_mm
+
+        self.assertEqual(format_hh_mm(0), "00:00")
+        self.assertEqual(format_hh_mm(65_000), "00:01")
+        self.assertEqual(format_hh_mm(3_665_000), "01:01")
+        self.assertEqual(format_hh_mm(36_000_000), "10:00")
+
+    def test_format_hh_mm_ss(self) -> None:
+        from presentation.presentation_formatters import format_hh_mm_ss
+
+        self.assertEqual(format_hh_mm_ss(0), "00:00:00")
+        self.assertEqual(format_hh_mm_ss(5_000), "00:00:05")
+        self.assertEqual(format_hh_mm_ss(65_000), "00:01:05")
+        self.assertEqual(format_hh_mm_ss(3_665_000), "01:01:05")
+        self.assertEqual(format_hh_mm_ss(36_061_000), "10:01:01")
+
 
 if __name__ == "__main__":
     unittest.main()

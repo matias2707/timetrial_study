@@ -8,46 +8,129 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl, Qt
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtCore import QRectF, QTimer, QUrl, Qt
+from PySide6.QtGui import QAction, QBrush, QCloseEvent, QColor, QFont, QPainter, QPen
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QBoxLayout,
     QDialog,
     QFileDialog,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMainWindow,
+    QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
-    QBoxLayout,
-    QToolBar,
+    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
-    QFrame,
-    QGridLayout,
-    QInputDialog,
-    QListWidget,
-    QMenu,
 )
 
 from application.application_service import SessionLocation, StudyApplicationService
+from application.statistics_service import DailyStatistic
 from domain.timer_service import TimerMode
 from presentation.presentation_dialogs import ImportRecordsDialog, ItemDialog
-from presentation.presentation_formatters import format_milliseconds, timer_markup
+from presentation.presentation_formatters import (
+    format_hh_mm,
+    format_hh_mm_ss,
+    format_milliseconds,
+    timer_markup,
+)
 
 DEFAULT_SECTION_TYPE = "Guía"
 APP_TITLE = "Study Timetrial"
 APP_VERSION = "v1.0"
 MAX_VALUE = 999_999
+
+
+class WeeklyChartWidget(QWidget):
+    """Componente visual que renderiza las barras de horas de estudio para 7 días."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.daily_stats: list[DailyStatistic] = []
+        self.setMinimumHeight(175)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def set_stats(self, daily_stats: list[DailyStatistic]) -> None:
+        self.daily_stats = daily_stats
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        width = float(self.width())
+        height = float(self.height())
+
+        if not self.daily_stats:
+            return
+
+        n_days = len(self.daily_stats)
+        col_width = width / n_days
+        bar_width = min(42.0, max(24.0, col_width * 0.50))
+
+        max_ms = max([d.exercise_time_ms for d in self.daily_stats] + [3_600_000])
+
+        top_margin = 32.0
+        bottom_margin = 46.0
+        available_bar_height = height - top_margin - bottom_margin
+
+        for i, stat in enumerate(self.daily_stats):
+            center_x = i * col_width + (col_width / 2.0)
+            bar_x = center_x - (bar_width / 2.0)
+
+            bg_rect = QRectF(bar_x, top_margin, bar_width, available_bar_height)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor("#edf3ed")))
+            painter.drawRoundedRect(bg_rect, 6.0, 6.0)
+
+            if stat.exercise_time_ms > 0:
+                ratio = min(1.0, stat.exercise_time_ms / max_ms)
+                bar_h = max(8.0, ratio * available_bar_height)
+                bar_y = height - bottom_margin - bar_h
+                bar_rect = QRectF(bar_x, bar_y, bar_width, bar_h)
+                painter.setBrush(QBrush(QColor("#9abb3c")))
+                painter.drawRoundedRect(bar_rect, 6.0, 6.0)
+
+            time_text = format_hh_mm(stat.exercise_time_ms)
+            font_time = QFont()
+            font_time.setPointSize(9)
+            font_time.setBold(True)
+            painter.setFont(font_time)
+            painter.setPen(QColor("#17242a" if stat.exercise_time_ms > 0 else "#8b9b97"))
+            time_rect = QRectF(center_x - (col_width / 2.0), top_margin - 24.0, col_width, 18.0)
+            painter.drawText(time_rect, Qt.AlignmentFlag.AlignCenter, time_text)
+
+            font_day = QFont()
+            font_day.setPointSize(9)
+            font_day.setBold(True)
+            painter.setFont(font_day)
+            painter.setPen(QColor("#17242a"))
+            day_rect = QRectF(center_x - (col_width / 2.0), height - bottom_margin + 5.0, col_width, 16.0)
+            painter.drawText(day_rect, Qt.AlignmentFlag.AlignCenter, stat.day_name)
+
+            font_date = QFont()
+            font_date.setPointSize(8)
+            painter.setFont(font_date)
+            painter.setPen(QColor("#75827f"))
+            date_rect = QRectF(center_x - (col_width / 2.0), height - bottom_margin + 22.0, col_width, 14.0)
+            painter.drawText(date_rect, Qt.AlignmentFlag.AlignCenter, stat.date_str)
 
 
 class MainWindow(QMainWindow):
@@ -81,18 +164,35 @@ class MainWindow(QMainWindow):
         QPushButton:pressed { background: #ebf3d0; }
         QPushButton#primary { background: #17242a; color: #d9f76d; border: 1px solid #17242a; font-weight: 800; padding: 10px 18px; }
         QPushButton#primary:hover { background: #273e45; }
+        QPushButton#complete { background: #eaf6ea; color: #236c39; border: 1px solid #abd4b7; font-weight: 800; }
+        QPushButton#complete:hover { background: #daf0da; border-color: #7bbe8f; color: #174e27; }
+        QPushButton#complete:pressed { background: #cce9cc; }
         QPushButton#break { color: #b27722; border-color: #efc98a; }
         QPushButton#danger { color: #b04642; border-color: #eab8b1; }
         QPushButton#stop { color: #b04642; border-color: #eab8b1; }
+        QPushButton#nav_button { background: #fbfdfa; color: #22333a; border: 1px solid #cad7d2; border-radius: 9px; padding: 8px 12px; font-size: 12px; font-weight: 700; }
+        QPushButton#nav_button:hover { border-color: #9abb3c; background: #f4f8e9; color: #17242a; }
+        QPushButton#nav_button:pressed { background: #ebf3d0; }
+        QPushButton#nav_button:disabled { background: #edf1ed; color: #8c9c98; border-color: #dbe3df; }
+        QPushButton#comment_action { background: #f9fbf9; color: #2d3e42; border: 1px solid #ccd8d2; border-radius: 9px; padding: 9px 14px; font-size: 12px; font-weight: 700; }
+        QPushButton#comment_action:hover { background: #edf4ed; border-color: #9abb3c; }
         QPushButton#toolbar_primary { background: #d9f76d; color: #17242a; border: none; }
         QPushButton#secondary_action { background: #f5f8f5; }
         QPushButton#table_action { background: #f0f5ed; border-color: #dfe7df; padding: 6px 9px; }
         QPushButton#table_delete { background: #fff3f1; color: #b04642; border-color: #efc4be; padding: 6px 9px; }
+        QFrame#todayCard { background: #ffffff; border: 1px solid #cad7cf; border-radius: 12px; }
+        QLabel#today_icon { font-size: 16px; }
+        QLabel#today_label { color: #75827f; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
+        QLabel#today_value { color: #17242a; font-size: 17px; font-weight: 800; }
         QLabel#section_title { color: #17242a; font-size: 15px; font-weight: 700; }
         QTableWidget { background: #ffffff; border: 1px solid #dfe7e1; border-radius: 12px; gridline-color: #edf1ed; alternate-background-color: #f9fbf8; selection-background-color: #e9f2d5; selection-color: #17242a; }
         QHeaderView::section { background: #eef4ee; color: #617877; border: none; border-bottom: 1px solid #dfe7e1; padding: 11px 8px; font-size: 11px; font-weight: 800; }
         QTableWidget QPushButton { padding: 6px 8px; font-size: 11px; }
         QCheckBox { spacing: 8px; }
+        QProgressBar { background: #edf1ed; border: 1px solid #dfe7e1; border-radius: 8px; text-align: center; color: #17242a; font-weight: 700; font-size: 11px; min-height: 20px; }
+        QProgressBar::chunk { background: #d9f76d; border-radius: 7px; }
+        QScrollArea#statsScroll { background: transparent; border: none; }
+        QWidget#statsContainer { background: transparent; }
     """
 
     def __init__(self) -> None:
@@ -112,9 +212,11 @@ class MainWindow(QMainWindow):
 
         self.home = self.build_home()
         self.records = self.build_records()
+        self.statistics = self.build_statistics()
         self.tabs.addTab(self.home, "Cronómetro")
         self.tabs.addTab(self.records, "Registros")
-        self.tabs.currentChanged.connect(lambda index: self.refresh_table() if index == 1 else None)
+        self.tabs.addTab(self.statistics, "Estadisticas")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         self.build_main_toolbar()
 
         self.tick = QTimer(self)
@@ -123,7 +225,15 @@ class MainWindow(QMainWindow):
 
         self.prompt_initial_record_choice()
         self.update_title()
+        self.refresh_statistics()
         self.autosave()
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Actualiza la vista correspondiente cuando el usuario cambia de pestaña."""
+        if index == 1:
+            self.refresh_table()
+        elif index == 2:
+            self.refresh_statistics()
 
     def build_main_toolbar(self) -> None:
         """Construye el toolbar principal con las acciones de archivo."""
@@ -178,6 +288,32 @@ class MainWindow(QMainWindow):
         self.home_title.setObjectName("brand")
         top.addWidget(self.home_title)
         top.addStretch()
+
+        today_card = QFrame()
+        today_card.setObjectName("todayCard")
+        today_layout = QHBoxLayout(today_card)
+        today_layout.setContentsMargins(14, 6, 16, 6)
+        today_layout.setSpacing(10)
+
+        today_icon = QLabel("⏱")
+        today_icon.setObjectName("today_icon")
+        today_layout.addWidget(today_icon)
+
+        today_text_layout = QVBoxLayout()
+        today_text_layout.setContentsMargins(0, 0, 0, 0)
+        today_text_layout.setSpacing(1)
+
+        today_title = QLabel("ESTUDIADO HOY")
+        today_title.setObjectName("today_label")
+        self.today_study_label = QLabel("00:00:00")
+        self.today_study_label.setObjectName("today_value")
+        today_text_layout.addWidget(today_title)
+        today_text_layout.addWidget(self.today_study_label)
+        today_layout.addLayout(today_text_layout)
+
+        top.addWidget(today_card)
+        top.addSpacing(14)
+
         record_meta = QLabel("REGISTRO LOCAL  ·  SIN SERVIDOR")
         record_meta.setObjectName("record_meta")
         top.addWidget(record_meta)
@@ -207,6 +343,12 @@ class MainWindow(QMainWindow):
         self.section_number_input = QSpinBox(); self.section_number_input.setRange(1, MAX_VALUE); self.section_number_input.setValue(1)
         self.exercise_input = QSpinBox(); self.exercise_input.setRange(1, MAX_VALUE); self.exercise_input.setValue(1)
         self.inciso_input = QSpinBox(); self.inciso_input.setRange(0, MAX_VALUE); self.inciso_input.setSpecialValueText("Sin inciso")
+
+        self.section_input.textChanged.connect(self.sync_location)
+        self.section_number_input.valueChanged.connect(self.sync_location)
+        self.exercise_input.valueChanged.connect(self.sync_location)
+        self.inciso_input.valueChanged.connect(self.sync_location)
+
         for column, (label, widget) in enumerate((
             ("Sección", self.section_input), ("Nº", self.section_number_input),
             ("Ejercicio", self.exercise_input), ("Inciso", self.inciso_input),
@@ -258,7 +400,7 @@ class MainWindow(QMainWindow):
         self.session_button = QPushButton("INICIAR"); self.session_button.setObjectName("primary"); self.session_button.clicked.connect(self.toggle_session)
         stop = QPushButton("DETENER"); stop.setObjectName("stop"); stop.clicked.connect(self.stop_timer)
         incomplete = QPushButton("INCOMPLETO"); incomplete.setObjectName("danger"); incomplete.clicked.connect(lambda: self.finish_item(False, keep_location=True))
-        complete = QPushButton("COMPLETO"); complete.clicked.connect(lambda: self.finish_item(True, keep_location=True))
+        complete = QPushButton("COMPLETO"); complete.setObjectName("complete"); complete.clicked.connect(lambda: self.finish_item(True, keep_location=True))
         self.primary_buttons = (self.session_button, stop, complete, incomplete)
         for column, button in enumerate(self.primary_buttons):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -266,6 +408,7 @@ class MainWindow(QMainWindow):
         controls_layout.addLayout(primary_controls)
 
         comment_button = QPushButton("COMENTARIO")
+        comment_button.setObjectName("comment_action")
         comment_button.clicked.connect(self.add_home_comment)
         controls_layout.addWidget(comment_button)
 
@@ -273,14 +416,16 @@ class MainWindow(QMainWindow):
         self.navigation = navigation
         self.navigation_buttons = []
         for text, callback in (
-            ("ANTERIOR INCISO", self.previous_inciso),
-            ("SIGUIENTE INCISO", self.next_inciso),
-            ("ANTERIOR EJERCICIO", self.previous_exercise),
-            ("SIGUIENTE EJERCICIO", self.next_exercise),
-            ("ANTERIOR SECCIÓN", self.previous_section),
-            ("SIGUIENTE SECCIÓN", self.next_section),
+            ("◀ Anterior Inciso", self.previous_inciso),
+            ("Siguiente Inciso ▶", self.next_inciso),
+            ("◀ Anterior Ejercicio", self.previous_exercise),
+            ("Siguiente Ejercicio ▶", self.next_exercise),
+            ("◀ Anterior Sección", self.previous_section),
+            ("Siguiente Sección ▶", self.next_section),
         ):
-            button = QPushButton(text); button.clicked.connect(callback)
+            button = QPushButton(text)
+            button.setObjectName("nav_button")
+            button.clicked.connect(callback)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self.navigation_buttons.append(button)
         self._populate_grid(self.primary_controls, self.primary_buttons, 2)
@@ -381,6 +526,247 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.table)
         return page
 
+    def build_statistics(self) -> QWidget:
+        """Construye la vista de análisis y estadísticas del registro activo."""
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setObjectName("statsScroll")
+
+        container = QWidget()
+        container.setObjectName("statsContainer")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(42, 28, 42, 36)
+        layout.setSpacing(18)
+
+        heading = QHBoxLayout()
+        title = QLabel("Estadísticas")
+        title.setObjectName("brand")
+        heading.addWidget(title)
+        heading.addStretch()
+        self.stats_source_label = QLabel("REGISTRO ACTIVO")
+        self.stats_source_label.setObjectName("record_meta")
+        heading.addWidget(self.stats_source_label)
+        layout.addLayout(heading)
+
+        hero = QFrame()
+        hero.setObjectName("heroCard")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(24, 20, 24, 20)
+        hero_layout.setSpacing(12)
+
+        hero_top = QHBoxLayout()
+        hero_title = QLabel("HORAS AL DÍA · FORMATO SEMANAL")
+        hero_title.setObjectName("eyebrow")
+        hero_top.addWidget(hero_title)
+        hero_top.addStretch()
+        hero_hint = QLabel("Últimos 7 días · Un día nuevo pisa el último")
+        hero_hint.setObjectName("status")
+        hero_top.addWidget(hero_hint)
+        hero_layout.addLayout(hero_top)
+
+        self.weekly_chart = WeeklyChartWidget()
+        hero_layout.addWidget(self.weekly_chart)
+        layout.addWidget(hero)
+
+        metrics_grid = QGridLayout()
+        metrics_grid.setHorizontalSpacing(14)
+        metrics_grid.setVerticalSpacing(14)
+
+        card_total = QFrame()
+        card_total.setObjectName("metricCard")
+        card_total_layout = QVBoxLayout(card_total)
+        card_total_layout.setContentsMargins(20, 16, 20, 16)
+        card_total_layout.setSpacing(4)
+        lbl_tot = QLabel("TIEMPO TOTAL DE EJERCICIOS")
+        lbl_tot.setObjectName("metric_label")
+        self.stat_total_exercise = QLabel("00:00")
+        self.stat_total_exercise.setObjectName("metric_value")
+        lbl_break_tot = QLabel("TIEMPO TOTAL DE RECESO")
+        lbl_break_tot.setObjectName("break_label")
+        self.stat_total_break = QLabel("00:00")
+        self.stat_total_break.setObjectName("break_value")
+        card_total_layout.addWidget(lbl_tot)
+        card_total_layout.addWidget(self.stat_total_exercise)
+        card_total_layout.addWidget(lbl_break_tot)
+        card_total_layout.addWidget(self.stat_total_break)
+        metrics_grid.addWidget(card_total, 0, 0)
+
+        card_avg = QFrame()
+        card_avg.setObjectName("metricCard")
+        card_avg_layout = QVBoxLayout(card_avg)
+        card_avg_layout.setContentsMargins(20, 16, 20, 16)
+        card_avg_layout.setSpacing(4)
+        lbl_avg = QLabel("TIEMPO PROMEDIO DE EJERCICIOS")
+        lbl_avg.setObjectName("metric_label")
+        self.stat_avg_exercise = QLabel("00:00")
+        self.stat_avg_exercise.setObjectName("metric_value")
+        lbl_break_avg = QLabel("TIEMPO PROMEDIO DE RECESO")
+        lbl_break_avg.setObjectName("break_label")
+        self.stat_avg_break = QLabel("00:00")
+        self.stat_avg_break.setObjectName("break_value")
+        card_avg_layout.addWidget(lbl_avg)
+        card_avg_layout.addWidget(self.stat_avg_exercise)
+        card_avg_layout.addWidget(lbl_break_avg)
+        card_avg_layout.addWidget(self.stat_avg_break)
+        metrics_grid.addWidget(card_avg, 0, 1)
+
+        card_longest = QFrame()
+        card_longest.setObjectName("metricCard")
+        card_longest_layout = QVBoxLayout(card_longest)
+        card_longest_layout.setContentsMargins(20, 16, 20, 16)
+        card_longest_layout.setSpacing(4)
+        lbl_longest = QLabel("TIEMPO MÁS LARGO DE EJERCICIO")
+        lbl_longest.setObjectName("metric_label")
+        self.stat_longest_time = QLabel("00:00")
+        self.stat_longest_time.setObjectName("metric_value")
+        lbl_longest_sub = QLabel("EJERCICIO")
+        lbl_longest_sub.setObjectName("break_label")
+        self.stat_longest_name = QLabel("Ninguno")
+        self.stat_longest_name.setObjectName("break_value")
+        self.stat_longest_name.setWordWrap(True)
+        card_longest_layout.addWidget(lbl_longest)
+        card_longest_layout.addWidget(self.stat_longest_time)
+        card_longest_layout.addWidget(lbl_longest_sub)
+        card_longest_layout.addWidget(self.stat_longest_name)
+        metrics_grid.addWidget(card_longest, 1, 0)
+
+        card_comp = QFrame()
+        card_comp.setObjectName("metricCard")
+        card_comp_layout = QVBoxLayout(card_comp)
+        card_comp_layout.setContentsMargins(20, 16, 20, 16)
+        card_comp_layout.setSpacing(6)
+        lbl_comp = QLabel("EJERCICIOS COMPLETADOS")
+        lbl_comp.setObjectName("metric_label")
+        self.stat_completed_count = QLabel("0 / 0")
+        self.stat_completed_count.setObjectName("metric_value")
+        self.stat_progress_bar = QProgressBar()
+        self.stat_progress_bar.setRange(0, 100)
+        self.stat_progress_bar.setValue(0)
+        self.stat_completed_note = QLabel("0% de ejercicios únicos completados")
+        self.stat_completed_note.setObjectName("status")
+        self.stat_completed_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_comp_layout.addWidget(lbl_comp)
+        card_comp_layout.addWidget(self.stat_completed_count)
+        card_comp_layout.addWidget(self.stat_progress_bar)
+        card_comp_layout.addWidget(self.stat_completed_note)
+        metrics_grid.addWidget(card_comp, 1, 1)
+
+        layout.addLayout(metrics_grid)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(14)
+
+        sec_card = QFrame()
+        sec_card.setObjectName("sectionCard")
+        sec_layout = QVBoxLayout(sec_card)
+        sec_layout.setContentsMargins(20, 16, 20, 16)
+        sec_layout.setSpacing(10)
+        sec_title = QLabel("DESGLOSE POR SECCIÓN")
+        sec_title.setObjectName("eyebrow")
+        sec_layout.addWidget(sec_title)
+
+        self.stats_section_table = QTableWidget(0, 5)
+        self.stats_section_table.setHorizontalHeaderLabels([
+            "Sección",
+            "T. Ejercicio",
+            "T. Receso",
+            "Completados",
+            "Intentos",
+        ])
+        self.stats_section_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.stats_section_table.setAlternatingRowColors(True)
+        self.stats_section_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.stats_section_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.stats_section_table.verticalHeader().setVisible(False)
+        self.stats_section_table.setMinimumHeight(140)
+        sec_layout.addWidget(self.stats_section_table)
+        bottom_row.addWidget(sec_card, 3)
+
+        dist_card = QFrame()
+        dist_card.setObjectName("sectionCard")
+        dist_layout = QVBoxLayout(dist_card)
+        dist_layout.setContentsMargins(20, 16, 20, 16)
+        dist_layout.setSpacing(10)
+        dist_title = QLabel("PROPORCIÓN ESTUDIO / RECESO")
+        dist_title.setObjectName("eyebrow")
+        dist_layout.addWidget(dist_title)
+
+        self.stat_distribution_bar = QProgressBar()
+        self.stat_distribution_bar.setRange(0, 100)
+        self.stat_distribution_bar.setValue(0)
+        self.stat_distribution_bar.setFormat("Estudio %p%")
+        dist_layout.addWidget(self.stat_distribution_bar)
+
+        self.stat_dist_label = QLabel("Estudio: 00:00 (0%) · Receso: 00:00 (0%)")
+        self.stat_dist_label.setObjectName("status")
+        dist_layout.addWidget(self.stat_dist_label)
+
+        dist_layout.addSpacing(6)
+        att_title = QLabel("ACTIVIDAD GENERAL")
+        att_title.setObjectName("eyebrow")
+        dist_layout.addWidget(att_title)
+
+        self.stat_activity_label = QLabel("0 intentos registrados en total")
+        self.stat_activity_label.setObjectName("status")
+        dist_layout.addWidget(self.stat_activity_label)
+        dist_layout.addStretch()
+
+        bottom_row.addWidget(dist_card, 2)
+        layout.addLayout(bottom_row)
+
+        scroll.setWidget(container)
+        page_layout.addWidget(scroll)
+        return page
+
+    def refresh_statistics(self) -> None:
+        """Calcula y actualiza los indicadores de la pestaña de estadísticas."""
+        stats = self.application.get_statistics()
+
+        file_name = self.application.record_path.stem if self.application.is_record_open and self.application.record_path else self.application.record.record_name
+        self.stats_source_label.setText(f"FUENTE: {file_name.upper()}  ·  {stats.total_attempts} INTENTOS")
+
+        self.weekly_chart.set_stats(stats.daily_stats)
+
+        self.stat_total_exercise.setText(format_hh_mm(stats.total_exercise_time_ms))
+        self.stat_total_break.setText(format_hh_mm(stats.total_break_time_ms))
+        self.stat_avg_exercise.setText(format_hh_mm(stats.avg_exercise_time_ms))
+        self.stat_avg_break.setText(format_hh_mm(stats.avg_break_time_ms))
+
+        self.stat_longest_time.setText(format_hh_mm(stats.longest_exercise_time_ms))
+        self.stat_longest_name.setText(stats.longest_exercise_name)
+
+        self.stat_completed_count.setText(f"{stats.completed_unique_exercises} / {stats.total_unique_exercises}")
+        pct_int = int(round(stats.completion_percentage))
+        self.stat_progress_bar.setValue(pct_int)
+        self.stat_completed_note.setText(
+            f"{pct_int}% de ejercicios únicos completados ({stats.completed_unique_exercises} de {stats.total_unique_exercises})"
+        )
+
+        ex_pct = int(round(stats.exercise_ratio_percentage))
+        br_pct = int(round(stats.break_ratio_percentage))
+        self.stat_distribution_bar.setValue(ex_pct)
+        self.stat_dist_label.setText(
+            f"Estudio: {format_hh_mm(stats.total_exercise_time_ms)} ({ex_pct}%)  ·  Receso: {format_hh_mm(stats.total_break_time_ms)} ({br_pct}%)"
+        )
+        success_pct = int(round((stats.completed_attempts / stats.total_attempts * 100.0))) if stats.total_attempts else 0
+        self.stat_activity_label.setText(
+            f"{stats.total_attempts} intentos totales ({stats.completed_attempts} completos · {success_pct}% efectividad)"
+        )
+
+        self.stats_section_table.setRowCount(0)
+        for row, sec in enumerate(stats.section_summaries):
+            self.stats_section_table.insertRow(row)
+            self.stats_section_table.setItem(row, 0, QTableWidgetItem(sec.section_key))
+            self.stats_section_table.setItem(row, 1, QTableWidgetItem(format_hh_mm(sec.exercise_time_ms)))
+            self.stats_section_table.setItem(row, 2, QTableWidgetItem(format_hh_mm(sec.break_time_ms)))
+            self.stats_section_table.setItem(row, 3, QTableWidgetItem(f"{sec.completed_unique} / {sec.total_unique}"))
+            self.stats_section_table.setItem(row, 4, QTableWidgetItem(str(sec.attempts)))
+
     def sync_location(self) -> None:
         """Actualiza el estado actual del ejercicio, sección e inciso en la UI."""
         location = SessionLocation(
@@ -450,45 +836,87 @@ class MainWindow(QMainWindow):
 
     def next_inciso(self) -> None:
         """Guarda el ejercicio actual y avanza al siguiente inciso."""
+        was_active = self.application.mode is not TimerMode.WAITING
         self.application.navigate("next_inciso")
         self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
+        if was_active:
+            self.set_locked(False)
+            self.update_session_button()
+            self.update_timer_visual_state()
+            self.refresh_table()
+            self.refresh_clock()
 
     def previous_inciso(self) -> None:
         """Guarda el intento y vuelve al inciso anterior, si existe."""
+        was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_inciso"):
             self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
+        if was_active:
+            self.set_locked(False)
+            self.update_session_button()
+            self.update_timer_visual_state()
+            self.refresh_table()
+            self.refresh_clock()
 
     def next_exercise(self) -> None:
         """Guarda el ejercicio y pasa al siguiente ejercicio de la sección."""
+        was_active = self.application.mode is not TimerMode.WAITING
         self.application.navigate("next_exercise")
         self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
         self.sync_location()
+        if was_active:
+            self.set_locked(False)
+            self.update_session_button()
+            self.update_timer_visual_state()
+            self.refresh_table()
+            self.refresh_clock()
 
     def previous_exercise(self) -> None:
         """Guarda el intento y vuelve al ejercicio anterior, si existe."""
+        was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_exercise"):
             self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
         self.sync_location()
+        if was_active:
+            self.set_locked(False)
+            self.update_session_button()
+            self.update_timer_visual_state()
+            self.refresh_table()
+            self.refresh_clock()
 
     def next_section(self) -> None:
         """Guarda el ejercicio actual y avanza a la siguiente sección."""
+        was_active = self.application.mode is not TimerMode.WAITING
         self.application.navigate("next_section")
         self.section_number_input.setValue(self.application.location.section_number)
         self.exercise_input.setValue(1)
         self.inciso_input.setValue(0)
         self.sync_location()
+        if was_active:
+            self.set_locked(False)
+            self.update_session_button()
+            self.update_timer_visual_state()
+            self.refresh_table()
+            self.refresh_clock()
 
     def previous_section(self) -> None:
         """Guarda el intento y vuelve a la sección anterior, si existe."""
+        was_active = self.application.mode is not TimerMode.WAITING
         if self.application.navigate("previous_section"):
             self.section_number_input.setValue(self.application.location.section_number)
         self.exercise_input.setValue(1)
         self.inciso_input.setValue(0)
         self.sync_location()
+        if was_active:
+            self.set_locked(False)
+            self.update_session_button()
+            self.update_timer_visual_state()
+            self.refresh_table()
+            self.refresh_clock()
 
     def refresh_clock(self) -> None:
         """Actualiza los labels con los tiempos actuales del cronómetro."""
@@ -500,6 +928,9 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Sesión en curso")
         elif self.application.mode is TimerMode.BREAK:
             self.status_label.setText("Receso en curso")
+
+        today_ms = self.application.get_today_study_time_ms(include_current=True)
+        self.today_study_label.setText(format_hh_mm_ss(today_ms))
 
     def update_timer_visual_state(self) -> None:
         """Aplica el color de énfasis a la lectura que está avanzando."""
@@ -709,6 +1140,8 @@ class MainWindow(QMainWindow):
             delete_button.setObjectName("table_delete")
             delete_button.clicked.connect(lambda _, row=index: self.delete_item(row))
             self.table.setCellWidget(index, 10, delete_button)
+
+        self.refresh_statistics()
 
     def show_comment_alert(self, row: int, column: int) -> None:
         """Muestra el comentario completo al hacer click en su celda."""

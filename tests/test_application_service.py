@@ -169,6 +169,27 @@ class ApplicationServiceTests(unittest.TestCase):
             self.assertNotEqual(current.record.items[0].id, source.items[1].id)
             self.assertEqual(current.record_path, current_path)
 
+    def test_get_today_study_time_ms_with_and_without_active_session(self) -> None:
+        from datetime import date
+        from domain.models import TimerItem
+
+        application = StudyApplicationService(storage=MemoryStorage())
+        today = date.today().isoformat()
+        application.record.items.append(
+            TimerItem(
+                section_type="Guía",
+                section_number=1,
+                exercise=1,
+                inciso=None,
+                exercise_time_ms=50_000,
+                break_time_ms=5_000,
+                completed=True,
+                created_at=f"{today}T10:00:00",
+            )
+        )
+        self.assertEqual(application.get_today_study_time_ms(include_current=False), 50_000)
+        self.assertEqual(application.get_today_study_time_ms(include_current=True), 50_000)
+
 
 if __name__ == "__main__":
     unittest.main()

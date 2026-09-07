@@ -210,3 +210,19 @@ class StudyApplicationService:
     def delete_item(self, item: TimerItem) -> None:
         self.record.items.remove(item)
         self.save()
+
+    def get_statistics(self, reference_date=None):
+        """Calcula y devuelve el resumen estadístico del registro actual."""
+        from application.statistics_service import compute_statistics
+
+        return compute_statistics(self.record, reference_date=reference_date)
+
+    def get_today_study_time_ms(self, include_current: bool = True, reference_date=None) -> int:
+        """Calcula los milisegundos totales estudiados en el día de hoy (incluyendo sesión activa)."""
+        from application.statistics_service import compute_today_study_time_ms
+
+        total = compute_today_study_time_ms(self.record, reference_date=reference_date)
+        if include_current and self.mode is not TimerMode.WAITING:
+            exercise_ms, _ = self.timer.snapshot()
+            total += exercise_ms
+        return total
