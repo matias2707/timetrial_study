@@ -22,11 +22,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QBoxLayout,
+    QToolBar,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
     QFrame,
@@ -287,6 +289,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.home, "Cronómetro")
         self.tabs.addTab(self.records, "Registros")
         self.tabs.currentChanged.connect(lambda index: self.refresh_table() if index == 1 else None)
+        self.build_main_toolbar()
 
         self.tick = QTimer(self)
         self.tick.timeout.connect(self.refresh_clock)
@@ -295,6 +298,47 @@ class MainWindow(QMainWindow):
         self.prompt_initial_record_choice()
         self.update_title()
         self.autosave()
+
+    def build_main_toolbar(self) -> None:
+        """Construye el toolbar principal con las acciones de archivo."""
+        toolbar = QToolBar("Barra principal", self)
+        toolbar.setObjectName("main_toolbar")
+        toolbar.setMovable(False)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+
+        file_menu = QMenu("Archivo", self)
+        new_action = QAction("Nuevo archivo", self)
+        new_action.triggered.connect(self.new_record)
+        file_menu.addAction(new_action)
+
+        open_action = QAction("Abrir archivo", self)
+        open_action.triggered.connect(self.open_record)
+        file_menu.addAction(open_action)
+
+        recent_action = QAction("Reciente", self)
+        recent_action.setMenu(self.recent_files_menu)
+        file_menu.addAction(recent_action)
+
+        save_action = QAction("Guardar como", self)
+        save_action.triggered.connect(self.save_as)
+        file_menu.addAction(save_action)
+
+        file_menu.addSeparator()
+        close_file_action = QAction("Cerrar archivo", self)
+        close_file_action.triggered.connect(self.close_record)
+        file_menu.addAction(close_file_action)
+
+        close_program_action = QAction("Cerrar programa", self)
+        close_program_action.triggered.connect(self.close)
+        file_menu.addAction(close_program_action)
+
+        file_button = QToolButton(toolbar)
+        file_button.setObjectName("file_toolbar_button")
+        file_button.setText("Archivo")
+        file_button.setMenu(file_menu)
+        file_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        file_button.setStyleSheet("QToolButton#file_toolbar_button::menu-indicator { image: none; }")
+        toolbar.addWidget(file_button)
 
     def build_home(self) -> QWidget:
         """Construye la vista del cronómetro."""
@@ -755,6 +799,23 @@ class MainWindow(QMainWindow):
         self.application.new_record(default_name)
         self.refresh_table()
         dialog.accept()
+
+    def new_record(self) -> None:
+        """Solicita un nombre y crea un archivo de registro nuevo."""
+        default_name = self.application.record.record_name or "StudyTimetrial"
+        name, accepted = QInputDialog.getText(
+            self,
+            "Nuevo archivo",
+            "Nombre del archivo:",
+            QLineEdit.EchoMode.Normal,
+            default_name,
+        )
+        if not accepted:
+            return
+
+        self.application.new_record(name.strip() or default_name)
+        self.update_title()
+        self.refresh_table()
 
     def update_title(self) -> None:
         """Actualiza el título de la ventana según el archivo de registro abierto."""
