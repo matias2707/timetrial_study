@@ -348,9 +348,9 @@ class MainWindow(QMainWindow):
         outer.setSpacing(18)
 
         top = QHBoxLayout()
-        brand = QLabel("STUDY TIMETRIAL")
-        brand.setObjectName("brand")
-        top.addWidget(brand)
+        self.home_title = QLabel(APP_TITLE)
+        self.home_title.setObjectName("brand")
+        top.addWidget(self.home_title)
         top.addStretch()
         record_meta = QLabel("REGISTRO LOCAL  ·  SIN SERVIDOR")
         record_meta.setObjectName("record_meta")
@@ -820,8 +820,11 @@ class MainWindow(QMainWindow):
     def update_title(self) -> None:
         """Actualiza el título de la ventana según el archivo de registro abierto."""
         if self.application.is_record_open:
-            self.setWindowTitle(f"{APP_TITLE} - {self.application.record.record_name}")
+            file_name = self.application.record_path.stem
+            self.home_title.setText(file_name)
+            self.setWindowTitle(f"{APP_TITLE} - {file_name}")
         else:
+            self.home_title.setText(APP_TITLE)
             self.setWindowTitle(APP_TITLE)
 
     def refresh_table(self) -> None:
