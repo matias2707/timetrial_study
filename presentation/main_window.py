@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QTimer, QUrl, Qt
-from PySide6.QtGui import QAction, QBrush, QCloseEvent, QColor, QFont, QPainter, QPen
+from PySide6.QtCore import QRectF, QSettings, QTimer, QUrl, Qt
+from PySide6.QtGui import QAction, QActionGroup, QBrush, QCloseEvent, QColor, QFont, QPainter, QPen
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QBoxLayout,
     QDialog,
     QFileDialog,
@@ -40,6 +41,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import qtawesome as qta
 
 from application.application_service import SessionLocation, StudyApplicationService
 from application.statistics_service import DailyStatistic
@@ -51,6 +53,7 @@ from presentation.presentation_formatters import (
     format_milliseconds,
     timer_markup,
 )
+from presentation.theme import THEME_DARK, THEME_LIGHT, get_dialog_stylesheet, get_theme_stylesheet
 
 DEFAULT_SECTION_TYPE = "Guía"
 APP_TITLE = "Study Timetrial"
@@ -64,11 +67,16 @@ class WeeklyChartWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.daily_stats: list[DailyStatistic] = []
+        self.dark_mode: bool = False
         self.setMinimumHeight(175)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_stats(self, daily_stats: list[DailyStatistic]) -> None:
         self.daily_stats = daily_stats
+        self.update()
+
+    def set_dark_mode(self, dark_mode: bool) -> None:
+        self.dark_mode = dark_mode
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -91,13 +99,18 @@ class WeeklyChartWidget(QWidget):
         bottom_margin = 46.0
         available_bar_height = height - top_margin - bottom_margin
 
+        bar_bg_color = QColor("#1e293b" if self.dark_mode else "#edf3ed")
+        text_primary = QColor("#f8fafc" if self.dark_mode else "#0f172a")
+        text_muted = QColor("#94a3b8" if self.dark_mode else "#64748b")
+        text_zero = QColor("#64748b" if self.dark_mode else "#94a3b8")
+
         for i, stat in enumerate(self.daily_stats):
             center_x = i * col_width + (col_width / 2.0)
             bar_x = center_x - (bar_width / 2.0)
 
             bg_rect = QRectF(bar_x, top_margin, bar_width, available_bar_height)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(QColor("#edf3ed")))
+            painter.setBrush(QBrush(bar_bg_color))
             painter.drawRoundedRect(bg_rect, 6.0, 6.0)
 
             if stat.exercise_time_ms > 0:
@@ -105,30 +118,25 @@ class WeeklyChartWidget(QWidget):
                 bar_h = max(8.0, ratio * available_bar_height)
                 bar_y = height - bottom_margin - bar_h
                 bar_rect = QRectF(bar_x, bar_y, bar_width, bar_h)
-                painter.setBrush(QBrush(QColor("#9abb3c")))
+                painter.setBrush(QBrush(QColor("#84cc16")))
                 painter.drawRoundedRect(bar_rect, 6.0, 6.0)
 
             time_text = format_hh_mm(stat.exercise_time_ms)
-            font_time = QFont()
-            font_time.setPointSize(9)
-            font_time.setBold(True)
+            font_time = QFont("Segoe UI", 9, QFont.Weight.Bold)
             painter.setFont(font_time)
-            painter.setPen(QColor("#17242a" if stat.exercise_time_ms > 0 else "#8b9b97"))
+            painter.setPen(text_primary if stat.exercise_time_ms > 0 else text_zero)
             time_rect = QRectF(center_x - (col_width / 2.0), top_margin - 24.0, col_width, 18.0)
             painter.drawText(time_rect, Qt.AlignmentFlag.AlignCenter, time_text)
 
-            font_day = QFont()
-            font_day.setPointSize(9)
-            font_day.setBold(True)
+            font_day = QFont("Segoe UI", 9, QFont.Weight.Bold)
             painter.setFont(font_day)
-            painter.setPen(QColor("#17242a"))
+            painter.setPen(text_primary)
             day_rect = QRectF(center_x - (col_width / 2.0), height - bottom_margin + 5.0, col_width, 16.0)
             painter.drawText(day_rect, Qt.AlignmentFlag.AlignCenter, stat.day_name)
 
-            font_date = QFont()
-            font_date.setPointSize(8)
+            font_date = QFont("Segoe UI", 8)
             painter.setFont(font_date)
-            painter.setPen(QColor("#75827f"))
+            painter.setPen(text_muted)
             date_rect = QRectF(center_x - (col_width / 2.0), height - bottom_margin + 22.0, col_width, 14.0)
             painter.drawText(date_rect, Qt.AlignmentFlag.AlignCenter, stat.date_str)
 
@@ -136,67 +144,15 @@ class WeeklyChartWidget(QWidget):
 class MainWindow(QMainWindow):
     """Ventana principal de la aplicación Study Timetrial."""
 
-    STYLESHEET = """
-        QWidget { background: #f3f6f1; color: #1f2a2d; font-size: 14px; }
-        QMainWindow { background: #edf3ee; }
-        QTabWidget::pane { border: none; background: #edf3ee; }
-        QTabBar { background: #16252d; border: none; }
-        QTabBar::tab { background: #16252d; color: #a8b8b4; padding: 14px 26px; border: none; font-weight: 700; min-width: 140px; }
-        QTabBar::tab:selected { color: #d9f76d; border-bottom: 3px solid #d9f76d; }
-        QTabBar::tab:hover { color: #edf5c0; }
-        QLabel#brand { color: #17242a; font-size: 28px; font-weight: 800; letter-spacing: 0.6px; }
-        QLabel#eyebrow { color: #788886; font-size: 11px; font-weight: 800; letter-spacing: 1.4px; }
-        QLabel#record_meta { color: #667b7a; font-size: 12px; font-weight: 700; }
-        QLabel#location { color: #1b2c32; font-size: 28px; font-weight: 800; qproperty-alignment: AlignCenter; }
-        QLabel#status { color: #546a68; font-size: 13px; font-weight: 600; }
-        QFrame#heroCard, QFrame#metricCard, QFrame#sectionCard, QFrame#panelCard { background: #ffffff; border: 1px solid #dfe7e1; border-radius: 16px; }
-        QFrame#heroCard { border-top: 4px solid #d9f76d; }
-        QFrame#metricCard { padding: 4px; }
-        QLabel#metric_label { color: #75827f; font-size: 11px; font-weight: 800; letter-spacing: 1.2px; qproperty-alignment: AlignCenter; }
-        QLabel#metric_value { color: #17242a; font-size: 43px; font-weight: 800; qproperty-alignment: AlignCenter; }
-        QLabel#break_label { color: #75827f; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; qproperty-alignment: AlignCenter; }
-        QLabel#break_value { color: #60706d; font-size: 22px; font-weight: 700; qproperty-alignment: AlignCenter; }
-        QLineEdit, QSpinBox { background: #fbfcfa; border: 1px solid #cad4cf; border-radius: 10px; padding: 10px 11px; min-height: 22px; }
-        QLineEdit:focus, QSpinBox:focus { border: 2px solid #9abb3c; padding: 9px 10px; }
-        QLineEdit:disabled, QSpinBox:disabled { background: #edf1ed; color: #77827f; }
-        QPushButton { background: #ffffff; color: #22333a; border: 1px solid #cbd7d2; border-radius: 10px; padding: 9px 14px; font-size: 12px; font-weight: 700; }
-        QPushButton:hover { border-color: #9abb3c; background: #f4f8e9; }
-        QPushButton:pressed { background: #ebf3d0; }
-        QPushButton#primary { background: #17242a; color: #d9f76d; border: 1px solid #17242a; font-weight: 800; padding: 10px 18px; }
-        QPushButton#primary:hover { background: #273e45; }
-        QPushButton#complete { background: #eaf6ea; color: #236c39; border: 1px solid #abd4b7; font-weight: 800; }
-        QPushButton#complete:hover { background: #daf0da; border-color: #7bbe8f; color: #174e27; }
-        QPushButton#complete:pressed { background: #cce9cc; }
-        QPushButton#break { color: #b27722; border-color: #efc98a; }
-        QPushButton#danger { color: #b04642; border-color: #eab8b1; }
-        QPushButton#stop { color: #b04642; border-color: #eab8b1; }
-        QPushButton#nav_button { background: #fbfdfa; color: #22333a; border: 1px solid #cad7d2; border-radius: 9px; padding: 8px 12px; font-size: 12px; font-weight: 700; }
-        QPushButton#nav_button:hover { border-color: #9abb3c; background: #f4f8e9; color: #17242a; }
-        QPushButton#nav_button:pressed { background: #ebf3d0; }
-        QPushButton#nav_button:disabled { background: #edf1ed; color: #8c9c98; border-color: #dbe3df; }
-        QPushButton#comment_action { background: #f9fbf9; color: #2d3e42; border: 1px solid #ccd8d2; border-radius: 9px; padding: 9px 14px; font-size: 12px; font-weight: 700; }
-        QPushButton#comment_action:hover { background: #edf4ed; border-color: #9abb3c; }
-        QPushButton#toolbar_primary { background: #d9f76d; color: #17242a; border: none; }
-        QPushButton#secondary_action { background: #f5f8f5; }
-        QPushButton#table_action { background: #f0f5ed; border-color: #dfe7df; padding: 6px 9px; }
-        QPushButton#table_delete { background: #fff3f1; color: #b04642; border-color: #efc4be; padding: 6px 9px; }
-        QFrame#todayCard { background: #ffffff; border: 1px solid #cad7cf; border-radius: 12px; }
-        QLabel#today_icon { font-size: 16px; }
-        QLabel#today_label { color: #75827f; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
-        QLabel#today_value { color: #17242a; font-size: 17px; font-weight: 800; }
-        QLabel#section_title { color: #17242a; font-size: 15px; font-weight: 700; }
-        QTableWidget { background: #ffffff; border: 1px solid #dfe7e1; border-radius: 12px; gridline-color: #edf1ed; alternate-background-color: #f9fbf8; selection-background-color: #e9f2d5; selection-color: #17242a; }
-        QHeaderView::section { background: #eef4ee; color: #617877; border: none; border-bottom: 1px solid #dfe7e1; padding: 11px 8px; font-size: 11px; font-weight: 800; }
-        QTableWidget QPushButton { padding: 6px 8px; font-size: 11px; }
-        QCheckBox { spacing: 8px; }
-        QProgressBar { background: #edf1ed; border: 1px solid #dfe7e1; border-radius: 8px; text-align: center; color: #17242a; font-weight: 700; font-size: 11px; min-height: 20px; }
-        QProgressBar::chunk { background: #d9f76d; border-radius: 7px; }
-        QScrollArea#statsScroll { background: transparent; border: none; }
-        QWidget#statsContainer { background: transparent; }
-    """
+    STYLESHEET = get_theme_stylesheet(THEME_LIGHT)
 
     def __init__(self) -> None:
         super().__init__()
+        self.settings = QSettings("StudyTimetrial", "Preferences")
+        self.current_theme = str(self.settings.value("theme", THEME_LIGHT))
+        if self.current_theme not in (THEME_LIGHT, THEME_DARK):
+            self.current_theme = THEME_LIGHT
+
         self.application = StudyApplicationService()
         self.start_sound_player = QMediaPlayer(self)
         self.start_sound_output = QAudioOutput(self)
@@ -204,8 +160,12 @@ class MainWindow(QMainWindow):
         sound_path = Path(__file__).resolve().parent / "media" / "start_sound.mp3"
         self.start_sound_player.setSource(QUrl.fromLocalFile(str(sound_path)))
 
-        self.setMinimumSize(900, 700)
-        self.setStyleSheet(self.STYLESHEET)
+        self.setMinimumSize(940, 700)
+        stylesheet = get_theme_stylesheet(self.current_theme)
+        self.setStyleSheet(stylesheet)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(stylesheet)
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -213,11 +173,15 @@ class MainWindow(QMainWindow):
         self.home = self.build_home()
         self.records = self.build_records()
         self.statistics = self.build_statistics()
-        self.tabs.addTab(self.home, "Cronómetro")
-        self.tabs.addTab(self.records, "Registros")
-        self.tabs.addTab(self.statistics, "Estadisticas")
+
+        self.tabs.addTab(self.home, qta.icon("fa5s.stopwatch", color="#bef264"), "  Cronómetro")
+        self.tabs.addTab(self.records, qta.icon("fa5s.history", color="#94a3b8"), "  Registros")
+        self.tabs.addTab(self.statistics, qta.icon("fa5s.chart-bar", color="#94a3b8"), "  Estadísticas")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.build_main_toolbar()
+
+        if hasattr(self, "weekly_chart"):
+            self.weekly_chart.set_dark_mode(self.is_dark_mode)
 
         self.tick = QTimer(self)
         self.tick.timeout.connect(self.refresh_clock)
@@ -228,74 +192,203 @@ class MainWindow(QMainWindow):
         self.refresh_statistics()
         self.autosave()
 
+    @property
+    def is_dark_mode(self) -> bool:
+        return self.current_theme == THEME_DARK
+
+    def set_theme(self, theme: str) -> None:
+        """Aplica el tema visual ('light' o 'dark') en toda la aplicación."""
+        self.current_theme = theme
+        self.settings.setValue("theme", theme)
+
+        if hasattr(self, "theme_dark_action"):
+            self.theme_dark_action.setChecked(theme == THEME_DARK)
+        if hasattr(self, "theme_light_action"):
+            self.theme_light_action.setChecked(theme == THEME_LIGHT)
+
+        stylesheet = get_theme_stylesheet(theme)
+        self.setStyleSheet(stylesheet)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(stylesheet)
+
+        if hasattr(self, "weekly_chart"):
+            self.weekly_chart.set_dark_mode(theme == THEME_DARK)
+
+        self.update_timer_visual_state()
+        self.update_theme_icons()
+
+        if hasattr(self, "table") and self.table.rowCount() > 0:
+            self.refresh_table()
+
+    def update_theme_icons(self) -> None:
+        """Actualiza los iconos de la barra y botones según el contraste del tema actual."""
+        is_dark = self.is_dark_mode
+        toolbar_icon_color = "#cbd5e1" if is_dark else "#334155"
+
+        if hasattr(self, "file_button"):
+            self.file_button.setIcon(qta.icon("fa5s.folder", color=toolbar_icon_color))
+        if hasattr(self, "view_button"):
+            self.view_button.setIcon(qta.icon("fa5s.eye", color=toolbar_icon_color))
+        if hasattr(self, "themes_menu"):
+            self.themes_menu.setIcon(qta.icon("fa5s.palette", color=toolbar_icon_color))
+        if hasattr(self, "new_file_action"):
+            self.new_file_action.setIcon(qta.icon("fa5s.file-medical", color=toolbar_icon_color))
+        if hasattr(self, "open_file_action"):
+            self.open_file_action.setIcon(qta.icon("fa5s.folder-open", color=toolbar_icon_color))
+        if hasattr(self, "recent_file_action"):
+            self.recent_file_action.setIcon(qta.icon("fa5s.history", color=toolbar_icon_color))
+        if hasattr(self, "save_file_action"):
+            self.save_file_action.setIcon(qta.icon("fa5s.save", color=toolbar_icon_color))
+
+        self.update_session_button()
+
     def _on_tab_changed(self, index: int) -> None:
-        """Actualiza la vista correspondiente cuando el usuario cambia de pestaña."""
+        """Actualiza la vista correspondiente e iconos cuando el usuario cambia de pestaña."""
+        icons = [
+            ("fa5s.stopwatch", "  Cronómetro"),
+            ("fa5s.history", "  Registros"),
+            ("fa5s.chart-bar", "  Estadísticas"),
+        ]
+        for i, (icon_name, title) in enumerate(icons):
+            color = "#bef264" if i == index else "#94a3b8"
+            self.tabs.setTabIcon(i, qta.icon(icon_name, color=color))
+
         if index == 1:
             self.refresh_table()
         elif index == 2:
             self.refresh_statistics()
 
     def build_main_toolbar(self) -> None:
-        """Construye el toolbar principal con las acciones de archivo."""
+        """Construye el toolbar principal con las acciones de archivo y vista."""
         toolbar = QToolBar("Barra principal", self)
         toolbar.setObjectName("main_toolbar")
         toolbar.setMovable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
-        file_menu = QMenu("Archivo", self)
-        new_action = QAction("Nuevo archivo", self)
-        new_action.triggered.connect(self.new_record)
-        file_menu.addAction(new_action)
+        is_dark = self.is_dark_mode
+        icon_color = "#cbd5e1" if is_dark else "#334155"
 
-        open_action = QAction("Abrir archivo", self)
-        open_action.triggered.connect(self.open_record)
-        file_menu.addAction(open_action)
+        # --- Menú Archivo ---
+        self.file_menu = QMenu("Archivo", self)
 
-        recent_action = QAction("Reciente", self)
-        recent_action.setMenu(self.recent_files_menu)
-        file_menu.addAction(recent_action)
+        self.new_file_action = QAction("Nuevo archivo", self)
+        self.new_file_action.setIcon(qta.icon("fa5s.file-medical", color=icon_color))
+        self.new_file_action.triggered.connect(self.new_record)
+        self.file_menu.addAction(self.new_file_action)
 
-        save_action = QAction("Guardar como", self)
-        save_action.triggered.connect(self.save_as)
-        file_menu.addAction(save_action)
+        self.open_file_action = QAction("Abrir archivo", self)
+        self.open_file_action.setIcon(qta.icon("fa5s.folder-open", color=icon_color))
+        self.open_file_action.triggered.connect(self.open_record)
+        self.file_menu.addAction(self.open_file_action)
 
-        file_menu.addSeparator()
+        self.recent_file_action = QAction("Reciente", self)
+        self.recent_file_action.setIcon(qta.icon("fa5s.history", color=icon_color))
+        self.recent_files_menu = QMenu(self)
+        self.recent_file_action.setMenu(self.recent_files_menu)
+        self.file_menu.addAction(self.recent_file_action)
+
+        self.save_file_action = QAction("Guardar como", self)
+        self.save_file_action.setIcon(qta.icon("fa5s.save", color=icon_color))
+        self.save_file_action.triggered.connect(self.save_as)
+        self.file_menu.addAction(self.save_file_action)
+
+        self.file_menu.addSeparator()
         close_file_action = QAction("Cerrar archivo", self)
+        close_file_action.setIcon(qta.icon("fa5s.times-circle", color="#e11d48"))
         close_file_action.triggered.connect(self.close_record)
-        file_menu.addAction(close_file_action)
+        self.file_menu.addAction(close_file_action)
 
         close_program_action = QAction("Cerrar programa", self)
+        close_program_action.setIcon(qta.icon("fa5s.power-off", color="#e11d48"))
         close_program_action.triggered.connect(self.close)
-        file_menu.addAction(close_program_action)
+        self.file_menu.addAction(close_program_action)
 
-        file_button = QToolButton(toolbar)
-        file_button.setObjectName("file_toolbar_button")
-        file_button.setText("Archivo")
-        file_button.setMenu(file_menu)
-        file_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        file_button.setStyleSheet("QToolButton#file_toolbar_button::menu-indicator { image: none; }")
-        toolbar.addWidget(file_button)
+        self.file_button = QToolButton(toolbar)
+        self.file_button.setObjectName("file_toolbar_button")
+        self.file_button.setText(" Archivo")
+        self.file_button.setIcon(qta.icon("fa5s.folder", color=icon_color))
+        self.file_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.file_button.setMenu(self.file_menu)
+        self.file_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.file_button.setStyleSheet("QToolButton#file_toolbar_button::menu-indicator { image: none; }")
+        toolbar.addWidget(self.file_button)
+
+        # --- Menú Vista (Temas: Modo oscuro y Modo claro) ---
+        self.view_menu = QMenu("Vista", self)
+
+        self.themes_menu = QMenu("Temas", self.view_menu)
+        self.themes_menu.setIcon(qta.icon("fa5s.palette", color=icon_color))
+
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+
+        self.theme_dark_action = QAction("Modo oscuro", self)
+        self.theme_dark_action.setIcon(qta.icon("fa5s.moon", color="#60a5fa"))
+        self.theme_dark_action.setCheckable(True)
+        self.theme_dark_action.setChecked(self.current_theme == THEME_DARK)
+        self.theme_dark_action.triggered.connect(lambda: self.set_theme(THEME_DARK))
+        theme_group.addAction(self.theme_dark_action)
+        self.themes_menu.addAction(self.theme_dark_action)
+
+        self.theme_light_action = QAction("Modo claro", self)
+        self.theme_light_action.setIcon(qta.icon("fa5s.sun", color="#eab308"))
+        self.theme_light_action.setCheckable(True)
+        self.theme_light_action.setChecked(self.current_theme == THEME_LIGHT)
+        self.theme_light_action.triggered.connect(lambda: self.set_theme(THEME_LIGHT))
+        theme_group.addAction(self.theme_light_action)
+        self.themes_menu.addAction(self.theme_light_action)
+
+        self.view_menu.addMenu(self.themes_menu)
+
+        self.view_button = QToolButton(toolbar)
+        self.view_button.setObjectName("view_toolbar_button")
+        self.view_button.setText(" Vista")
+        self.view_button.setIcon(qta.icon("fa5s.eye", color=icon_color))
+        self.view_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.view_button.setMenu(self.view_menu)
+        self.view_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.view_button.setStyleSheet("QToolButton#view_toolbar_button::menu-indicator { image: none; }")
+        toolbar.addWidget(self.view_button)
 
     def build_home(self) -> QWidget:
-        """Construye la vista del cronómetro."""
-        page = QWidget()
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(48, 28, 48, 38)
-        outer.setSpacing(18)
+        """Construye la vista del cronómetro completamente responsiva."""
+        scroll = QScrollArea()
+        scroll.setObjectName("homeScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
+        container = QWidget()
+        container.setObjectName("homeContainer")
+        outer = QVBoxLayout(container)
+        outer.setContentsMargins(40, 24, 40, 32)
+        outer.setSpacing(16)
+
+        # Top Bar: App/Record title + Today card
         top = QHBoxLayout()
+        top.setSpacing(12)
+
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
         self.home_title = QLabel(APP_TITLE)
         self.home_title.setObjectName("brand")
-        top.addWidget(self.home_title)
+        record_meta = QLabel("REGISTRO LOCAL  ·  SIN SERVIDOR")
+        record_meta.setObjectName("record_meta")
+        title_box.addWidget(self.home_title)
+        title_box.addWidget(record_meta)
+        top.addLayout(title_box)
         top.addStretch()
 
         today_card = QFrame()
         today_card.setObjectName("todayCard")
         today_layout = QHBoxLayout(today_card)
-        today_layout.setContentsMargins(14, 6, 16, 6)
-        today_layout.setSpacing(10)
+        today_layout.setContentsMargins(14, 8, 16, 8)
+        today_layout.setSpacing(12)
 
-        today_icon = QLabel("⏱")
+        today_icon = QLabel()
+        today_icon.setPixmap(qta.icon("fa5s.stopwatch", color="#10b981").pixmap(20, 20))
         today_icon.setObjectName("today_icon")
         today_layout.addWidget(today_icon)
 
@@ -312,37 +405,45 @@ class MainWindow(QMainWindow):
         today_layout.addLayout(today_text_layout)
 
         top.addWidget(today_card)
-        top.addSpacing(14)
-
-        record_meta = QLabel("REGISTRO LOCAL  ·  SIN SERVIDOR")
-        record_meta.setObjectName("record_meta")
-        top.addWidget(record_meta)
         outer.addLayout(top)
 
+        # Hero Card: Location
         hero = QFrame()
         hero.setObjectName("heroCard")
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(28, 22, 28, 24)
-        hero_layout.setSpacing(16)
+        hero_layout.setContentsMargins(24, 20, 24, 20)
+        hero_layout.setSpacing(14)
 
+        hero_header = QHBoxLayout()
+        hero_icon = QLabel()
+        hero_icon.setPixmap(qta.icon("fa5s.map-marker-alt", color="#84cc16").pixmap(14, 14))
+        hero_header.addWidget(hero_icon)
         eyebrow = QLabel("UBICACIÓN ACTUAL")
         eyebrow.setObjectName("eyebrow")
-        hero_layout.addWidget(eyebrow)
+        hero_header.addWidget(eyebrow)
+        hero_header.addStretch()
+        hero_layout.addLayout(hero_header)
 
         self.location_label = QLabel()
-        self.location_label.setObjectName("location")
+        self.location_label.setObjectName("location_badge")
         self.location_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.location_label.setWordWrap(True)
         hero_layout.addWidget(self.location_label)
 
         selectors = QGridLayout()
         selectors.setHorizontalSpacing(12)
-        selectors.setVerticalSpacing(8)
+        selectors.setVerticalSpacing(6)
         self.section_input = QLineEdit(DEFAULT_SECTION_TYPE)
         self.section_input.setPlaceholderText("Tipo de sección")
-        self.section_number_input = QSpinBox(); self.section_number_input.setRange(1, MAX_VALUE); self.section_number_input.setValue(1)
-        self.exercise_input = QSpinBox(); self.exercise_input.setRange(1, MAX_VALUE); self.exercise_input.setValue(1)
-        self.inciso_input = QSpinBox(); self.inciso_input.setRange(0, MAX_VALUE); self.inciso_input.setSpecialValueText("Sin inciso")
+        self.section_number_input = QSpinBox()
+        self.section_number_input.setRange(1, MAX_VALUE)
+        self.section_number_input.setValue(1)
+        self.exercise_input = QSpinBox()
+        self.exercise_input.setRange(1, MAX_VALUE)
+        self.exercise_input.setValue(1)
+        self.inciso_input = QSpinBox()
+        self.inciso_input.setRange(0, MAX_VALUE)
+        self.inciso_input.setSpecialValueText("Sin inciso")
 
         self.section_input.textChanged.connect(self.sync_location)
         self.section_number_input.valueChanged.connect(self.sync_location)
@@ -350,8 +451,10 @@ class MainWindow(QMainWindow):
         self.inciso_input.valueChanged.connect(self.sync_location)
 
         for column, (label, widget) in enumerate((
-            ("Sección", self.section_input), ("Nº", self.section_number_input),
-            ("Ejercicio", self.exercise_input), ("Inciso", self.inciso_input),
+            ("Sección", self.section_input),
+            ("Nº", self.section_number_input),
+            ("Ejercicio", self.exercise_input),
+            ("Inciso", self.inciso_input),
         )):
             field_label = QLabel(label.upper())
             field_label.setObjectName("eyebrow")
@@ -363,81 +466,161 @@ class MainWindow(QMainWindow):
         hero_layout.addLayout(selectors)
         outer.addWidget(hero)
 
+        # Metrics Layout: Clocks
         metrics = QHBoxLayout()
         metrics.setContentsMargins(0, 0, 0, 0)
-        metrics.setSpacing(12)
-        metrics.setStretch(0, 3)
-        metrics.setStretch(1, 2)
+        metrics.setSpacing(14)
         self.metrics_layout = metrics
+
         self.exercise_clock = QLabel(timer_markup(0))
         self.break_clock = QLabel(timer_markup(0))
         for clock in (self.exercise_clock, self.break_clock):
             clock.setTextFormat(Qt.TextFormat.RichText)
             clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
             clock.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        exercise_card = QFrame(); exercise_card.setObjectName("metricCard")
-        exercise_layout = QVBoxLayout(exercise_card); exercise_layout.setContentsMargins(20, 14, 20, 15); exercise_layout.setSpacing(3)
-        exercise_label = QLabel("TIEMPO EJERCICIO"); exercise_label.setObjectName("metric_label")
-        self.exercise_clock.setObjectName("metric_value")
-        exercise_layout.addWidget(exercise_label); exercise_layout.addWidget(self.exercise_clock)
-        metrics.addWidget(exercise_card)
 
-        break_card = QFrame(); break_card.setObjectName("metricCard")
-        break_layout = QVBoxLayout(break_card); break_layout.setContentsMargins(20, 8, 20, 10); break_layout.setSpacing(2)
-        break_label = QLabel("RECESO ACUMULADO"); break_label.setObjectName("break_label")
-        self.break_clock.setObjectName("break_value")
-        break_layout.addWidget(break_label); break_layout.addWidget(self.break_clock)
-        metrics.addWidget(break_card)
+        self.exercise_card = QFrame()
+        self.exercise_card.setObjectName("exerciseCard")
+        exercise_layout = QVBoxLayout(self.exercise_card)
+        exercise_layout.setContentsMargins(22, 16, 22, 18)
+        exercise_layout.setSpacing(4)
+
+        ex_top = QHBoxLayout()
+        ex_icon = QLabel()
+        ex_icon.setPixmap(qta.icon("fa5s.stopwatch", color="#34d399").pixmap(14, 14))
+        ex_top.addWidget(ex_icon)
+        exercise_label = QLabel("TIEMPO EJERCICIO")
+        exercise_label.setObjectName("eyebrow")
+        ex_top.addWidget(exercise_label)
+        ex_top.addStretch()
+        exercise_layout.addLayout(ex_top)
+
+        self.exercise_clock.setObjectName("digital_clock_exercise")
+        exercise_layout.addWidget(self.exercise_clock)
+        metrics.addWidget(self.exercise_card, 3)
+
+        self.break_card = QFrame()
+        self.break_card.setObjectName("breakCard")
+        break_layout = QVBoxLayout(self.break_card)
+        break_layout.setContentsMargins(20, 16, 20, 18)
+        break_layout.setSpacing(4)
+
+        br_top = QHBoxLayout()
+        br_icon = QLabel()
+        br_icon.setPixmap(qta.icon("fa5s.coffee", color="#fbbf24").pixmap(14, 14))
+        br_top.addWidget(br_icon)
+        break_label = QLabel("RECESO ACUMULADO")
+        break_label.setObjectName("eyebrow")
+        br_top.addWidget(break_label)
+        br_top.addStretch()
+        break_layout.addLayout(br_top)
+
+        self.break_clock.setObjectName("digital_clock_break")
+        break_layout.addWidget(self.break_clock)
+        metrics.addWidget(self.break_card, 2)
         outer.addLayout(metrics)
 
-        controls_card = QFrame(); controls_card.setObjectName("sectionCard")
-        controls_layout = QVBoxLayout(controls_card); controls_layout.setContentsMargins(18, 16, 18, 18); controls_layout.setSpacing(16)
-        controls_title = QLabel("CONTROLES DE SESIÓN"); controls_title.setObjectName("eyebrow")
-        controls_layout.addWidget(controls_title)
+        # Controls Card
+        controls_card = QFrame()
+        controls_card.setObjectName("sectionCard")
+        controls_layout = QVBoxLayout(controls_card)
+        controls_layout.setContentsMargins(22, 18, 22, 20)
+        controls_layout.setSpacing(14)
 
-        primary_controls = QGridLayout(); primary_controls.setHorizontalSpacing(10); primary_controls.setVerticalSpacing(8)
-        self.primary_controls = primary_controls
-        self.session_button = QPushButton("INICIAR"); self.session_button.setObjectName("primary"); self.session_button.clicked.connect(self.toggle_session)
-        stop = QPushButton("DETENER"); stop.setObjectName("stop"); stop.clicked.connect(self.stop_timer)
-        incomplete = QPushButton("INCOMPLETO"); incomplete.setObjectName("danger"); incomplete.clicked.connect(lambda: self.finish_item(False, keep_location=True))
-        complete = QPushButton("COMPLETO"); complete.setObjectName("complete"); complete.clicked.connect(lambda: self.finish_item(True, keep_location=True))
+        controls_header = QHBoxLayout()
+        controls_icon = QLabel()
+        controls_icon.setPixmap(qta.icon("fa5s.play-circle", color="#84cc16").pixmap(14, 14))
+        controls_header.addWidget(controls_icon)
+        controls_title = QLabel("CONTROLES DE SESIÓN")
+        controls_title.setObjectName("eyebrow")
+        controls_header.addWidget(controls_title)
+        controls_header.addStretch()
+        self.status_pill = QLabel(" ●  LISTO PARA COMENZAR")
+        self.status_pill.setObjectName("status_badge")
+        controls_header.addWidget(self.status_pill)
+        controls_layout.addLayout(controls_header)
+
+        # Primary Controls Grid
+        self.primary_controls = QGridLayout()
+        self.primary_controls.setHorizontalSpacing(10)
+        self.primary_controls.setVerticalSpacing(8)
+
+        self.session_button = QPushButton("  INICIAR")
+        self.session_button.setObjectName("hero_start")
+        self.session_button.setIcon(qta.icon("fa5s.play", color="#bef264"))
+        self.session_button.clicked.connect(self.toggle_session)
+
+        stop = QPushButton("  DETENER")
+        stop.setObjectName("stop")
+        stop.setIcon(qta.icon("fa5s.stop", color="#dc2626"))
+        stop.clicked.connect(self.stop_timer)
+
+        complete = QPushButton("  COMPLETO")
+        complete.setObjectName("complete")
+        complete.setIcon(qta.icon("fa5s.check-circle", color="#ffffff"))
+        complete.clicked.connect(lambda: self.finish_item(True, keep_location=True))
+
+        incomplete = QPushButton("  INCOMPLETO")
+        incomplete.setObjectName("danger")
+        incomplete.setIcon(qta.icon("fa5s.times-circle", color="#ffffff"))
+        incomplete.clicked.connect(lambda: self.finish_item(False, keep_location=True))
+
         self.primary_buttons = (self.session_button, stop, complete, incomplete)
         for column, button in enumerate(self.primary_buttons):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            primary_controls.addWidget(button, 0 if column < 2 else 1, column % 2)
-        controls_layout.addLayout(primary_controls)
+            self.primary_controls.addWidget(button, 0, column)
+        controls_layout.addLayout(self.primary_controls)
 
-        comment_button = QPushButton("COMENTARIO")
-        comment_button.setObjectName("comment_action")
-        comment_button.clicked.connect(self.add_home_comment)
-        controls_layout.addWidget(comment_button)
+        # Comment Button
+        self.comment_button = QPushButton("  COMENTARIO")
+        self.comment_button.setObjectName("comment_action")
+        self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
+        self.comment_button.clicked.connect(self.add_home_comment)
+        controls_layout.addWidget(self.comment_button)
 
-        navigation = QGridLayout(); navigation.setHorizontalSpacing(10); navigation.setVerticalSpacing(8)
-        self.navigation = navigation
+        # Navigation Header & Pods
+        nav_header = QLabel("NAVEGACIÓN RÁPIDA")
+        nav_header.setObjectName("eyebrow")
+        nav_header.setStyleSheet("margin-top: 4px;")
+        controls_layout.addWidget(nav_header)
+
+        self.navigation = QGridLayout()
+        self.navigation.setHorizontalSpacing(10)
+        self.navigation.setVerticalSpacing(8)
         self.navigation_buttons = []
-        for text, callback in (
-            ("◀ Anterior Inciso", self.previous_inciso),
-            ("Siguiente Inciso ▶", self.next_inciso),
-            ("◀ Anterior Ejercicio", self.previous_exercise),
-            ("Siguiente Ejercicio ▶", self.next_exercise),
-            ("◀ Anterior Sección", self.previous_section),
-            ("Siguiente Sección ▶", self.next_section),
+        for text, icon_left, callback in (
+            ("Anterior Inciso", True, self.previous_inciso),
+            ("Siguiente Inciso", False, self.next_inciso),
+            ("Anterior Ejercicio", True, self.previous_exercise),
+            ("Siguiente Ejercicio", False, self.next_exercise),
+            ("Anterior Sección", True, self.previous_section),
+            ("Siguiente Sección", False, self.next_section),
         ):
-            button = QPushButton(text)
+            button = QPushButton(f"  {text}  ")
             button.setObjectName("nav_button")
+            icon_name = "fa5s.chevron-left" if icon_left else "fa5s.chevron-right"
+            button.setIcon(qta.icon(icon_name, color="#475569"))
+            if not icon_left:
+                button.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             button.clicked.connect(callback)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self.navigation_buttons.append(button)
-        self._populate_grid(self.primary_controls, self.primary_buttons, 2)
-        self._populate_grid(self.navigation, self.navigation_buttons, 2)
-        controls_layout.addLayout(navigation)
+
+        self._populate_grid(self.primary_controls, self.primary_buttons, 4)
+        self._populate_grid(self.navigation, self.navigation_buttons, 3)
+        controls_layout.addLayout(self.navigation)
+
         self.status_label = QLabel("Listo para comenzar")
         self.status_label.setObjectName("status")
+        self.status_label.setVisible(False)
         controls_layout.addWidget(self.status_label)
+
         outer.addWidget(controls_card)
         outer.addStretch()
+
+        scroll.setWidget(container)
         self.sync_location()
-        return page
+        return scroll
 
     @staticmethod
     def _populate_grid(layout: QGridLayout, widgets: tuple[QPushButton, ...] | list[QPushButton], columns: int) -> None:
@@ -450,59 +633,130 @@ class MainWindow(QMainWindow):
             layout.setColumnStretch(column, 1)
 
     def resizeEvent(self, event) -> None:
-        """Refluye controles y reduce los relojes antes de que su contenido se recorte."""
+        """Refluye controles y adapta los relojes y cuadrículas responsivamente."""
         super().resizeEvent(event)
-        compact = self.width() < 1_020
-        self._populate_grid(self.primary_controls, self.primary_buttons, 1 if compact else 2)
-        self._populate_grid(self.navigation, self.navigation_buttons, 1 if compact else 2)
-        self.metrics_layout.setDirection(
-            QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight
-        )
-        clock_size = 34 if compact else 43
+        w = self.width()
+        compact = w < 1000
+        very_compact = w < 780
+
+        if hasattr(self, "primary_controls") and hasattr(self, "primary_buttons"):
+            cols = 1 if very_compact else (2 if compact else 4)
+            self._populate_grid(self.primary_controls, self.primary_buttons, cols)
+
+        if hasattr(self, "navigation") and hasattr(self, "navigation_buttons"):
+            nav_cols = 1 if very_compact else (2 if compact else 3)
+            self._populate_grid(self.navigation, self.navigation_buttons, nav_cols)
+
+        if hasattr(self, "metrics_layout"):
+            self.metrics_layout.setDirection(
+                QBoxLayout.Direction.TopToBottom if very_compact else QBoxLayout.Direction.LeftToRight
+            )
+
         self.update_timer_visual_state()
 
     def build_records(self) -> QWidget:
         """Construye la vista donde se muestran y gestionan los registros guardados."""
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(42, 28, 42, 36)
-        layout.setSpacing(16)
+        layout.setContentsMargins(36, 24, 36, 28)
+        layout.setSpacing(14)
 
+        # Heading
         heading = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
         title = QLabel("Registros")
         title.setObjectName("brand")
-        heading.addWidget(title)
-        heading.addStretch()
         self.records_summary = QLabel("0 intentos guardados")
         self.records_summary.setObjectName("record_meta")
-        heading.addWidget(self.records_summary)
+        title_box.addWidget(title)
+        title_box.addWidget(self.records_summary)
+        heading.addLayout(title_box)
+        heading.addStretch()
         layout.addLayout(heading)
 
+        # Quick KPI Metrics Cards
+        kpi_row = QHBoxLayout()
+        kpi_row.setSpacing(10)
+
+        def make_kpi(icon_name: str, icon_color: str, title: str) -> tuple[QFrame, QLabel]:
+            card = QFrame()
+            card.setObjectName("kpiCard")
+            c_layout = QHBoxLayout(card)
+            c_layout.setContentsMargins(14, 10, 14, 10)
+            c_layout.setSpacing(10)
+
+            icon_lbl = QLabel()
+            icon_lbl.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(18, 18))
+            c_layout.addWidget(icon_lbl)
+
+            t_layout = QVBoxLayout()
+            t_layout.setContentsMargins(0, 0, 0, 0)
+            t_layout.setSpacing(1)
+            t_lbl = QLabel(title)
+            t_lbl.setObjectName("kpi_title")
+            v_lbl = QLabel("-")
+            v_lbl.setObjectName("kpi_value")
+            t_layout.addWidget(t_lbl)
+            t_layout.addWidget(v_lbl)
+            c_layout.addLayout(t_layout)
+            return card, v_lbl
+
+        card_att, self.rec_stat_attempts = make_kpi("fa5s.history", "#3b82f6", "TOTAL INTENTOS")
+        card_ex, self.rec_stat_exercise_time = make_kpi("fa5s.clock", "#10b981", "TIEMPO ESTUDIO")
+        card_br, self.rec_stat_break_time = make_kpi("fa5s.coffee", "#f59e0b", "TIEMPO RECESO")
+        card_eff, self.rec_stat_effectiveness = make_kpi("fa5s.check-circle", "#84cc16", "EFECTIVIDAD")
+
+        for c in (card_att, card_ex, card_br, card_eff):
+            c.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Preferred)
+            kpi_row.addWidget(c)
+        layout.addLayout(kpi_row)
+
+        # Toolbar and Search
         toolbar = QHBoxLayout()
-        open_button = QPushButton("Abrir registro")
+        toolbar.setSpacing(8)
+
+        open_button = QPushButton(" Abrir")
+        open_button.setIcon(qta.icon("fa5s.folder-open", color="#334155"))
         open_button.setObjectName("secondary_action")
         self.recent_files_menu = QMenu(self)
         self.refresh_recent_files_menu()
         open_button.setMenu(self.recent_files_menu)
         open_button.clicked.connect(self.open_record)
+        toolbar.addWidget(open_button)
 
-        for text, callback, object_name in (
-            ("Importar registros", self.import_records, "secondary_action"),
-            ("Guardar registro", self.save_as, "secondary_action"),
-            ("Renombrar", self.rename_record, "secondary_action"),
-            ("Cerrar registro", self.close_record, "secondary_action"),
-            ("Agregar intento", self.add_item, "toolbar_primary"),
+        for text, callback, icon_name, icon_color in (
+            ("Importar", self.import_records, "fa5s.file-import", "#334155"),
+            ("Guardar como", self.save_as, "fa5s.save", "#334155"),
+            ("Renombrar", self.rename_record, "fa5s.pen", "#334155"),
+            ("Cerrar", self.close_record, "fa5s.times", "#ef4444"),
         ):
-            button = QPushButton(text)
-            if object_name:
-                button.setObjectName(object_name)
+            button = QPushButton(f" {text}")
+            button.setObjectName("secondary_action")
+            button.setIcon(qta.icon(icon_name, color=icon_color))
             button.clicked.connect(callback)
             toolbar.addWidget(button)
 
-        toolbar.insertWidget(0, open_button)
         toolbar.addStretch()
+
+        # Search Bar
+        self.record_search_input = QLineEdit()
+        self.record_search_input.setPlaceholderText("Buscar sección, ejercicio o comentario...")
+        self.record_search_input.setClearButtonEnabled(True)
+        self.record_search_input.setMinimumWidth(260)
+        self.record_search_input.addAction(qta.icon("fa5s.search", color="#94a3b8"), QLineEdit.ActionPosition.LeadingPosition)
+        self.record_search_input.textChanged.connect(self.filter_records_table)
+        toolbar.addWidget(self.record_search_input)
+
+        add_btn = QPushButton(" Agregar intento")
+        add_btn.setObjectName("toolbar_primary")
+        add_btn.setIcon(qta.icon("fa5s.plus", color="#bef264"))
+        add_btn.clicked.connect(self.add_item)
+        toolbar.addWidget(add_btn)
+
         layout.addLayout(toolbar)
 
+        # Table
         self.table = QTableWidget(0, 11)
         self.table.setHorizontalHeaderLabels([
             "Sección",
@@ -510,14 +764,25 @@ class MainWindow(QMainWindow):
             "Inciso",
             "Receso",
             "Tiempo",
-            "Completado",
+            "Estado",
             "Comentario",
-            "Comentar",
-            "Editar",
-            "Reset",
-            "Eliminar",
+            "💬",
+            "✏️",
+            "🔄",
+            "🗑️",
         ])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        for col in (7, 8, 9, 10):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+            self.table.setColumnWidth(col, 48)
+
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -525,6 +790,21 @@ class MainWindow(QMainWindow):
         self.table.cellClicked.connect(self.show_comment_alert)
         layout.addWidget(self.table)
         return page
+
+    def filter_records_table(self, query: str) -> None:
+        """Filtra en tiempo real las filas de la tabla según el texto ingresado."""
+        query = query.strip().lower()
+        for row in range(self.table.rowCount()):
+            if not query:
+                self.table.setRowHidden(row, False)
+                continue
+            match = False
+            for col in (0, 1, 2, 6):
+                item = self.table.item(row, col)
+                if item and query in item.text().lower():
+                    match = True
+                    break
+            self.table.setRowHidden(row, not match)
 
     def build_statistics(self) -> QWidget:
         """Construye la vista de análisis y estadísticas del registro activo."""
@@ -583,13 +863,13 @@ class MainWindow(QMainWindow):
         card_total_layout.setContentsMargins(20, 16, 20, 16)
         card_total_layout.setSpacing(4)
         lbl_tot = QLabel("TIEMPO TOTAL DE EJERCICIOS")
-        lbl_tot.setObjectName("metric_label")
+        lbl_tot.setObjectName("eyebrow")
         self.stat_total_exercise = QLabel("00:00")
-        self.stat_total_exercise.setObjectName("metric_value")
+        self.stat_total_exercise.setObjectName("stat_hero_value")
         lbl_break_tot = QLabel("TIEMPO TOTAL DE RECESO")
-        lbl_break_tot.setObjectName("break_label")
+        lbl_break_tot.setObjectName("eyebrow")
         self.stat_total_break = QLabel("00:00")
-        self.stat_total_break.setObjectName("break_value")
+        self.stat_total_break.setObjectName("stat_sub_value")
         card_total_layout.addWidget(lbl_tot)
         card_total_layout.addWidget(self.stat_total_exercise)
         card_total_layout.addWidget(lbl_break_tot)
@@ -602,13 +882,13 @@ class MainWindow(QMainWindow):
         card_avg_layout.setContentsMargins(20, 16, 20, 16)
         card_avg_layout.setSpacing(4)
         lbl_avg = QLabel("TIEMPO PROMEDIO DE EJERCICIOS")
-        lbl_avg.setObjectName("metric_label")
+        lbl_avg.setObjectName("eyebrow")
         self.stat_avg_exercise = QLabel("00:00")
-        self.stat_avg_exercise.setObjectName("metric_value")
+        self.stat_avg_exercise.setObjectName("stat_hero_value")
         lbl_break_avg = QLabel("TIEMPO PROMEDIO DE RECESO")
-        lbl_break_avg.setObjectName("break_label")
+        lbl_break_avg.setObjectName("eyebrow")
         self.stat_avg_break = QLabel("00:00")
-        self.stat_avg_break.setObjectName("break_value")
+        self.stat_avg_break.setObjectName("stat_sub_value")
         card_avg_layout.addWidget(lbl_avg)
         card_avg_layout.addWidget(self.stat_avg_exercise)
         card_avg_layout.addWidget(lbl_break_avg)
@@ -621,13 +901,13 @@ class MainWindow(QMainWindow):
         card_longest_layout.setContentsMargins(20, 16, 20, 16)
         card_longest_layout.setSpacing(4)
         lbl_longest = QLabel("TIEMPO MÁS LARGO DE EJERCICIO")
-        lbl_longest.setObjectName("metric_label")
+        lbl_longest.setObjectName("eyebrow")
         self.stat_longest_time = QLabel("00:00")
-        self.stat_longest_time.setObjectName("metric_value")
+        self.stat_longest_time.setObjectName("stat_hero_value")
         lbl_longest_sub = QLabel("EJERCICIO")
-        lbl_longest_sub.setObjectName("break_label")
+        lbl_longest_sub.setObjectName("eyebrow")
         self.stat_longest_name = QLabel("Ninguno")
-        self.stat_longest_name.setObjectName("break_value")
+        self.stat_longest_name.setObjectName("stat_sub_text")
         self.stat_longest_name.setWordWrap(True)
         card_longest_layout.addWidget(lbl_longest)
         card_longest_layout.addWidget(self.stat_longest_time)
@@ -641,9 +921,9 @@ class MainWindow(QMainWindow):
         card_comp_layout.setContentsMargins(20, 16, 20, 16)
         card_comp_layout.setSpacing(6)
         lbl_comp = QLabel("EJERCICIOS COMPLETADOS")
-        lbl_comp.setObjectName("metric_label")
+        lbl_comp.setObjectName("eyebrow")
         self.stat_completed_count = QLabel("0 / 0")
-        self.stat_completed_count.setObjectName("metric_value")
+        self.stat_completed_count.setObjectName("stat_hero_value")
         self.stat_progress_bar = QProgressBar()
         self.stat_progress_bar.setRange(0, 100)
         self.stat_progress_bar.setValue(0)
@@ -797,16 +1077,24 @@ class MainWindow(QMainWindow):
         self.set_locked(True)
         self.update_session_button()
         self.update_timer_visual_state()
-        self.status_label.setText("Receso en curso" if self.application.mode is TimerMode.BREAK else "Sesión en curso")
 
     def update_session_button(self) -> None:
-        """Actualiza el texto del control de sesión según el modo actual."""
-        labels = {
-            TimerMode.WAITING: "INICIAR",
-            TimerMode.PLAY: "RECESO",
-            TimerMode.BREAK: "CONTINUAR",
-        }
-        self.session_button.setText(labels[self.application.mode])
+        """Actualiza el texto, icono y apariencia del control de sesión según el modo actual."""
+        if self.application.mode is TimerMode.WAITING:
+            self.session_button.setText("  INICIAR")
+            self.session_button.setIcon(qta.icon("fa5s.play", color="#bef264"))
+            self.session_button.setObjectName("hero_start")
+        elif self.application.mode is TimerMode.PLAY:
+            self.session_button.setText("  RECESO")
+            self.session_button.setIcon(qta.icon("fa5s.pause", color="#b45309"))
+            self.session_button.setObjectName("hero_pause")
+        elif self.application.mode is TimerMode.BREAK:
+            self.session_button.setText("  CONTINUAR")
+            self.session_button.setIcon(qta.icon("fa5s.forward", color="#047857"))
+            self.session_button.setObjectName("hero_resume")
+
+        self.session_button.style().unpolish(self.session_button)
+        self.session_button.style().polish(self.session_button)
 
     def stop_timer(self) -> None:
         """Detiene y descarta el conteo actual sin guardar un intento."""
@@ -814,6 +1102,9 @@ class MainWindow(QMainWindow):
         self.set_locked(False)
         self.update_session_button()
         self.update_timer_visual_state()
+        if hasattr(self, "comment_button"):
+            self.comment_button.setText("  COMENTARIO")
+            self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
         self.status_label.setText("Listo para comenzar")
 
     def finish_item(self, completed: bool, keep_location: bool = False, stop: bool = False) -> None:
@@ -827,6 +1118,9 @@ class MainWindow(QMainWindow):
         self.update_timer_visual_state()
         result = "completo" if completed else "incompleto"
         self.status_label.setText(f"Intento {result}. Listo para comenzar")
+        if hasattr(self, "comment_button"):
+            self.comment_button.setText("  COMENTARIO")
+            self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
 
         if not keep_location and not stop:
             self.sync_location()
@@ -924,24 +1218,56 @@ class MainWindow(QMainWindow):
         self.exercise_clock.setText(timer_markup(exercise_ms))
         self.break_clock.setText(timer_markup(break_ms))
         self.update_timer_visual_state()
-        if self.application.mode is TimerMode.PLAY:
-            self.status_label.setText("Sesión en curso")
-        elif self.application.mode is TimerMode.BREAK:
-            self.status_label.setText("Receso en curso")
 
         today_ms = self.application.get_today_study_time_ms(include_current=True)
         self.today_study_label.setText(format_hh_mm_ss(today_ms))
 
     def update_timer_visual_state(self) -> None:
-        """Aplica el color de énfasis a la lectura que está avanzando."""
-        exercise_color = "#2f8f57" if self.application.mode is TimerMode.PLAY else "#18252b"
-        break_color = "#c64d4d" if self.application.mode is TimerMode.BREAK else "#60706d"
-        compact = self.width() < 1_020
-        clock_size = 34 if compact else 43
-        self.exercise_clock.setStyleSheet(f"color: {exercise_color}; font-size: {clock_size}px;")
-        self.break_clock.setStyleSheet(
-            f"color: {break_color}; font-size: {max(19, clock_size // 2)}px;"
-        )
+        """Aplica el estilo digital de alta precisión a la lectura según su modo."""
+        compact = self.width() < 1000
+        clock_size = 38 if compact else 48
+        break_size = 20 if compact else 25
+        is_dark = self.is_dark_mode
+
+        if self.application.mode is TimerMode.PLAY:
+            if hasattr(self, "exercise_card"):
+                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #071510; border: 2px solid #10b981; border-radius: 14px; }")
+                self.break_card.setStyleSheet("QFrame#breakCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
+            self.exercise_clock.setStyleSheet(f"color: #34d399; font-size: {clock_size}px; font-weight: 800;")
+            self.break_clock.setStyleSheet(f"color: #64748b; font-size: {break_size}px; font-weight: 700;")
+            if hasattr(self, "status_pill"):
+                self.status_pill.setText(" ●  SESIÓN EN CURSO")
+                if is_dark:
+                    self.status_pill.setStyleSheet("background: #064e3b; color: #6ee7b7; border: 1px solid #059669; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+                else:
+                    self.status_pill.setStyleSheet("background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+            self.status_label.setText("Sesión en curso")
+        elif self.application.mode is TimerMode.BREAK:
+            if hasattr(self, "exercise_card"):
+                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
+                self.break_card.setStyleSheet("QFrame#breakCard { background: #191408; border: 2px solid #f59e0b; border-radius: 14px; }")
+            self.exercise_clock.setStyleSheet(f"color: #64748b; font-size: {clock_size}px; font-weight: 800;")
+            self.break_clock.setStyleSheet(f"color: #fbbf24; font-size: {break_size}px; font-weight: 700;")
+            if hasattr(self, "status_pill"):
+                self.status_pill.setText(" ●  RECESO EN CURSO")
+                if is_dark:
+                    self.status_pill.setStyleSheet("background: #451a03; color: #fde68a; border: 1px solid #78350f; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+                else:
+                    self.status_pill.setStyleSheet("background: #fffbeb; color: #b45309; border: 1px solid #fde68a; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+            self.status_label.setText("Receso en curso")
+        else:
+            if hasattr(self, "exercise_card"):
+                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
+                self.break_card.setStyleSheet("QFrame#breakCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
+            self.exercise_clock.setStyleSheet(f"color: #e2e8f0; font-size: {clock_size}px; font-weight: 800;")
+            self.break_clock.setStyleSheet(f"color: #64748b; font-size: {break_size}px; font-weight: 700;")
+            if hasattr(self, "status_pill"):
+                self.status_pill.setText(" ●  LISTO PARA COMENZAR")
+                if is_dark:
+                    self.status_pill.setStyleSheet("background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+                else:
+                    self.status_pill.setStyleSheet("background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+            self.status_label.setText("Listo para comenzar")
 
     def autosave(self) -> None:
         """Guarda el registro activo en el archivo asociado."""
@@ -949,23 +1275,15 @@ class MainWindow(QMainWindow):
 
     def prompt_initial_record_choice(self) -> None:
         """Pregunta al usuario si debe crear un registro nuevo o abrir uno existente."""
+        import os
+        if os.environ.get("QT_QPA_PLATFORM") == "offscreen" or os.environ.get("STUDY_TIMETRIAL_TEST"):
+            return
+
         dialog = QDialog(self)
         dialog.setWindowTitle("Study Timetrial")
         dialog.setModal(True)
         dialog.setMinimumWidth(560)
-        dialog.setStyleSheet(
-            """
-            QDialog { background: #f4f6f2; }
-            QLabel#title { color: #18252b; font-size: 22px; font-weight: 800; }
-            QLabel#subtitle { color: #60706d; font-size: 13px; }
-            QLabel#version { color: #75827f; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-            QListWidget { background: #ffffff; border: 1px solid #dfe6df; border-radius: 8px; min-height: 96px; }
-            QPushButton { min-height: 42px; min-width: 160px; border-radius: 9px; }
-            QPushButton#primary { background: #18252b; color: #d7f56b; border: 1px solid #18252b; font-weight: 800; }
-            QPushButton#secondary { background: #ffffff; color: #263238; border: 1px solid #cbd6d0; }
-            QPushButton#ghost { background: transparent; color: #60706d; border: 1px solid #dfe6df; }
-            """
-        )
+        dialog.setStyleSheet(get_dialog_stylesheet(self.current_theme))
 
         layout = QVBoxLayout(dialog)
         layout.setSpacing(18)
@@ -1008,11 +1326,13 @@ class MainWindow(QMainWindow):
         buttons = QHBoxLayout()
         buttons.setSpacing(12)
 
-        new_button = QPushButton("Nuevo archivo")
+        new_button = QPushButton("  Nuevo archivo")
+        new_button.setIcon(qta.icon("fa5s.plus", color="#090d16" if self.is_dark_mode else "#bef264"))
         new_button.setObjectName("primary")
         new_button.clicked.connect(lambda: self._handle_initial_choice(dialog, "new"))
 
-        open_button = QPushButton("Abrir archivo")
+        open_button = QPushButton("  Abrir archivo")
+        open_button.setIcon(qta.icon("fa5s.folder-open", color="#cbd5e1" if self.is_dark_mode else "#334155"))
         open_button.setObjectName("secondary")
         open_button.clicked.connect(
             lambda: self._handle_initial_choice(
@@ -1100,13 +1420,14 @@ class MainWindow(QMainWindow):
 
     def update_title(self) -> None:
         """Actualiza el título de la ventana según el archivo de registro abierto."""
-        if self.application.is_record_open:
+        if self.application.is_record_open and self.application.record_path:
             file_name = self.application.record_path.stem
             self.home_title.setText(file_name)
             self.setWindowTitle(f"{APP_TITLE} - {file_name}")
         else:
-            self.home_title.setText(APP_TITLE)
-            self.setWindowTitle(APP_TITLE)
+            name = self.application.record.record_name or APP_TITLE
+            self.home_title.setText(name)
+            self.setWindowTitle(f"{APP_TITLE} - {name}")
 
     def refresh_table(self) -> None:
         """Vuelca a pintar la tabla con los registros ordenados por fecha."""
@@ -1115,31 +1436,82 @@ class MainWindow(QMainWindow):
         total_items = len(ordered_items)
         self.records_summary.setText(f"{total_items} intento{'s' if total_items != 1 else ''} guardado{'s' if total_items != 1 else ''}")
 
+        # Update KPI cards
+        stats = self.application.get_statistics()
+        if hasattr(self, "rec_stat_attempts"):
+            self.rec_stat_attempts.setText(str(stats.total_attempts))
+            self.rec_stat_exercise_time.setText(format_hh_mm(stats.total_exercise_time_ms))
+            self.rec_stat_break_time.setText(format_hh_mm(stats.total_break_time_ms))
+            eff_pct = int(round((stats.completed_attempts / stats.total_attempts * 100.0))) if stats.total_attempts else 0
+            self.rec_stat_effectiveness.setText(f"{eff_pct}%")
+
         for index, item in enumerate(ordered_items):
             self.table.insertRow(index)
-            location = f"{item.section_type} {item.section_number}"
-            self.table.setItem(index, 0, QTableWidgetItem(location))
-            self.table.setItem(index, 1, QTableWidgetItem(str(item.exercise)))
-            self.table.setItem(index, 2, QTableWidgetItem(str(item.inciso or "-")))
-            self.table.setItem(index, 3, QTableWidgetItem(format_milliseconds(item.break_time_ms)))
-            self.table.setItem(index, 4, QTableWidgetItem(format_milliseconds(item.exercise_time_ms)))
-            self.table.setItem(index, 5, QTableWidgetItem("Sí" if item.completed else "No"))
-            self.table.setItem(index, 6, QTableWidgetItem(item.comment))
+            self.table.setRowHeight(index, 38)
 
-            for column, label, callback in (
-                (7, "COMENTAR", lambda _, row=index: self.comment_item(row)),
-                (8, "EDITAR", lambda _, row=index: self.edit_item(row)),
-                (9, "RESET", lambda _, row=index: self.reset_item(row)),
-            ):
-                button = QPushButton(label)
-                button.setObjectName("table_action")
-                button.clicked.connect(callback)
-                self.table.setCellWidget(index, column, button)
+            location_text = f"{item.section_type} {item.section_number}"
+            loc_item = QTableWidgetItem(location_text)
+            loc_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            self.table.setItem(index, 0, loc_item)
 
-            delete_button = QPushButton("ELIMINAR")
-            delete_button.setObjectName("table_delete")
-            delete_button.clicked.connect(lambda _, row=index: self.delete_item(row))
-            self.table.setCellWidget(index, 10, delete_button)
+            ex_item = QTableWidgetItem(str(item.exercise))
+            ex_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(index, 1, ex_item)
+
+            inc_item = QTableWidgetItem(str(item.inciso or "-"))
+            inc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(index, 2, inc_item)
+
+            br_item = QTableWidgetItem(format_milliseconds(item.break_time_ms))
+            br_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(index, 3, br_item)
+
+            t_item = QTableWidgetItem(format_milliseconds(item.exercise_time_ms))
+            t_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(index, 4, t_item)
+
+            # Estado badge
+            status_badge = QLabel("✓ Completado" if item.completed else "✕ Incompleto")
+            status_badge.setObjectName("table_badge_completed" if item.completed else "table_badge_incomplete")
+            status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setCellWidget(index, 5, status_badge)
+
+            # Comentario
+            comm_item = QTableWidgetItem(item.comment)
+            comm_item.setToolTip(item.comment or "Sin comentario")
+            self.table.setItem(index, 6, comm_item)
+
+            # Botones de acción compactos con iconos y tooltips
+            comm_btn = QPushButton()
+            comm_btn.setIcon(qta.icon("fa5s.comment-dots", color="#3b82f6"))
+            comm_btn.setObjectName("table_action_icon")
+            comm_btn.setToolTip("Comentar registro")
+            comm_btn.clicked.connect(lambda _, r=index: self.comment_item(r))
+            self.table.setCellWidget(index, 7, comm_btn)
+
+            edit_btn = QPushButton()
+            edit_btn.setIcon(qta.icon("fa5s.edit", color="#6366f1"))
+            edit_btn.setObjectName("table_action_icon")
+            edit_btn.setToolTip("Editar registro")
+            edit_btn.clicked.connect(lambda _, r=index: self.edit_item(r))
+            self.table.setCellWidget(index, 8, edit_btn)
+
+            reset_btn = QPushButton()
+            reset_btn.setIcon(qta.icon("fa5s.redo-alt", color="#f59e0b"))
+            reset_btn.setObjectName("table_action_icon")
+            reset_btn.setToolTip("Reiniciar tiempo")
+            reset_btn.clicked.connect(lambda _, r=index: self.reset_item(r))
+            self.table.setCellWidget(index, 9, reset_btn)
+
+            del_btn = QPushButton()
+            del_btn.setIcon(qta.icon("fa5s.trash-alt", color="#ef4444"))
+            del_btn.setObjectName("table_delete_icon")
+            del_btn.setToolTip("Eliminar registro")
+            del_btn.clicked.connect(lambda _, r=index: self.delete_item(r))
+            self.table.setCellWidget(index, 10, del_btn)
+
+        if hasattr(self, "record_search_input") and self.record_search_input.text():
+            self.filter_records_table(self.record_search_input.text())
 
         self.refresh_statistics()
 
@@ -1165,6 +1537,14 @@ class MainWindow(QMainWindow):
         )
         if accepted:
             self.application.set_comment(comment)
+            clean = comment.strip()
+            if clean:
+                short = (clean[:25] + "…") if len(clean) > 25 else clean
+                self.comment_button.setText(f"  COMENTARIO: \"{short}\"")
+                self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#10b981"))
+            else:
+                self.comment_button.setText("  COMENTARIO")
+                self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
             self.status_label.setText("Comentario preparado para el próximo registro")
 
     def comment_item(self, row: int) -> None:
@@ -1225,6 +1605,7 @@ class MainWindow(QMainWindow):
         recent_paths = self.application.storage.recent_files.paths
 
         open_action = QAction("Abrir archivo…", self)
+        open_action.setIcon(qta.icon("fa5s.folder-open", color="#334155"))
         open_action.triggered.connect(self.open_record)
         self.recent_files_menu.addAction(open_action)
 
@@ -1239,6 +1620,7 @@ class MainWindow(QMainWindow):
             if not path.exists():
                 continue
             action = QAction(f"{path.name} — {path.parent}", self)
+            action.setIcon(qta.icon("fa5s.file", color="#64748b"))
             action.triggered.connect(lambda _checked, selected=path: self.open_recent_record(selected))
             self.recent_files_menu.addAction(action)
 
@@ -1368,4 +1750,3 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
-
