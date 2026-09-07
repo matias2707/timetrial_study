@@ -1,10 +1,11 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from application_service import SessionLocation, StudyApplicationService
 from models import Record
-from storage_service import StorageService
+from storage_service import RecentFilesManager, StorageService
 from timer_service import TimerMode
 
 
@@ -75,6 +76,55 @@ class ApplicationServiceTests(unittest.TestCase):
         }).items[0]
 
         self.assertEqual(item.comment, "")
+
+    def test_new_record_uses_default_name_and_sets_active_path(self) -> None:
+        current_dir = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            os.chdir(directory)
+            try:
+                application = StudyApplicationService(storage=StorageService())
+
+                application.new_record("Mi plan de estudio")
+
+                self.assertEqual(application.record.record_name, "Mi plan de estudio")
+                self.assertEqual(application.record_path, Path.cwd() / "Mi plan de estudio.json")
+                self.assertTrue(application.is_record_open)
+            finally:
+                os.chdir(current_dir)
+
+    def test_new_record_avoids_overwriting_existing_file(self) -> None:
+        current_dir = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            os.chdir(directory)
+            try:
+                existing_path = Path(directory) / "Mi plan de estudio.json"
+                existing_path.write_text("{}", encoding="utf-8")
+
+                application = StudyApplicationService(storage=StorageService())
+                application.new_record("Mi plan de estudio")
+
+                self.assertEqual(application.record.record_name, "Mi plan de estudio_1")
+                self.assertEqual(application.record_path, existing_path.with_name("Mi plan de estudio_1.json"))
+                self.assertTrue(application.is_record_open)
+            finally:
+                os.chdir(current_dir)
+
+    def test_recent_files_manager_keeps_most_recent_first(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            storage_path = Path(directory) / "recent.json"
+            manager = RecentFilesManager(storage_path)
+            first = Path(directory) / "primer.json"
+            second = Path(directory) / "segundo.json"
+            for path in (first, second):
+                path.write_text("{}", encoding="utf-8")
+
+            manager.add(first)
+            manager.add(second)
+            manager.add(first)
+
+            self.assertEqual(manager.paths[0], first)
+            self.assertEqual(manager.paths[1], second)
+            self.assertEqual(len(manager.paths), 2)
 
     def test_import_items_keeps_current_file_and_imports_only_selected_items(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

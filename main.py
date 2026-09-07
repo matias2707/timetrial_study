@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl, Qt
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QInputDialog,
+    QListWidget,
+    QMenu,
 )
 
 from application_service import SessionLocation, StudyApplicationService
@@ -40,6 +42,7 @@ from timer_service import TimerMode
 
 DEFAULT_SECTION_TYPE = "Guía"
 APP_TITLE = "Study Timetrial"
+APP_VERSION = "v1.0"
 MAX_VALUE = 999_999
 
 
@@ -289,6 +292,7 @@ class MainWindow(QMainWindow):
         self.tick.timeout.connect(self.refresh_clock)
         self.tick.start(50)
 
+        self.prompt_initial_record_choice()
         self.update_title()
         self.autosave()
 
@@ -453,9 +457,13 @@ class MainWindow(QMainWindow):
         heading.addWidget(self.records_summary)
         layout.addLayout(heading)
         toolbar = QHBoxLayout()
+        open_button = QPushButton("Abrir registro")
+        self.recent_files_menu = QMenu(self)
+        self.refresh_recent_files_menu()
+        open_button.setMenu(self.recent_files_menu)
+        open_button.clicked.connect(self.open_record)
 
         for text, callback, object_name in (
-            ("Abrir registro", self.open_record, ""),
             ("Importar registros", self.import_records, ""),
             ("Guardar registro", self.save_as, ""),
             ("Renombrar", self.rename_record, ""),
@@ -468,6 +476,7 @@ class MainWindow(QMainWindow):
             button.clicked.connect(callback)
             toolbar.addWidget(button)
 
+        toolbar.insertWidget(0, open_button)
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
@@ -629,6 +638,124 @@ class MainWindow(QMainWindow):
         """Guarda el registro activo en el archivo asociado."""
         self.application.save()
 
+    def prompt_initial_record_choice(self) -> None:
+        """Pregunta al usuario si debe crear un registro nuevo o abrir uno existente."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Study Timetrial")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(560)
+        dialog.setStyleSheet(
+            """
+            QDialog { background: #f4f6f2; }
+            QLabel#title { color: #18252b; font-size: 22px; font-weight: 800; }
+            QLabel#subtitle { color: #60706d; font-size: 13px; }
+            QLabel#version { color: #75827f; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+            QListWidget { background: #ffffff; border: 1px solid #dfe6df; border-radius: 8px; min-height: 96px; }
+            QPushButton { min-height: 42px; min-width: 160px; border-radius: 9px; }
+            QPushButton#primary { background: #18252b; color: #d7f56b; border: 1px solid #18252b; font-weight: 800; }
+            QPushButton#secondary { background: #ffffff; color: #263238; border: 1px solid #cbd6d0; }
+            QPushButton#ghost { background: transparent; color: #60706d; border: 1px solid #dfe6df; }
+            """
+        )
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(18)
+        layout.setContentsMargins(24, 22, 24, 20)
+
+        header = QHBoxLayout()
+        title = QLabel("Study Timetrial")
+        title.setObjectName("title")
+        version = QLabel(APP_VERSION)
+        version.setObjectName("version")
+        header.addWidget(title)
+        header.addStretch()
+        header.addWidget(version)
+        layout.addLayout(header)
+
+        subtitle = QLabel("Puede crear un archivo nuevo o abrir un registro reciente.")
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        recent_paths = self.application.storage.recent_files.paths
+        recent_list = QListWidget()
+        recent_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        if recent_paths:
+            for path in recent_paths[:5]:
+                if path.exists():
+                    recent_list.addItem(f"{path.name} — {path.parent}")
+        else:
+            recent_list.addItem("No hay archivos recientes todavía")
+            recent_list.setEnabled(False)
+        recent_list.itemDoubleClicked.connect(lambda item: self._handle_initial_choice(dialog, "recent", item.text()))
+        layout.addWidget(recent_list)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(12)
+
+        new_button = QPushButton("Nuevo archivo")
+        new_button.setObjectName("primary")
+        new_button.clicked.connect(lambda: self._handle_initial_choice(dialog, "new"))
+
+        open_button = QPushButton("Abrir archivo")
+        open_button.setObjectName("secondary")
+        open_button.clicked.connect(lambda: self._handle_initial_choice(dialog, "open"))
+
+        cancel_button = QPushButton("Cancelar")
+        cancel_button.setObjectName("ghost")
+        cancel_button.clicked.connect(lambda: self._handle_initial_choice(dialog, "cancel"))
+
+        buttons.addWidget(new_button)
+        buttons.addWidget(open_button)
+        buttons.addStretch()
+        buttons.addWidget(cancel_button)
+        layout.addLayout(buttons)
+
+        dialog.exec()
+
+    def _handle_initial_choice(self, dialog: QDialog, choice: str, recent_label: str | None = None) -> None:
+        """Procesa la opción seleccionada en el diálogo de inicio."""
+        default_name = self.application.record.record_name or "StudyTimetrial"
+
+        if choice == "recent":
+            if recent_label is not None:
+                path_text = recent_label.rsplit(" — ", 1)[0]
+                candidate = Path(path_text)
+                if candidate.exists():
+                    self.application.load(candidate)
+                    self.update_title()
+                    self.refresh_table()
+                    self.refresh_recent_files_menu()
+                    dialog.accept()
+                    return
+            dialog.reject()
+            return
+
+        if choice == "new":
+            name, accepted = QInputDialog.getText(
+                self,
+                "Nuevo archivo",
+                "Nombre del archivo:",
+                QLineEdit.EchoMode.Normal,
+                default_name,
+            )
+            if accepted:
+                self.application.new_record(name.strip() or default_name)
+            else:
+                self.application.new_record(default_name)
+            self.refresh_table()
+            dialog.accept()
+            return
+
+        if choice == "open":
+            dialog.reject()
+            self.open_record()
+            return
+
+        self.application.new_record(default_name)
+        self.refresh_table()
+        dialog.accept()
+
     def update_title(self) -> None:
         """Actualiza el título de la ventana según el archivo de registro abierto."""
         if self.application.is_record_open:
@@ -741,6 +868,43 @@ class MainWindow(QMainWindow):
             self.application.delete_item(item)
             self.refresh_table()
 
+    def refresh_recent_files_menu(self) -> None:
+        """Actualiza el menú de archivos recientes con los últimos registros accesibles."""
+        self.recent_files_menu.clear()
+        recent_paths = self.application.storage.recent_files.paths
+
+        open_action = QAction("Abrir archivo…", self)
+        open_action.triggered.connect(self.open_record)
+        self.recent_files_menu.addAction(open_action)
+
+        if not recent_paths:
+            empty_action = QAction("No hay archivos recientes", self)
+            empty_action.setEnabled(False)
+            self.recent_files_menu.addAction(empty_action)
+            return
+
+        self.recent_files_menu.addSeparator()
+        for path in recent_paths:
+            if not path.exists():
+                continue
+            action = QAction(f"{path.name} — {path.parent}", self)
+            action.triggered.connect(lambda _checked, selected=path: self.open_recent_record(selected))
+            self.recent_files_menu.addAction(action)
+
+    def open_recent_record(self, path: str | Path) -> None:
+        """Abre un archivo reciente desde la lista guardada."""
+        target = Path(path)
+        if not target.exists():
+            QMessageBox.warning(self, "Archivo no encontrado", f"No se pudo abrir: {target}")
+            return
+        try:
+            self.application.load(target)
+            self.update_title()
+            self.refresh_table()
+            self.refresh_recent_files_menu()
+        except (OSError, TypeError, ValueError) as error:
+            QMessageBox.critical(self, "Archivo inválido", str(error))
+
     def open_record(self) -> None:
         """Abre un fichero JSON para cargar un registro existente."""
         if self.application.is_record_open and (self.application.record.items or self.application.mode is not TimerMode.WAITING):
@@ -759,6 +923,7 @@ class MainWindow(QMainWindow):
             self.application.load(Path(path))
             self.update_title()
             self.refresh_table()
+            self.refresh_recent_files_menu()
         except (OSError, TypeError, ValueError) as error:
             QMessageBox.critical(self, "Archivo inválido", str(error))
 
