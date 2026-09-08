@@ -67,6 +67,7 @@ from application.statistics_service import DailyStatistic
 from domain.models import TimerItem
 from domain.timer_service import TimerMode
 from presentation.excel_filter_popup import ExcelColumnFilterPopup
+from presentation.planner_widget import PlannerWidget
 from presentation.presentation_dialogs import ImportRecordsDialog, ItemDialog
 from presentation.presentation_formatters import (
     format_hh_mm,
@@ -216,10 +217,13 @@ class MainWindow(QMainWindow):
         self.home = self.build_home()
         self.records = self.build_records()
         self.statistics = self.build_statistics()
+        self.planner = PlannerWidget(self.application, is_dark_mode=self.is_dark_mode, parent=self)
+        self.planner.request_load_timer.connect(self._on_planner_load_timer)
 
         self.tabs.addTab(self.home, qta.icon("fa5s.stopwatch", color="#bef264"), "  Cronómetro")
         self.tabs.addTab(self.records, qta.icon("fa5s.history", color="#94a3b8"), "  Registros")
         self.tabs.addTab(self.statistics, qta.icon("fa5s.chart-bar", color="#94a3b8"), "  Estadísticas")
+        self.tabs.addTab(self.planner, qta.icon("fa5s.tasks", color="#94a3b8"), "  Planificador")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.build_main_toolbar()
 
@@ -307,6 +311,8 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "weekly_chart"):
             self.weekly_chart.set_dark_mode(theme == THEME_DARK)
+        if hasattr(self, "planner"):
+            self.planner.set_dark_mode(theme == THEME_DARK)
 
         self.update_timer_visual_state()
         self.update_theme_icons()
@@ -360,6 +366,7 @@ class MainWindow(QMainWindow):
             ("fa5s.stopwatch", "  Cronómetro"),
             ("fa5s.history", "  Registros"),
             ("fa5s.chart-bar", "  Estadísticas"),
+            ("fa5s.tasks", "  Planificador"),
         ]
         for i, (icon_name, title) in enumerate(icons):
             color = "#bef264" if i == index else "#94a3b8"
@@ -369,6 +376,8 @@ class MainWindow(QMainWindow):
             self.refresh_table()
         elif index == 2:
             self.refresh_statistics()
+        elif index == 3:
+            self.planner.refresh_view()
 
     def build_main_toolbar(self) -> None:
         """Construye el toolbar principal con las acciones de archivo y vista."""
@@ -1437,12 +1446,20 @@ class MainWindow(QMainWindow):
         self.stat_longest_time.setText(format_hh_mm(stats.longest_exercise_time_ms))
         self.stat_longest_name.setText(stats.longest_exercise_name)
 
-        self.stat_completed_count.setText(f"{stats.completed_unique_exercises} / {stats.total_unique_exercises}")
-        pct_int = int(round(stats.completion_percentage))
-        self.stat_progress_bar.setValue(pct_int)
-        self.stat_completed_note.setText(
-            f"{pct_int}% de ejercicios únicos completados ({stats.completed_unique_exercises} de {stats.total_unique_exercises})"
-        )
+        if stats.has_planner and stats.planned_total_units > 0:
+            self.stat_completed_count.setText(f"{stats.planned_completed_units} / {stats.planned_total_units}")
+            pct_int = int(round(stats.planned_completion_percentage))
+            self.stat_progress_bar.setValue(pct_int)
+            self.stat_completed_note.setText(
+                f"{pct_int}% completado del universo planificado ({stats.planned_completed_units} de {stats.planned_total_units} unidades)"
+            )
+        else:
+            self.stat_completed_count.setText(f"{stats.completed_unique_exercises} / {stats.total_unique_exercises}")
+            pct_int = int(round(stats.completion_percentage))
+            self.stat_progress_bar.setValue(pct_int)
+            self.stat_completed_note.setText(
+                f"{pct_int}% de ejercicios únicos completados ({stats.completed_unique_exercises} de {stats.total_unique_exercises})"
+            )
 
         ex_pct = int(round(stats.exercise_ratio_percentage))
         br_pct = int(round(stats.break_ratio_percentage))
@@ -1461,7 +1478,11 @@ class MainWindow(QMainWindow):
             self.stats_section_table.setItem(row, 0, QTableWidgetItem(sec.section_key))
             self.stats_section_table.setItem(row, 1, QTableWidgetItem(format_hh_mm(sec.exercise_time_ms)))
             self.stats_section_table.setItem(row, 2, QTableWidgetItem(format_hh_mm(sec.break_time_ms)))
-            self.stats_section_table.setItem(row, 3, QTableWidgetItem(f"{sec.completed_unique} / {sec.total_unique}"))
+            if sec.planned_total is not None:
+                comp_display = f"{sec.planned_completed or 0} / {sec.planned_total} ({sec.planned_completion_pct or 0.0:.0f}%)"
+            else:
+                comp_display = f"{sec.completed_unique} / {sec.total_unique}"
+            self.stats_section_table.setItem(row, 3, QTableWidgetItem(comp_display))
             self.stats_section_table.setItem(row, 4, QTableWidgetItem(str(sec.attempts)))
 
     def sync_location(self) -> None:
@@ -1546,17 +1567,79 @@ class MainWindow(QMainWindow):
         if not keep_location and not stop:
             self.sync_location()
 
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
+
         self.refresh_clock()
         self.refresh_table()
 
+    def _check_boundary_permission(self, target_location: SessionLocation) -> bool:
+        """Verifica si la ubicación excede la planificación y muestra aviso interactivo si es necesario."""
+        is_ok, msg = self.application.check_location_boundary(target_location)
+        if is_ok:
+            return True
+
+        from presentation.planner_dialogs import (
+            ACTION_CANCEL,
+            ACTION_CONTINUE,
+            ACTION_GO_PLANNER,
+            BoundaryWarningDialog,
+        )
+
+        dlg = BoundaryWarningDialog(self, msg, is_dark=self.is_dark_mode)
+        dlg.exec()
+        if dlg.result_action == ACTION_GO_PLANNER:
+            self.tabs.setCurrentIndex(3)
+            return False
+        elif dlg.result_action == ACTION_CONTINUE:
+            return True
+        else:
+            return False
+
+    def _on_planner_load_timer(
+        self, section_type: str, section_number: int, exercise: int, inciso: int | None
+    ) -> None:
+        """Carga en el cronómetro la ubicación seleccionada desde el planificador."""
+        if self.application.mode is not TimerMode.WAITING:
+            confirm = QMessageBox.question(
+                self,
+                "Sesión activa en curso",
+                "Hay una sesión activa en el cronómetro. ¿Deseas detenerla para cargar este ejercicio?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+            self.stop_timer()
+
+        self.section_input.setText(section_type)
+        self.section_number_input.setValue(section_number)
+        self.exercise_input.setValue(exercise)
+        self.inciso_input.setValue(inciso or 0)
+        self.sync_location()
+        self.tabs.setCurrentIndex(0)
+
     def next_inciso(self) -> None:
         """Guarda el ejercicio actual y avanza al siguiente inciso."""
+        target_loc = SessionLocation(
+            section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
+            section_number=self.section_number_input.value(),
+            exercise=self.exercise_input.value(),
+            inciso=(self.inciso_input.value() or 0) + 1,
+        )
+        if not self._check_boundary_permission(target_loc):
+            return
+
         was_active = self.application.mode is not TimerMode.WAITING
         if was_active:
             self.play_complete_sound()
         self.application.navigate("next_inciso")
         self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
         if was_active:
             self.set_locked(False)
             self.update_session_button()
@@ -1572,6 +1655,9 @@ class MainWindow(QMainWindow):
                 self.play_complete_sound()
             self.inciso_input.setValue(self.application.location.inciso or 0)
         self.sync_location()
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
         if was_active:
             self.set_locked(False)
             self.update_session_button()
@@ -1581,6 +1667,15 @@ class MainWindow(QMainWindow):
 
     def next_exercise(self) -> None:
         """Guarda el ejercicio y pasa al siguiente ejercicio de la sección."""
+        target_loc = SessionLocation(
+            section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
+            section_number=self.section_number_input.value(),
+            exercise=self.exercise_input.value() + 1,
+            inciso=None,
+        )
+        if not self._check_boundary_permission(target_loc):
+            return
+
         was_active = self.application.mode is not TimerMode.WAITING
         if was_active:
             self.play_complete_sound()
@@ -1588,6 +1683,9 @@ class MainWindow(QMainWindow):
         self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
         self.sync_location()
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
         if was_active:
             self.set_locked(False)
             self.update_session_button()
@@ -1604,6 +1702,9 @@ class MainWindow(QMainWindow):
             self.exercise_input.setValue(self.application.location.exercise)
         self.inciso_input.setValue(0)
         self.sync_location()
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
         if was_active:
             self.set_locked(False)
             self.update_session_button()
@@ -1613,6 +1714,15 @@ class MainWindow(QMainWindow):
 
     def next_section(self) -> None:
         """Guarda el ejercicio actual y avanza a la siguiente sección."""
+        target_loc = SessionLocation(
+            section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
+            section_number=self.section_number_input.value() + 1,
+            exercise=1,
+            inciso=None,
+        )
+        if not self._check_boundary_permission(target_loc):
+            return
+
         was_active = self.application.mode is not TimerMode.WAITING
         if was_active:
             self.play_complete_sound()
@@ -1621,6 +1731,9 @@ class MainWindow(QMainWindow):
         self.exercise_input.setValue(1)
         self.inciso_input.setValue(0)
         self.sync_location()
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
         if was_active:
             self.set_locked(False)
             self.update_session_button()
@@ -1638,6 +1751,9 @@ class MainWindow(QMainWindow):
         self.exercise_input.setValue(1)
         self.inciso_input.setValue(0)
         self.sync_location()
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
         if was_active:
             self.set_locked(False)
             self.update_session_button()
@@ -1897,6 +2013,9 @@ class MainWindow(QMainWindow):
             self.records_summary.setText(f"Mostrando {displayed_count} de {total_items} intento{'s' if total_items != 1 else ''} (filtrado)")
         else:
             self.records_summary.setText(f"{total_items} intento{'s' if total_items != 1 else ''} guardado{'s' if total_items != 1 else ''}")
+
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
 
         # Update KPI cards
         stats = self.application.get_statistics()

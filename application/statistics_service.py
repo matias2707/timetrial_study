@@ -40,6 +40,9 @@ class SectionSummary:
     attempts: int = 0
     completed_unique: int = 0
     total_unique: int = 0
+    planned_total: int | None = None
+    planned_completed: int | None = None
+    planned_completion_pct: float | None = None
 
 
 @dataclass
@@ -60,6 +63,10 @@ class RecordStatistics:
     completed_attempts: int = 0
     daily_stats: list[DailyStatistic] = field(default_factory=list)
     section_summaries: list[SectionSummary] = field(default_factory=list)
+    has_planner: bool = False
+    planned_total_units: int = 0
+    planned_completed_units: int = 0
+    planned_completion_percentage: float = 0.0
 
     @property
     def total_time_ms(self) -> int:
@@ -124,9 +131,38 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             )
             for day in (end_date - timedelta(days=i) for i in range(6, -1, -1))
         ]
+        has_planner = bool(record.planner_sections)
+        planned_total_units = 0
+        planned_completed_units = 0
+        planned_completion_percentage = 0.0
+        empty_section_summaries: list[SectionSummary] = []
+
+        if has_planner:
+            from application.planner_service import PlannerService
+
+            overview = PlannerService.compute_overview(record)
+            planned_total_units = overview.total_units
+            planned_completed_units = overview.completed_units
+            planned_completion_percentage = overview.global_completion_percentage
+            for s in overview.sections:
+                sec_name = f"{s.section.section_type} {s.section.section_number}"
+                empty_section_summaries.append(
+                    SectionSummary(
+                        section_key=sec_name,
+                        planned_total=s.total_units,
+                        planned_completed=s.completed_units,
+                        planned_completion_pct=s.completion_percentage,
+                    )
+                )
+
         return RecordStatistics(
             record_name=record.record_name or "StudyTimetrial",
             daily_stats=seven_days,
+            section_summaries=empty_section_summaries,
+            has_planner=has_planner,
+            planned_total_units=planned_total_units,
+            planned_completed_units=planned_completed_units,
+            planned_completion_percentage=planned_completion_percentage,
         )
 
     total_exercise_time_ms = 0
@@ -222,9 +258,43 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             )
         )
 
-    # Resumen por secciones
+    # Resumen por secciones y cruce con planificador
+    has_planner = bool(record.planner_sections)
+    planned_total_units = 0
+    planned_completed_units = 0
+    planned_completion_percentage = 0.0
+    planned_sec_map = {}
+
+    if has_planner:
+        from application.planner_service import PlannerService
+
+        overview = PlannerService.compute_overview(record)
+        planned_total_units = overview.total_units
+        planned_completed_units = overview.completed_units
+        planned_completion_percentage = overview.global_completion_percentage
+        for s in overview.sections:
+            k = f"{s.section.section_type} {s.section.section_number}"
+            planned_sec_map[k] = s
+
     section_summaries: list[SectionSummary] = []
-    for sec_name, sec_data in sorted(sections_map.items()):
+    all_sec_keys = sorted(set(sections_map.keys()) | set(planned_sec_map.keys()))
+
+    for sec_name in all_sec_keys:
+        sec_data = sections_map.get(
+            sec_name,
+            {
+                "exercise_time_ms": 0,
+                "break_time_ms": 0,
+                "attempts": 0,
+                "unique_exercises": set(),
+                "completed_unique": set(),
+            },
+        )
+        p_sec = planned_sec_map.get(sec_name)
+        p_tot = p_sec.total_units if p_sec else None
+        p_comp = p_sec.completed_units if p_sec else None
+        p_pct = p_sec.completion_percentage if p_sec else None
+
         section_summaries.append(
             SectionSummary(
                 section_key=sec_name,
@@ -233,6 +303,9 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
                 attempts=sec_data["attempts"],
                 completed_unique=len(sec_data["completed_unique"]),
                 total_unique=len(sec_data["unique_exercises"]),
+                planned_total=p_tot,
+                planned_completed=p_comp,
+                planned_completion_pct=p_pct,
             )
         )
 
@@ -251,4 +324,8 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
         completed_attempts=completed_attempts,
         daily_stats=seven_days,
         section_summaries=section_summaries,
+        has_planner=has_planner,
+        planned_total_units=planned_total_units,
+        planned_completed_units=planned_completed_units,
+        planned_completion_percentage=planned_completion_percentage,
     )
