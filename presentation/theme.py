@@ -612,6 +612,124 @@ def get_theme_stylesheet(theme: str) -> str:
         QCheckBox {
             color: #f1f5f9;
         }
+
+        /* Filters and Sorting Panel */
+        QFrame#filter_panel {
+            background: #0b1120;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 6px 12px;
+        }
+        QLabel#filter_label {
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        QComboBox {
+            background: #111827;
+            color: #e2e8f0;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 12px;
+            min-height: 22px;
+        }
+        QComboBox:hover {
+            border-color: #334155;
+            background: #1a2234;
+        }
+        QComboBox:focus {
+            border-color: #bef264;
+        }
+        QComboBox::drop-down {
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 20px;
+            border-left: none;
+        }
+        QComboBox QAbstractItemView {
+            background: #0f172a;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            selection-background-color: #1e293b;
+            selection-color: #bef264;
+            padding: 4px;
+            outline: none;
+        }
+        QPushButton#filter_reset_btn {
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        QPushButton#filter_reset_btn:hover {
+            background: #334155;
+            color: #f8fafc;
+            border-color: #64748b;
+        }
+        QPushButton#sort_dir_btn {
+            background: #1e293b;
+            color: #bef264;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-weight: 800;
+            min-width: 28px;
+        }
+        QPushButton#sort_dir_btn:hover {
+            background: #273549;
+            border-color: #bef264;
+        }
+
+        /* Excel Filter Popup */
+        QDialog#excelFilterPopup {
+            background: #0d121f;
+            border: 1px solid #334155;
+            border-radius: 10px;
+        }
+        QLabel#filter_popup_title {
+            color: #bef264;
+            font-size: 13px;
+            font-weight: 800;
+        }
+        QPushButton#filter_sort_btn {
+            background: #111827;
+            color: #e2e8f0;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            text-align: left;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        QPushButton#filter_sort_btn:hover {
+            background: #1e293b;
+            border-color: #3b82f6;
+            color: #ffffff;
+        }
+        QFrame#filter_sep {
+            color: #1e293b;
+            background-color: #1e293b;
+            height: 1px;
+            border: none;
+        }
+        QListWidget#excelFilterList {
+            background: #090d16;
+            color: #f1f5f9;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+        }
+        QListWidget#excelFilterList::item {
+            padding: 4px 6px;
+            border-radius: 4px;
+        }
+        QListWidget#excelFilterList::item:hover {
+            background: #1e293b;
+        }
         """
 
     # --- MODO CLARO (Default / Classic) ---
@@ -1213,6 +1331,124 @@ def get_theme_stylesheet(theme: str) -> str:
         }
         QCheckBox {
             color: #0f172a;
+        }
+
+        /* Filters and Sorting Panel */
+        QFrame#filter_panel {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 6px 12px;
+        }
+        QLabel#filter_label {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        QComboBox {
+            background: #ffffff;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 12px;
+            min-height: 22px;
+        }
+        QComboBox:hover {
+            border-color: #94a3b8;
+            background: #f8fafc;
+        }
+        QComboBox:focus {
+            border-color: #65a30d;
+        }
+        QComboBox::drop-down {
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 20px;
+            border-left: none;
+        }
+        QComboBox QAbstractItemView {
+            background: #ffffff;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+            selection-background-color: #f1f5f9;
+            selection-color: #0f172a;
+            padding: 4px;
+            outline: none;
+        }
+        QPushButton#filter_reset_btn {
+            background: #f1f5f9;
+            color: #64748b;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        QPushButton#filter_reset_btn:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+            border-color: #94a3b8;
+        }
+        QPushButton#sort_dir_btn {
+            background: #f1f5f9;
+            color: #4d7c0f;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-weight: 800;
+            min-width: 28px;
+        }
+        QPushButton#sort_dir_btn:hover {
+            background: #e2e8f0;
+            border-color: #65a30d;
+        }
+
+        /* Excel Filter Popup */
+        QDialog#excelFilterPopup {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+        }
+        QLabel#filter_popup_title {
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 800;
+        }
+        QPushButton#filter_sort_btn {
+            background: #f8fafc;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            text-align: left;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        QPushButton#filter_sort_btn:hover {
+            background: #f1f5f9;
+            border-color: #3b82f6;
+            color: #0f172a;
+        }
+        QFrame#filter_sep {
+            color: #e2e8f0;
+            background-color: #e2e8f0;
+            height: 1px;
+            border: none;
+        }
+        QListWidget#excelFilterList {
+            background: #ffffff;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+        }
+        QListWidget#excelFilterList::item {
+            padding: 4px 6px;
+            border-radius: 4px;
+        }
+        QListWidget#excelFilterList::item:hover {
+            background: #f1f5f9;
         }
         """
 

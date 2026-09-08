@@ -6,6 +6,7 @@ de persistencia ni construye directamente el formato de los datos guardados.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QRectF, QSettings, QTimer, QUrl, Qt
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
     QBoxLayout,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -45,8 +47,26 @@ from PySide6.QtWidgets import (
 import qtawesome as qta
 
 from application.application_service import SessionLocation, StudyApplicationService
+from application.record_query import (
+    COL_BREAK,
+    COL_COMMENT,
+    COL_DATE,
+    COL_EXERCISE,
+    COL_INCISO,
+    COL_SECTION,
+    COL_STATUS,
+    COL_TIME,
+    COLUMN_TITLES,
+    ColumnFilterRule,
+    apply_column_filters_and_sort,
+    format_item_datetime,
+    get_column_display_value,
+    get_column_unique_values,
+)
 from application.statistics_service import DailyStatistic
+from domain.models import TimerItem
 from domain.timer_service import TimerMode
+from presentation.excel_filter_popup import ExcelColumnFilterPopup
 from presentation.presentation_dialogs import ImportRecordsDialog, ItemDialog
 from presentation.presentation_formatters import (
     format_hh_mm,
@@ -178,6 +198,20 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
+
+        self.column_sort_states: dict[str, str] = {}
+        self.column_filter_rules: dict[str, ColumnFilterRule] = {}
+        self._current_displayed_items: list[TimerItem] = []
+        self.LOGICAL_COL_KEYS = {
+            0: COL_SECTION,
+            1: COL_EXERCISE,
+            2: COL_INCISO,
+            3: COL_DATE,
+            4: COL_BREAK,
+            5: COL_TIME,
+            6: COL_STATUS,
+            7: COL_COMMENT,
+        }
 
         self.home = self.build_home()
         self.records = self.build_records()
@@ -1007,32 +1041,44 @@ class MainWindow(QMainWindow):
         add_btn.clicked.connect(self.add_item)
         toolbar.addWidget(add_btn)
 
+        # Botón para limpiar todos los filtros activos
+        self.clear_all_filters_btn = QPushButton(" Limpiar filtros")
+        self.clear_all_filters_btn.setObjectName("filter_reset_btn")
+        self.clear_all_filters_btn.setIcon(qta.icon("fa5s.filter", color="#94a3b8"))
+        self.clear_all_filters_btn.setToolTip("Restablecer todos los filtros y órdenes de columna")
+        self.clear_all_filters_btn.clicked.connect(self.reset_all_filters)
+        self.clear_all_filters_btn.setVisible(False)
+        toolbar.addWidget(self.clear_all_filters_btn)
+
         layout.addLayout(toolbar)
 
-        # Table
-        self.table = QTableWidget(0, 11)
-        self.table.setHorizontalHeaderLabels([
-            "Sección",
-            "Ejercicio",
-            "Inciso",
-            "Receso",
-            "Tiempo",
-            "Estado",
-            "Comentario",
-            "💬",
-            "✏️",
-            "🔄",
-            "🗑️",
-        ])
+        # Table (12 columnas incluyendo Fecha visible y cabeceras interactivas estilo Excel)
+        self.table = QTableWidget(0, 12)
         header = self.table.horizontalHeader()
+
+        # Permitir arrastrar columnas para definir la jerarquía (la más a la izquierda tiene mayor jerarquía)
+        header.setSectionsMovable(True)
+        header.setDragEnabled(True)
+        header.setDropIndicatorShown(True)
+        header.setSortIndicatorShown(False)
+        header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+
+        # Conectar eventos de cabecera
+        header.sectionClicked.connect(self._on_header_section_clicked)
+        header.customContextMenuRequested.connect(self._on_header_context_menu)
+        header.sectionMoved.connect(self._on_column_moved)
+
+        self.update_header_labels()
+
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
-        for col in (7, 8, 9, 10):
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        for col in (8, 9, 10, 11):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
             self.table.setColumnWidth(col, 48)
 
@@ -1044,20 +1090,138 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.table)
         return page
 
-    def filter_records_table(self, query: str) -> None:
-        """Filtra en tiempo real las filas de la tabla según el texto ingresado."""
-        query = query.strip().lower()
-        for row in range(self.table.rowCount()):
-            if not query:
-                self.table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in (0, 1, 2, 6):
-                item = self.table.item(row, col)
-                if item and query in item.text().lower():
-                    match = True
-                    break
-            self.table.setRowHidden(row, not match)
+    def update_header_labels(self) -> None:
+        """Actualiza los títulos de las cabeceras mostrando flecha de orden y filtro activo."""
+        labels = []
+        for col_idx in range(8):
+            col_key = self.LOGICAL_COL_KEYS[col_idx]
+            title = COLUMN_TITLES.get(col_key, col_key.capitalize())
+
+            # Indicador de orden (▲ o ▼, sin números ya que la posición física define la jerarquía)
+            sort_dir = self.column_sort_states.get(col_key)
+            arrow = ""
+            if sort_dir == "asc":
+                arrow = " ▲"
+            elif sort_dir == "desc":
+                arrow = " ▼"
+
+            # Indicador de filtro activo
+            filter_rule = self.column_filter_rules.get(col_key)
+            filter_icon = " 🔍" if (filter_rule and filter_rule.is_active()) else ""
+            labels.append(f"{title}{arrow}{filter_icon}")
+
+        # Columnas de acción fijas
+        labels.extend(["💬", "✏️", "🔄", "🗑️"])
+        self.table.setHorizontalHeaderLabels(labels)
+
+    def get_active_sorts_by_hierarchy(self) -> list[tuple[str, str]]:
+        """Devuelve las tuplas (col_key, direction) ordenadas por su posición visual (de izquierda a derecha)."""
+        active: list[tuple[int, str, str]] = []
+        header = self.table.horizontalHeader()
+
+        for logical_index, col_key in self.LOGICAL_COL_KEYS.items():
+            direction = self.column_sort_states.get(col_key)
+            if direction in ("asc", "desc"):
+                visual_index = header.visualIndex(logical_index)
+                active.append((visual_index, col_key, direction))
+
+        # La columna con menor visual_index (más a la izquierda) tiene la jerarquía dominante
+        active.sort(key=lambda item: item[0])
+        return [(col_key, direction) for _, col_key, direction in active]
+
+    def _on_header_section_clicked(self, logical_index: int) -> None:
+        """Ciclo de 3 clics en cabecera: Ascendente -> Descendente -> Sin orden."""
+        if logical_index not in self.LOGICAL_COL_KEYS:
+            return
+
+        col_key = self.LOGICAL_COL_KEYS[logical_index]
+        current_direction = self.column_sort_states.get(col_key)
+
+        if current_direction is None:
+            # 1° Clic: Ascendente
+            self.column_sort_states[col_key] = "asc"
+        elif current_direction == "asc":
+            # 2° Clic: Descendente
+            self.column_sort_states[col_key] = "desc"
+        else:
+            # 3° Clic: Quitar orden
+            self.column_sort_states.pop(col_key, None)
+
+        self.update_header_labels()
+        self.refresh_table()
+
+    def _on_column_moved(self, logical_index: int, old_visual_index: int, new_visual_index: int) -> None:
+        """Al arrastrar y soltar columnas, se recalcula la jerarquía de izquierda a derecha."""
+        self.refresh_table()
+
+    def _on_header_context_menu(self, pos) -> None:
+        """Abre el diálogo de filtro estilo Excel al hacer clic derecho en la cabecera."""
+        header = self.table.horizontalHeader()
+        logical_index = header.logicalIndexAt(pos)
+        if logical_index not in self.LOGICAL_COL_KEYS:
+            return
+
+        col_key = self.LOGICAL_COL_KEYS[logical_index]
+        self.open_excel_filter_popup(logical_index, col_key)
+
+    def open_excel_filter_popup(self, logical_index: int, col_key: str) -> None:
+        """Construye y posiciona el popup de filtro de Excel para la columna dada."""
+        all_items = self.application.record.items
+        current_rule = self.column_filter_rules.get(col_key)
+        current_sort = self.column_sort_states.get(col_key)
+
+        popup = ExcelColumnFilterPopup(
+            column_key=col_key,
+            items=all_items,
+            current_rule=current_rule,
+            current_sort_direction=current_sort,
+            parent=self,
+        )
+        popup.filter_applied.connect(self._on_popup_filter_applied)
+        popup.sort_requested.connect(self._on_popup_sort_requested)
+
+        # Posicionar el popup justo debajo del cabezal de la columna
+        header = self.table.horizontalHeader()
+        section_viewport_x = header.sectionViewportPosition(logical_index)
+        global_pos = self.table.mapToGlobal(self.table.rect().topLeft())
+        popup_x = max(20, global_pos.x() + section_viewport_x)
+        popup_y = header.mapToGlobal(header.rect().bottomLeft()).y() + 2
+
+        popup.move(popup_x, popup_y)
+        popup.exec()
+
+    def _on_popup_filter_applied(self, col_key: str, rule: ColumnFilterRule) -> None:
+        """Recibe la regla de filtro desde el popup de Excel."""
+        if rule.is_active():
+            self.column_filter_rules[col_key] = rule
+        else:
+            self.column_filter_rules.pop(col_key, None)
+
+        self.update_header_labels()
+        self.refresh_table()
+
+    def _on_popup_sort_requested(self, col_key: str, direction: str) -> None:
+        """Aplica la dirección de orden solicitada desde el popup de Excel."""
+        if direction in ("asc", "desc"):
+            self.column_sort_states[col_key] = direction
+        else:
+            self.column_sort_states.pop(col_key, None)
+
+        self.update_header_labels()
+        self.refresh_table()
+
+    def reset_all_filters(self) -> None:
+        """Restablece todos los filtros de columna y búsqueda textual."""
+        self.column_filter_rules.clear()
+        self.column_sort_states.clear()
+        if hasattr(self, "record_search_input"):
+            self.record_search_input.clear()
+        self.update_header_labels()
+        self.refresh_table()
+
+    def filter_records_table(self, _query: str = "") -> None:
+        """Filtra en tiempo real la tabla según la búsqueda y filtros activos."""
+        self.refresh_table()
 
     def build_statistics(self) -> QWidget:
         """Construye la vista de análisis y estadísticas del registro activo."""
@@ -1699,11 +1863,40 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"{APP_TITLE} - {name}")
 
     def refresh_table(self) -> None:
-        """Vuelca a pintar la tabla con los registros ordenados por fecha."""
+        """Vuelca a pintar la tabla con los registros filtrados y ordenados estilo Excel."""
+        all_items = self.application.record.items
+        active_sorts = self.get_active_sorts_by_hierarchy()
+        search_text = self.record_search_input.text() if hasattr(self, "record_search_input") else ""
+
+        # Construir mapa de valores posibles para cada columna
+        all_col_values = {}
+        for col_key in self.LOGICAL_COL_KEYS.values():
+            all_col_values[col_key] = {val for val, _ in get_column_unique_values(all_items, col_key)}
+
+        self._current_displayed_items = apply_column_filters_and_sort(
+            all_items,
+            column_filters=self.column_filter_rules,
+            active_sorts_ordered=active_sorts,
+            global_query=search_text,
+            all_column_values_map=all_col_values,
+        )
+
         self.table.setRowCount(0)
-        ordered_items = self.application.ordered_items()
-        total_items = len(ordered_items)
-        self.records_summary.setText(f"{total_items} intento{'s' if total_items != 1 else ''} guardado{'s' if total_items != 1 else ''}")
+        total_items = len(all_items)
+        displayed_count = len(self._current_displayed_items)
+
+        has_active_filters = (
+            any(rule.is_active(all_col_values.get(k)) for k, rule in self.column_filter_rules.items())
+            or bool(self.column_sort_states)
+            or bool(search_text.strip())
+        )
+        if hasattr(self, "clear_all_filters_btn"):
+            self.clear_all_filters_btn.setVisible(has_active_filters)
+
+        if displayed_count != total_items:
+            self.records_summary.setText(f"Mostrando {displayed_count} de {total_items} intento{'s' if total_items != 1 else ''} (filtrado)")
+        else:
+            self.records_summary.setText(f"{total_items} intento{'s' if total_items != 1 else ''} guardado{'s' if total_items != 1 else ''}")
 
         # Update KPI cards
         stats = self.application.get_statistics()
@@ -1714,7 +1907,7 @@ class MainWindow(QMainWindow):
             eff_pct = int(round((stats.completed_attempts / stats.total_attempts * 100.0))) if stats.total_attempts else 0
             self.rec_stat_effectiveness.setText(f"{eff_pct}%")
 
-        for index, item in enumerate(ordered_items):
+        for index, item in enumerate(self._current_displayed_items):
             self.table.insertRow(index)
             self.table.setRowHeight(index, 38)
 
@@ -1731,70 +1924,78 @@ class MainWindow(QMainWindow):
             inc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(index, 2, inc_item)
 
+            # Columna 3: Fecha
+            try:
+                dt_obj = datetime.fromisoformat(item.created_at)
+                date_str = dt_obj.strftime("%Y-%m-%d %H:%M")
+            except (ValueError, TypeError):
+                date_str = item.created_at[:16] if len(item.created_at) >= 16 else item.created_at
+            date_item = QTableWidgetItem(date_str)
+            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(index, 3, date_item)
+
             br_item = QTableWidgetItem(format_milliseconds(item.break_time_ms))
             br_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(index, 3, br_item)
+            self.table.setItem(index, 4, br_item)
 
             t_item = QTableWidgetItem(format_milliseconds(item.exercise_time_ms))
             t_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(index, 4, t_item)
+            self.table.setItem(index, 5, t_item)
 
-            # Estado badge
+            # Columna 6: Estado badge
             status_badge = QLabel("✓ Completado" if item.completed else "✕ Incompleto")
             status_badge.setObjectName("table_badge_completed" if item.completed else "table_badge_incomplete")
             status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setCellWidget(index, 5, status_badge)
+            self.table.setCellWidget(index, 6, status_badge)
 
-            # Comentario
+            # Columna 7: Comentario
             comm_item = QTableWidgetItem(item.comment)
             comm_item.setToolTip(item.comment or "Sin comentario")
-            self.table.setItem(index, 6, comm_item)
+            self.table.setItem(index, 7, comm_item)
 
             # Botones de acción compactos con iconos y tooltips
             comm_btn = QPushButton()
             comm_btn.setIcon(qta.icon("fa5s.comment-dots", color="#3b82f6"))
             comm_btn.setObjectName("table_action_icon")
             comm_btn.setToolTip("Comentar registro")
-            comm_btn.clicked.connect(lambda _, r=index: self.comment_item(r))
-            self.table.setCellWidget(index, 7, comm_btn)
+            comm_btn.clicked.connect(lambda _, it=item: self.comment_item(it))
+            self.table.setCellWidget(index, 8, comm_btn)
 
             edit_btn = QPushButton()
             edit_btn.setIcon(qta.icon("fa5s.edit", color="#6366f1"))
             edit_btn.setObjectName("table_action_icon")
             edit_btn.setToolTip("Editar registro")
-            edit_btn.clicked.connect(lambda _, r=index: self.edit_item(r))
-            self.table.setCellWidget(index, 8, edit_btn)
+            edit_btn.clicked.connect(lambda _, it=item: self.edit_item(it))
+            self.table.setCellWidget(index, 9, edit_btn)
 
             reset_btn = QPushButton()
             reset_btn.setIcon(qta.icon("fa5s.redo-alt", color="#f59e0b"))
             reset_btn.setObjectName("table_action_icon")
             reset_btn.setToolTip("Reiniciar tiempo")
-            reset_btn.clicked.connect(lambda _, r=index: self.reset_item(r))
-            self.table.setCellWidget(index, 9, reset_btn)
+            reset_btn.clicked.connect(lambda _, it=item: self.reset_item(it))
+            self.table.setCellWidget(index, 10, reset_btn)
 
             del_btn = QPushButton()
             del_btn.setIcon(qta.icon("fa5s.trash-alt", color="#ef4444"))
             del_btn.setObjectName("table_delete_icon")
             del_btn.setToolTip("Eliminar registro")
-            del_btn.clicked.connect(lambda _, r=index: self.delete_item(r))
-            self.table.setCellWidget(index, 10, del_btn)
-
-        if hasattr(self, "record_search_input") and self.record_search_input.text():
-            self.filter_records_table(self.record_search_input.text())
+            del_btn.clicked.connect(lambda _, it=item: self.delete_item(it))
+            self.table.setCellWidget(index, 11, del_btn)
 
         self.refresh_statistics()
 
     def show_comment_alert(self, row: int, column: int) -> None:
         """Muestra el comentario completo al hacer click en su celda."""
-        if column != 6:
+        if column != 7:
             return
 
-        item = self.application.ordered_items()[row]
-        QMessageBox.information(
-            self,
-            "Comentario del registro",
-            item.comment or "Este registro no tiene comentario.",
-        )
+        if row < len(self._current_displayed_items):
+            item = self._current_displayed_items[row]
+            QMessageBox.information(
+                self,
+                "Comentario del registro",
+                item.comment or "Este registro no tiene comentario.",
+            )
 
     def add_home_comment(self) -> None:
         """Captura el comentario que se guardará al finalizar el intento actual."""
@@ -1816,9 +2017,12 @@ class MainWindow(QMainWindow):
                 self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
             self.status_label.setText("Comentario preparado para el próximo registro")
 
-    def comment_item(self, row: int) -> None:
+    def comment_item(self, target: int | TimerItem) -> None:
         """Agrega o edita el comentario de un registro existente."""
-        item = self.application.ordered_items()[row]
+        item = target if isinstance(target, TimerItem) else (
+            self._current_displayed_items[target] if target < len(self._current_displayed_items)
+            else self.application.ordered_items()[target]
+        )
         comment, accepted = QInputDialog.getMultiLineText(
             self,
             "Comentario del registro",
@@ -1837,18 +2041,24 @@ class MainWindow(QMainWindow):
                 self.application.add_item(dialog.validated_item)
             self.refresh_table()
 
-    def edit_item(self, row: int) -> None:
-        """Edita un item existente en la fila indicada."""
-        item = self.application.ordered_items()[row]
+    def edit_item(self, target: int | TimerItem) -> None:
+        """Edita un item existente."""
+        item = target if isinstance(target, TimerItem) else (
+            self._current_displayed_items[target] if target < len(self._current_displayed_items)
+            else self.application.ordered_items()[target]
+        )
         dialog = ItemDialog(self, item)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             if dialog.validated_item is not None:
                 self.application.replace_item(item, dialog.validated_item)
             self.refresh_table()
 
-    def reset_item(self, row: int) -> None:
+    def reset_item(self, target: int | TimerItem) -> None:
         """Reinicia el tiempo de un item concreto."""
-        item = self.application.ordered_items()[row]
+        item = target if isinstance(target, TimerItem) else (
+            self._current_displayed_items[target] if target < len(self._current_displayed_items)
+            else self.application.ordered_items()[target]
+        )
         if QMessageBox.question(
             self,
             "Confirmar reset",
@@ -1857,9 +2067,12 @@ class MainWindow(QMainWindow):
             self.application.reset_item(item)
             self.refresh_table()
 
-    def delete_item(self, row: int) -> None:
+    def delete_item(self, target: int | TimerItem) -> None:
         """Elimina un item concreto tras confirmar la acción."""
-        item = self.application.ordered_items()[row]
+        item = target if isinstance(target, TimerItem) else (
+            self._current_displayed_items[target] if target < len(self._current_displayed_items)
+            else self.application.ordered_items()[target]
+        )
         if QMessageBox.question(
             self,
             "Confirmar eliminación",
