@@ -281,7 +281,7 @@ class PlannedSectionCard(QFrame):
         prog_h.addWidget(prog_bar, 1)
 
         lbl_progress = QLabel(
-            f"{sec_status.completed_units} / {sec_status.total_units} hechos ({sec_status.completion_percentage:.1f}%)"
+            f"{sec_status.completed_display} / {sec_status.total_units} hechos ({sec_status.completion_percentage:.1f}%)"
         )
         lbl_progress.setStyleSheet("font-size: 11px; font-weight: 600; color: #94a3b8;")
         prog_h.addWidget(lbl_progress)
@@ -500,11 +500,11 @@ class PlannerWidget(QWidget):
 
         # Actualizar chips globales
         self._update_stat_badge("total_planificado", f"{overview.total_units}")
-        self._update_stat_badge("hechos", f"{overview.completed_units}")
+        self._update_stat_badge("hechos", f"{overview.completed_display}")
         self._update_stat_badge("en_dificultad", f"{overview.failed_units}")
         self._update_stat_badge("pendientes", f"{overview.pending_units}")
 
-        pct = int(overview.global_completion_percentage)
+        pct = int(round(overview.global_completion_percentage))
         self.global_progress_bar.setValue(pct)
         self.global_progress_bar.setFormat(f"{overview.global_completion_percentage:.1f}%")
 

@@ -1447,11 +1447,12 @@ class MainWindow(QMainWindow):
         self.stat_longest_name.setText(stats.longest_exercise_name)
 
         if stats.has_planner and stats.planned_total_units > 0:
-            self.stat_completed_count.setText(f"{stats.planned_completed_units} / {stats.planned_total_units}")
+            comp_display = stats.planned_completed_display
+            self.stat_completed_count.setText(f"{comp_display} / {stats.planned_total_units}")
             pct_int = int(round(stats.planned_completion_percentage))
             self.stat_progress_bar.setValue(pct_int)
             self.stat_completed_note.setText(
-                f"{pct_int}% completado del universo planificado ({stats.planned_completed_units} de {stats.planned_total_units} unidades)"
+                f"{pct_int}% completado del universo planificado ({comp_display} de {stats.planned_total_units} ejercicios)"
             )
         else:
             self.stat_completed_count.setText(f"{stats.completed_unique_exercises} / {stats.total_unique_exercises}")
@@ -1479,7 +1480,7 @@ class MainWindow(QMainWindow):
             self.stats_section_table.setItem(row, 1, QTableWidgetItem(format_hh_mm(sec.exercise_time_ms)))
             self.stats_section_table.setItem(row, 2, QTableWidgetItem(format_hh_mm(sec.break_time_ms)))
             if sec.planned_total is not None:
-                comp_display = f"{sec.planned_completed or 0} / {sec.planned_total} ({sec.planned_completion_pct or 0.0:.0f}%)"
+                comp_display = f"{sec.planned_completed_display} / {sec.planned_total} ({sec.planned_completion_pct or 0.0:.0f}%)"
             else:
                 comp_display = f"{sec.completed_unique} / {sec.total_unique}"
             self.stats_section_table.setItem(row, 3, QTableWidgetItem(comp_display))

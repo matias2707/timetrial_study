@@ -56,15 +56,21 @@ class TestStatisticsWithPlanner(unittest.TestCase):
 
         stats = compute_statistics(rec)
         self.assertTrue(stats.has_planner)
-        self.assertEqual(stats.planned_total_units, 5)
-        self.assertEqual(stats.planned_completed_units, 2)
-        self.assertAlmostEqual(stats.planned_completion_percentage, 40.0)
+        # Total units es total_exercises = 4
+        self.assertEqual(stats.planned_total_units, 4)
+        # Ej 1 completo (1.0) + Ej 2.1 completo (0.5) = 1.5 de peso
+        self.assertEqual(stats.planned_completed_units, 1)  # 1 ejercicio 100% completo
+        self.assertEqual(stats.planned_completed_weight, 1.5)
+        self.assertEqual(stats.planned_completed_display, "1.5")
+        self.assertAlmostEqual(stats.planned_completion_percentage, 37.5)
 
         sec_sum = stats.section_summaries[0]
         self.assertEqual(sec_sum.section_key, "Guía 2")
-        self.assertEqual(sec_sum.planned_total, 5)
-        self.assertEqual(sec_sum.planned_completed, 2)
-        self.assertAlmostEqual(sec_sum.planned_completion_pct, 40.0)
+        self.assertEqual(sec_sum.planned_total, 4)
+        self.assertEqual(sec_sum.planned_completed, 1)
+        self.assertEqual(sec_sum.planned_completed_weight, 1.5)
+        self.assertEqual(sec_sum.planned_completed_display, "1.5")
+        self.assertAlmostEqual(sec_sum.planned_completion_pct, 37.5)
 
 
 if __name__ == "__main__":

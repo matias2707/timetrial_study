@@ -62,6 +62,7 @@ class PlannedSectionStatus:
     completed_units: int = 0
     failed_units: int = 0
     pending_units: int = 0
+    completed_weight: float = 0.0
     total_exercise_time_ms: int = 0
     total_break_time_ms: int = 0
     exercise_nodes: list[ExerciseNodeStatus] = field(default_factory=list)
@@ -74,7 +75,14 @@ class PlannedSectionStatus:
     def completion_percentage(self) -> float:
         if self.total_units == 0:
             return 0.0
-        return (self.completed_units / self.total_units) * 100.0
+        return (self.completed_weight / self.total_units) * 100.0
+
+    @property
+    def completed_display(self) -> str:
+        """Representación amigable del progreso completado (ej: '2' o '1.5')."""
+        if self.completed_weight.is_integer():
+            return str(int(self.completed_weight))
+        return f"{self.completed_weight:.1f}".rstrip("0").rstrip(".")
 
 
 @dataclass
@@ -86,12 +94,20 @@ class PlannerOverview:
     completed_units: int = 0
     failed_units: int = 0
     pending_units: int = 0
+    completed_weight: float = 0.0
 
     @property
     def global_completion_percentage(self) -> float:
         if self.total_units == 0:
             return 0.0
-        return (self.completed_units / self.total_units) * 100.0
+        return (self.completed_weight / self.total_units) * 100.0
+
+    @property
+    def completed_display(self) -> str:
+        """Representación amigable del total completado global."""
+        if self.completed_weight.is_integer():
+            return str(int(self.completed_weight))
+        return f"{self.completed_weight:.1f}".rstrip("0").rstrip(".")
 
 
 class PlannerService:
@@ -201,14 +217,16 @@ class PlannerService:
         overview_sections: list[PlannedSectionStatus] = []
         global_total_units = 0
         global_completed_units = 0
+        global_completed_weight = 0.0
         global_failed_units = 0
         global_pending_units = 0
 
         for sec in sorted_sections:
             sec_type = sec.section_type.strip()
             nodes: list[ExerciseNodeStatus] = []
-            sec_units = 0
-            sec_completed = 0
+            sec_units = sec.total_exercises
+            sec_completed_weight = 0.0
+            sec_completed_full = 0
             sec_failed = 0
             sec_pending = 0
             sec_ex_time = 0
@@ -248,24 +266,27 @@ class PlannerService:
                         if sub_node.comments:
                             node_comments.extend(sub_node.comments)
 
-                        sec_units += 1
                         if sub_node.status == STATUS_COMPLETED:
                             sub_completed_count += 1
-                            sec_completed += 1
                         elif sub_node.status == STATUS_FAILED:
                             sub_failed_count += 1
-                            sec_failed += 1
                         else:
                             sub_pending_count += 1
-                            sec_pending += 1
+
+                    # Ponderación del ejercicio: el ejercicio completo pesa 1 unidad
+                    # Cada inciso aporta 1.0 / incisos_count a su avance
+                    sec_completed_weight += sub_completed_count / incisos_count
 
                     # Estado del ejercicio padre:
                     if sub_completed_count == incisos_count:
                         parent_status = STATUS_COMPLETED
+                        sec_completed_full += 1
                     elif sub_failed_count > 0 or (node_attempts > 0 and sub_completed_count < incisos_count):
                         parent_status = STATUS_FAILED
+                        sec_failed += 1
                     else:
                         parent_status = STATUS_PENDING
+                        sec_pending += 1
 
                     parent_node = ExerciseNodeStatus(
                         section_type=sec_type,
@@ -298,12 +319,12 @@ class PlannerService:
                     )
                     nodes.append(single_node)
 
-                    sec_units += 1
                     sec_ex_time += single_node.exercise_time_ms
                     sec_br_time += single_node.break_time_ms
 
                     if single_node.status == STATUS_COMPLETED:
-                        sec_completed += 1
+                        sec_completed_weight += 1.0
+                        sec_completed_full += 1
                     elif single_node.status == STATUS_FAILED:
                         sec_failed += 1
                     else:
@@ -312,7 +333,8 @@ class PlannerService:
             sec_status = PlannedSectionStatus(
                 section=sec,
                 total_units=sec_units,
-                completed_units=sec_completed,
+                completed_units=sec_completed_full,
+                completed_weight=sec_completed_weight,
                 failed_units=sec_failed,
                 pending_units=sec_pending,
                 total_exercise_time_ms=sec_ex_time,
@@ -322,7 +344,8 @@ class PlannerService:
             overview_sections.append(sec_status)
 
             global_total_units += sec_units
-            global_completed_units += sec_completed
+            global_completed_units += sec_completed_full
+            global_completed_weight += sec_completed_weight
             global_failed_units += sec_failed
             global_pending_units += sec_pending
 
@@ -330,6 +353,7 @@ class PlannerService:
             sections=overview_sections,
             total_units=global_total_units,
             completed_units=global_completed_units,
+            completed_weight=global_completed_weight,
             failed_units=global_failed_units,
             pending_units=global_pending_units,
         )

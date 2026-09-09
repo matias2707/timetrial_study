@@ -42,7 +42,18 @@ class SectionSummary:
     total_unique: int = 0
     planned_total: int | None = None
     planned_completed: int | None = None
+    planned_completed_weight: float | None = None
     planned_completion_pct: float | None = None
+
+    @property
+    def planned_completed_display(self) -> str:
+        if self.planned_completed_weight is not None:
+            if self.planned_completed_weight.is_integer():
+                return str(int(self.planned_completed_weight))
+            return f"{self.planned_completed_weight:.1f}".rstrip("0").rstrip(".")
+        if self.planned_completed is not None:
+            return str(self.planned_completed)
+        return "0"
 
 
 @dataclass
@@ -66,7 +77,14 @@ class RecordStatistics:
     has_planner: bool = False
     planned_total_units: int = 0
     planned_completed_units: int = 0
+    planned_completed_weight: float = 0.0
     planned_completion_percentage: float = 0.0
+
+    @property
+    def planned_completed_display(self) -> str:
+        if self.planned_completed_weight.is_integer():
+            return str(int(self.planned_completed_weight))
+        return f"{self.planned_completed_weight:.1f}".rstrip("0").rstrip(".")
 
     @property
     def total_time_ms(self) -> int:
@@ -134,6 +152,7 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
         has_planner = bool(record.planner_sections)
         planned_total_units = 0
         planned_completed_units = 0
+        planned_completed_weight = 0.0
         planned_completion_percentage = 0.0
         empty_section_summaries: list[SectionSummary] = []
 
@@ -143,6 +162,7 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             overview = PlannerService.compute_overview(record)
             planned_total_units = overview.total_units
             planned_completed_units = overview.completed_units
+            planned_completed_weight = overview.completed_weight
             planned_completion_percentage = overview.global_completion_percentage
             for s in overview.sections:
                 sec_name = f"{s.section.section_type} {s.section.section_number}"
@@ -151,6 +171,7 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
                         section_key=sec_name,
                         planned_total=s.total_units,
                         planned_completed=s.completed_units,
+                        planned_completed_weight=s.completed_weight,
                         planned_completion_pct=s.completion_percentage,
                     )
                 )
@@ -162,6 +183,7 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             has_planner=has_planner,
             planned_total_units=planned_total_units,
             planned_completed_units=planned_completed_units,
+            planned_completed_weight=planned_completed_weight,
             planned_completion_percentage=planned_completion_percentage,
         )
 
@@ -169,12 +191,8 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
     total_break_time_ms = 0
     completed_attempts = 0
 
-    longest_ms = 0
-    longest_name = "Ninguno"
-
-    # Estructuras para seguimiento de ejercicios únicos: (section_type, section_number, exercise, inciso)
-    unique_all: set[tuple[str, int, int, int | None]] = set()
-    unique_completed: set[tuple[str, int, int, int | None]] = set()
+    # Agrupación de items por ejercicio base: (section_type, section_number, exercise) -> list[TimerItem]
+    exercise_groups: dict[tuple[str, int, int], list[TimerItem]] = {}
 
     # Agrupaciones diarias y por sección
     day_exercise_map: dict[date, int] = {}
@@ -190,21 +208,9 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
         if item.completed:
             completed_attempts += 1
 
-        # Ejercicio más largo
-        if item.exercise_time_ms > longest_ms:
-            longest_ms = item.exercise_time_ms
-            longest_name = format_exercise_label(
-                item.section_type,
-                item.section_number,
-                item.exercise,
-                item.inciso,
-            )
-
-        # Seguimiento de unicidad
-        ex_key = (item.section_type, item.section_number, item.exercise, item.inciso)
-        unique_all.add(ex_key)
-        if item.completed:
-            unique_completed.add(ex_key)
+        norm_sec_type = item.section_type.strip()
+        base_key = (norm_sec_type, item.section_number, item.exercise)
+        exercise_groups.setdefault(base_key, []).append(item)
 
         # Fecha
         item_date = _parse_item_date(item.created_at)
@@ -214,29 +220,62 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             day_break_map[item_date] = day_break_map.get(item_date, 0) + item.break_time_ms
 
         # Agrupación por sección
-        sec_name = f"{item.section_type} {item.section_number}"
+        sec_name = f"{norm_sec_type} {item.section_number}"
         if sec_name not in sections_map:
             sections_map[sec_name] = {
                 "exercise_time_ms": 0,
                 "break_time_ms": 0,
                 "attempts": 0,
                 "unique_exercises": set(),
-                "completed_unique": set(),
+                "completed_exercises": set(),
             }
         sec_entry = sections_map[sec_name]
         sec_entry["exercise_time_ms"] += item.exercise_time_ms
         sec_entry["break_time_ms"] += item.break_time_ms
         sec_entry["attempts"] += 1
-        sec_entry["unique_exercises"].add((item.exercise, item.inciso))
-        if item.completed:
-            sec_entry["completed_unique"].add((item.exercise, item.inciso))
+        sec_entry["unique_exercises"].add(item.exercise)
 
-    avg_exercise_time_ms = total_exercise_time_ms // total_attempts if total_attempts else 0
-    avg_break_time_ms = total_break_time_ms // total_attempts if total_attempts else 0
+    longest_ms = 0
+    longest_name = "Ninguno"
+    completed_unique_exercises_set: set[tuple[str, int, int]] = set()
 
-    total_unique_count = len(unique_all)
-    completed_unique_count = len(unique_completed)
+    for (s_type, s_num, ex_num), ex_items in exercise_groups.items():
+        ex_time = sum(it.exercise_time_ms for it in ex_items)
+        if ex_time > longest_ms:
+            longest_ms = ex_time
+            longest_name = format_exercise_label(s_type, s_num, ex_num)
+
+        # Determinar si el ejercicio se considera completado
+        matched_sec = None
+        for s in record.planner_sections:
+            if s.section_type.strip().lower() == s_type.lower() and s.section_number == s_num:
+                matched_sec = s
+                break
+
+        if matched_sec and matched_sec.get_incisos_count(ex_num) > 0:
+            req_incisos = matched_sec.get_incisos_count(ex_num)
+            completed_incisos = {it.inciso for it in ex_items if it.completed and it.inciso is not None}
+            is_completed = all(i in completed_incisos for i in range(1, req_incisos + 1))
+        else:
+            distinct_incisos = {it.inciso for it in ex_items if it.inciso is not None and it.inciso > 0}
+            if distinct_incisos:
+                completed_incisos = {it.inciso for it in ex_items if it.completed and it.inciso is not None}
+                is_completed = (distinct_incisos == completed_incisos)
+            else:
+                is_completed = any(it.completed for it in ex_items)
+
+        if is_completed:
+            completed_unique_exercises_set.add((s_type, s_num, ex_num))
+            sec_name = f"{s_type} {s_num}"
+            if sec_name in sections_map:
+                sections_map[sec_name]["completed_exercises"].add(ex_num)
+
+    total_unique_count = len(exercise_groups)
+    completed_unique_count = len(completed_unique_exercises_set)
     completion_pct = (completed_unique_count / total_unique_count * 100.0) if total_unique_count else 0.0
+
+    avg_exercise_time_ms = total_exercise_time_ms // total_unique_count if total_unique_count else 0
+    avg_break_time_ms = total_break_time_ms // total_unique_count if total_unique_count else 0
 
     # Ventana semanal de 7 días
     if reference_date is not None:
@@ -262,6 +301,7 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
     has_planner = bool(record.planner_sections)
     planned_total_units = 0
     planned_completed_units = 0
+    planned_completed_weight = 0.0
     planned_completion_percentage = 0.0
     planned_sec_map = {}
 
@@ -271,6 +311,7 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
         overview = PlannerService.compute_overview(record)
         planned_total_units = overview.total_units
         planned_completed_units = overview.completed_units
+        planned_completed_weight = overview.completed_weight
         planned_completion_percentage = overview.global_completion_percentage
         for s in overview.sections:
             k = f"{s.section.section_type} {s.section.section_number}"
@@ -287,12 +328,13 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
                 "break_time_ms": 0,
                 "attempts": 0,
                 "unique_exercises": set(),
-                "completed_unique": set(),
+                "completed_exercises": set(),
             },
         )
         p_sec = planned_sec_map.get(sec_name)
         p_tot = p_sec.total_units if p_sec else None
         p_comp = p_sec.completed_units if p_sec else None
+        p_weight = p_sec.completed_weight if p_sec else None
         p_pct = p_sec.completion_percentage if p_sec else None
 
         section_summaries.append(
@@ -301,10 +343,11 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
                 exercise_time_ms=sec_data["exercise_time_ms"],
                 break_time_ms=sec_data["break_time_ms"],
                 attempts=sec_data["attempts"],
-                completed_unique=len(sec_data["completed_unique"]),
+                completed_unique=len(sec_data["completed_exercises"]),
                 total_unique=len(sec_data["unique_exercises"]),
                 planned_total=p_tot,
                 planned_completed=p_comp,
+                planned_completed_weight=p_weight,
                 planned_completion_pct=p_pct,
             )
         )
@@ -327,5 +370,6 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
         has_planner=has_planner,
         planned_total_units=planned_total_units,
         planned_completed_units=planned_completed_units,
+        planned_completed_weight=planned_completed_weight,
         planned_completion_percentage=planned_completion_percentage,
     )

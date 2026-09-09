@@ -85,13 +85,13 @@ class StatisticsServiceTests(unittest.TestCase):
         self.assertEqual(stats.total_attempts, 4)
         self.assertEqual(stats.completed_attempts, 2)
 
-        # Promedios
-        self.assertEqual(stats.avg_exercise_time_ms, 660_000 // 4)
-        self.assertEqual(stats.avg_break_time_ms, 60_000 // 4)
+        # Promedios calculados por ejercicio único (3 ejercicios trabajados)
+        self.assertEqual(stats.avg_exercise_time_ms, 660_000 // 3)
+        self.assertEqual(stats.avg_break_time_ms, 60_000 // 3)
 
-        # Ejercicio más largo
+        # Ejercicio más largo (evalúa el tiempo acumulado del ejercicio base)
         self.assertEqual(stats.longest_exercise_time_ms, 300_000)
-        self.assertEqual(stats.longest_exercise_name, "Guía 1 · Ejercicio 2 · Inciso 1")
+        self.assertEqual(stats.longest_exercise_name, "Guía 1 · Ejercicio 2")
 
         # Ejercicios únicos y completados (Total únicos: 3 -> Guía 1 Ex 1, Guía 1 Ex 2 Inc 1, Parcial 2 Ex 5)
         # Completados únicos: 2 (Guía 1 Ex 1 y Parcial 2 Ex 5)
@@ -137,6 +137,75 @@ class StatisticsServiceTests(unittest.TestCase):
         self.assertEqual(compute_today_study_time_ms(record, reference_date=date(2026, 9, 6)), 60_000)
         # For another day: 0 ms
         self.assertEqual(compute_today_study_time_ms(record, reference_date=date(2026, 9, 5)), 0)
+
+    def test_exercise_with_many_incisos_aggregates_weight_and_time(self) -> None:
+        """Verifica que un ejercicio con 10 incisos de 1 min no ensucie promedios ni conteos únicos."""
+        items = [
+            # Ejercicio 1: 15 minutos
+            TimerItem(
+                section_type="Guía",
+                section_number=1,
+                exercise=1,
+                inciso=None,
+                exercise_time_ms=900_000,
+                break_time_ms=60_000,
+                completed=True,
+                created_at="2026-09-08T10:00:00",
+            ),
+        ]
+        # Ejercicio 2: 10 incisos de 1 minuto cada uno (10 min en total)
+        for i in range(1, 11):
+            items.append(
+                TimerItem(
+                    section_type="Guía",
+                    section_number=1,
+                    exercise=2,
+                    inciso=i,
+                    exercise_time_ms=60_000,
+                    break_time_ms=6_000,
+                    completed=True,
+                    created_at=f"2026-09-08T11:{i:02d}:00",
+                )
+            )
+
+        record = Record(record_name="DiezIncisos", items=items)
+        stats = compute_statistics(record, reference_date=date(2026, 9, 8))
+
+        # Hay 11 registros en items (11 intentos totales)
+        self.assertEqual(stats.total_attempts, 11)
+        self.assertEqual(stats.completed_attempts, 11)
+
+        # Pero sólo hay 2 ejercicios únicos trabajados (Ejercicio 1 y Ejercicio 2)
+        self.assertEqual(stats.total_unique_exercises, 2)
+        self.assertEqual(stats.completed_unique_exercises, 2)
+        self.assertEqual(stats.completion_percentage, 100.0)
+
+        # El tiempo promedio por ejercicio es (15 min + 10 min) / 2 = 12.5 min (no 2.2 min)
+        self.assertEqual(stats.avg_exercise_time_ms, 1_500_000 // 2)
+        self.assertEqual(stats.avg_break_time_ms, 120_000 // 2)
+
+        # Ejercicio más largo es Ejercicio 1 (15 min > 10 min de Ejercicio 2)
+        self.assertEqual(stats.longest_exercise_time_ms, 900_000)
+        self.assertEqual(stats.longest_exercise_name, "Guía 1 · Ejercicio 1")
+
+        # Ahora agregamos 10 incisos más de 1 min a Ejercicio 2 (total 20 min en Ejercicio 2)
+        for i in range(11, 21):
+            record.items.append(
+                TimerItem(
+                    section_type="Guía",
+                    section_number=1,
+                    exercise=2,
+                    inciso=i,
+                    exercise_time_ms=60_000,
+                    break_time_ms=0,
+                    completed=True,
+                    created_at=f"2026-09-08T12:{i:02d}:00",
+                )
+            )
+        stats2 = compute_statistics(record, reference_date=date(2026, 9, 8))
+        # Ahora Ejercicio 2 sumó 20 minutos en total, superando los 15 min de Ejercicio 1
+        self.assertEqual(stats2.longest_exercise_time_ms, 1_200_000)
+        self.assertEqual(stats2.longest_exercise_name, "Guía 1 · Ejercicio 2")
 
 
 if __name__ == "__main__":
