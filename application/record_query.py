@@ -251,10 +251,13 @@ def apply_column_filters_and_sort(
         if passed:
             filtered.append(item)
 
+    # Ordenamiento por defecto: registros más recientes arriba (fecha descendente)
+    sorted_items = list(reversed(filtered))
+    sorted_items.sort(key=parse_item_datetime, reverse=True)
+
     # Ordenamiento jerárquico acumulativo:
     # Usamos ordenamiento estable de Python en sentido inverso (de la regla menos prioritaria a la más prioritaria)
     # garantizando que la primera tupla en active_sorts_ordered (más a la izquierda) sea la prioridad dominante.
-    sorted_items = list(filtered)
     for col_key, direction in reversed(active_sorts_ordered):
         is_desc = (direction.lower() == "desc")
         sorted_items.sort(key=lambda it: get_column_sort_key_value(it, col_key), reverse=is_desc)

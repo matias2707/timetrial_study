@@ -187,7 +187,7 @@ class StudyApplicationService:
         self.record = Record()
 
     def ordered_items(self) -> list[TimerItem]:
-        return sorted(self.record.items, key=lambda item: item.created_at)
+        return sorted(self.record.items, key=lambda item: item.created_at, reverse=True)
 
     def add_item(self, item: TimerItem) -> None:
         self.record.items.append(item)

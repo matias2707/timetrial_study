@@ -149,6 +149,25 @@ class MainWindowExcelRecordsTests(unittest.TestCase):
         header_text_reset = self.window.table.horizontalHeaderItem(0).text()
         self.assertNotIn("🔍", header_text_reset)
 
+    def test_default_order_displays_most_recent_at_top(self) -> None:
+        """Comprueba que por defecto la tabla muestra los registros más recientes arriba."""
+        self.assertEqual(self.window.table.rowCount(), 4)
+        # Fila 0 debe ser el más reciente: 2026-09-07T12:00:00 (Guía 1, Ej 2, Inc 2)
+        self.assertEqual(self.window.table.item(0, 0).text(), "Guía 1")
+        self.assertEqual(self.window.table.item(0, 1).text(), "2")
+        self.assertEqual(self.window.table.item(0, 2).text(), "2")
+        self.assertEqual(self.window.table.item(0, 3).text(), "2026-09-07 12:00")
+
+        # Fila 3 debe ser el más antiguo: 2026-09-06T09:00:00 (Guía 1, Ej 1, Inc -)
+        self.assertEqual(self.window.table.item(3, 0).text(), "Guía 1")
+        self.assertEqual(self.window.table.item(3, 1).text(), "1")
+        self.assertEqual(self.window.table.item(3, 3).text(), "2026-09-06 09:00")
+
+        # Al resetear filtros, también debe volver al orden por defecto (más recientes arriba)
+        self.window.reset_all_filters()
+        self.assertEqual(self.window.table.item(0, 3).text(), "2026-09-07 12:00")
+        self.assertEqual(self.window.table.item(3, 3).text(), "2026-09-06 09:00")
+
 
 if __name__ == "__main__":
     unittest.main()

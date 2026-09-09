@@ -122,6 +122,22 @@ class RecordQueryExcelTests(unittest.TestCase):
         # Debe haber 'Guía 1' con 3 ocurrencias y 'Guía 2' con 1 ocurrencia
         self.assertEqual(unique_secs, [("Guía 1", 3), ("Guía 2", 1)])
 
+    def test_default_sort_orders_most_recent_first(self):
+        """Por defecto (sin ordenamientos activos), los registros más recientes aparecen arriba."""
+        result = apply_column_filters_and_sort(self.items, {}, [])
+        self.assertEqual(len(result), 4)
+        self.assertEqual(result[0].created_at, "2026-09-07T12:00:00")
+        self.assertEqual(result[1].created_at, "2026-09-07T11:00:00")
+        self.assertEqual(result[2].created_at, "2026-09-07T10:00:00")
+        self.assertEqual(result[3].created_at, "2026-09-06T09:00:00")
+
+    def test_explicit_date_sort_ascending(self):
+        """Orden explícito de fecha ascendente muestra los registros más antiguos arriba."""
+        result = apply_column_filters_and_sort(self.items, {}, [(COL_DATE, "asc")])
+        self.assertEqual(len(result), 4)
+        self.assertEqual(result[0].created_at, "2026-09-06T09:00:00")
+        self.assertEqual(result[3].created_at, "2026-09-07T12:00:00")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -89,13 +89,20 @@ class ExcelColumnFilterPopup(QDialog):
         sort_box = QVBoxLayout()
         sort_box.setSpacing(4)
 
-        btn_asc = QPushButton(" Ordenar de menor a mayor (A ➔ Z)")
+        if self.column_key == COL_DATE:
+            asc_label = " Ordenar del más antiguo al más reciente"
+            desc_label = " Ordenar del más reciente al más antiguo"
+        else:
+            asc_label = " Ordenar de menor a mayor (A ➔ Z)"
+            desc_label = " Ordenar de mayor a menor (Z ➔ A)"
+
+        btn_asc = QPushButton(asc_label)
         btn_asc.setIcon(qta.icon("fa5s.sort-amount-down-alt", color="#3b82f6"))
         btn_asc.setObjectName("filter_sort_btn")
         btn_asc.clicked.connect(lambda: self._on_sort_clicked("asc"))
         sort_box.addWidget(btn_asc)
 
-        btn_desc = QPushButton(" Ordenar de mayor a menor (Z ➔ A)")
+        btn_desc = QPushButton(desc_label)
         btn_desc.setIcon(qta.icon("fa5s.sort-amount-down", color="#3b82f6"))
         btn_desc.setObjectName("filter_sort_btn")
         btn_desc.clicked.connect(lambda: self._on_sort_clicked("desc"))

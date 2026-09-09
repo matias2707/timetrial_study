@@ -190,6 +190,38 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(application.get_today_study_time_ms(include_current=False), 50_000)
         self.assertEqual(application.get_today_study_time_ms(include_current=True), 50_000)
 
+    def test_ordered_items_returns_most_recent_first(self) -> None:
+        from domain.models import TimerItem
+
+        application = StudyApplicationService(storage=MemoryStorage())
+        application.record.items.append(
+            TimerItem(
+                section_type="Guía",
+                section_number=1,
+                exercise=1,
+                inciso=None,
+                exercise_time_ms=1000,
+                break_time_ms=0,
+                completed=True,
+                created_at="2026-09-01T10:00:00",
+            )
+        )
+        application.record.items.append(
+            TimerItem(
+                section_type="Guía",
+                section_number=1,
+                exercise=2,
+                inciso=None,
+                exercise_time_ms=2000,
+                break_time_ms=0,
+                completed=True,
+                created_at="2026-09-05T10:00:00",
+            )
+        )
+        ordered = application.ordered_items()
+        self.assertEqual(ordered[0].exercise, 2)
+        self.assertEqual(ordered[1].exercise, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
