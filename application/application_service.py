@@ -51,9 +51,9 @@ class StudyApplicationService:
     def mode(self) -> TimerMode:
         return self.timer.mode
 
-    def set_location(self, location: SessionLocation) -> None:
-        """Actualiza la ubicación solo cuando no hay una sesión activa."""
-        if self.mode is not TimerMode.WAITING:
+    def set_location(self, location: SessionLocation, force: bool = False) -> None:
+        """Actualiza la ubicación solo cuando no hay una sesión activa, salvo que force=True."""
+        if not force and self.mode is not TimerMode.WAITING:
             return
         self.location = location
 
@@ -70,6 +70,19 @@ class StudyApplicationService:
     def stop_session(self) -> None:
         """Descarta el intento en curso sin crear un registro."""
         self.timer.reset()
+
+    def pause_timer(self) -> None:
+        """Pausa / congela los cronómetros de la sesión actual."""
+        self.timer.pause()
+
+    def resume_timer(self) -> None:
+        """Reanuda los cronómetros de la sesión actual."""
+        self.timer.resume()
+
+    @property
+    def is_timer_paused(self) -> bool:
+        """Indica si el cronómetro se encuentra en pausa temporal."""
+        return self.timer.is_paused
 
     def set_comment(self, comment: str) -> None:
         """Define el comentario que se guardará con el intento actual."""
@@ -209,6 +222,40 @@ class StudyApplicationService:
 
     def delete_item(self, item: TimerItem) -> None:
         self.record.items.remove(item)
+        self.save()
+
+    def find_inciso_gap_candidates(
+        self,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        new_inciso: int | None,
+    ) -> list[TimerItem]:
+        """Detecta si al registrar un inciso existen intentos previos sin inciso o con desfasaje para ese ejercicio.
+
+        Devuelve la lista de TimerItems sin inciso correspondientes a ese ejercicio.
+        """
+        if new_inciso is None or new_inciso < 1:
+            return []
+
+        norm_type = section_type.strip().lower()
+        matching = [
+            item
+            for item in self.record.items
+            if item.section_type.strip().lower() == norm_type
+            and item.section_number == section_number
+            and item.exercise == exercise
+        ]
+
+        unincisoed = [item for item in matching if item.inciso is None or item.inciso == 0]
+        return unincisoed
+
+    def promote_gap_items(self, items: list[TimerItem], target_inciso: int = 1) -> None:
+        """Actualiza el inciso de los items indicados (generalmente de None a 1) y persiste."""
+        if not items:
+            return
+        for item in items:
+            item.inciso = target_inciso
         self.save()
 
     def get_statistics(self, reference_date=None):

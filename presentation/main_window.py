@@ -1486,7 +1486,7 @@ class MainWindow(QMainWindow):
             self.stats_section_table.setItem(row, 3, QTableWidgetItem(comp_display))
             self.stats_section_table.setItem(row, 4, QTableWidgetItem(str(sec.attempts)))
 
-    def sync_location(self) -> None:
+    def sync_location(self, force: bool = False) -> None:
         """Actualiza el estado actual del ejercicio, sección e inciso en la UI."""
         location = SessionLocation(
             section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
@@ -1494,7 +1494,7 @@ class MainWindow(QMainWindow):
             exercise=self.exercise_input.value(),
             inciso=self.inciso_input.value() or None,
         )
-        self.application.set_location(location)
+        self.application.set_location(location, force=force)
 
         suffix = f" · Inciso {location.inciso}" if location.inciso else ""
         text = f"{location.section_type} {location.section_number} · Ejercicio {location.exercise}{suffix}"
@@ -1547,9 +1547,105 @@ class MainWindow(QMainWindow):
             self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
         self.status_label.setText("Listo para comenzar")
 
+    def _prompt_inciso_gap_dialog(
+        self,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None,
+        gap_items: list[TimerItem],
+        always_resume: bool = False,
+    ) -> tuple[str, str, int, int, int | None]:
+        """Abre IncisoCorrectionDialog pausando el cronómetro si está activo.
+
+        Retorna (result_action, selected_section_type, selected_section_number, selected_exercise, selected_inciso).
+        """
+        was_active = self.application.mode is not TimerMode.WAITING
+        if was_active:
+            self.application.pause_timer()
+            self.update_timer_visual_state()
+            self.refresh_clock()
+
+        from presentation.inciso_dialog import (
+            ACTION_CANCEL,
+            ACTION_CORRECT_ALL,
+            ACTION_CUSTOM_VALUES,
+            ACTION_KEEP_MANUAL,
+            IncisoCorrectionDialog,
+        )
+
+        dlg = IncisoCorrectionDialog(
+            parent=self,
+            section_type=section_type,
+            section_number=section_number,
+            exercise=exercise,
+            current_inciso=inciso or 1,
+            affected_count=len(gap_items),
+            is_dark=self.is_dark_mode,
+        )
+        try:
+            dlg.exec()
+        finally:
+            if was_active and (always_resume or dlg.result_action == ACTION_CANCEL):
+                self.application.resume_timer()
+                self.update_session_button()
+                self.update_timer_visual_state()
+                self.refresh_clock()
+
+        if dlg.result_action == ACTION_CORRECT_ALL:
+            self.application.promote_gap_items(gap_items, target_inciso=1)
+
+        return (
+            dlg.result_action,
+            dlg.selected_section_type,
+            dlg.selected_section_number,
+            dlg.selected_exercise,
+            dlg.selected_inciso,
+        )
+
+    def _resolve_inciso_gap(self) -> bool:
+        """Verifica si la ubicación actual genera un desfasaje de incisos y muestra el diálogo interactivo si es necesario.
+
+        Devuelve True si se debe continuar con el guardado, o False si el usuario canceló.
+        """
+        loc = self.application.location
+        gap_items = self.application.find_inciso_gap_candidates(
+            loc.section_type,
+            loc.section_number,
+            loc.exercise,
+            loc.inciso,
+        )
+        if not gap_items:
+            return True
+
+        from presentation.inciso_dialog import ACTION_CANCEL, ACTION_CUSTOM_VALUES
+
+        action, sec_type, sec_num, ex, inc = self._prompt_inciso_gap_dialog(
+            loc.section_type,
+            loc.section_number,
+            loc.exercise,
+            loc.inciso,
+            gap_items,
+            always_resume=False,
+        )
+
+        if action == ACTION_CANCEL:
+            return False
+        elif action == ACTION_CUSTOM_VALUES:
+            self.section_input.setText(sec_type)
+            self.section_number_input.setValue(sec_num)
+            self.exercise_input.setValue(ex)
+            self.inciso_input.setValue(inc or 0)
+            self.sync_location(force=True)
+            return True
+        return True
+
     def finish_item(self, completed: bool, keep_location: bool = False, stop: bool = False) -> None:
         """Guarda el intento actual como item y limpia el estado del temporizador."""
         if self.application.mode is TimerMode.WAITING:
+            return
+
+        if not self._resolve_inciso_gap():
             return
 
         if completed:
@@ -1633,6 +1729,8 @@ class MainWindow(QMainWindow):
             return
 
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active and not self._resolve_inciso_gap():
+            return
         if was_active:
             self.play_complete_sound()
         self.application.navigate("next_inciso")
@@ -1651,6 +1749,8 @@ class MainWindow(QMainWindow):
     def previous_inciso(self) -> None:
         """Guarda el intento y vuelve al inciso anterior, si existe."""
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active and not self._resolve_inciso_gap():
+            return
         if self.application.navigate("previous_inciso"):
             if was_active:
                 self.play_complete_sound()
@@ -1678,6 +1778,8 @@ class MainWindow(QMainWindow):
             return
 
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active and not self._resolve_inciso_gap():
+            return
         if was_active:
             self.play_complete_sound()
         self.application.navigate("next_exercise")
@@ -1697,6 +1799,8 @@ class MainWindow(QMainWindow):
     def previous_exercise(self) -> None:
         """Guarda el intento y vuelve al ejercicio anterior, si existe."""
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active and not self._resolve_inciso_gap():
+            return
         if self.application.navigate("previous_exercise"):
             if was_active:
                 self.play_complete_sound()
@@ -1725,6 +1829,8 @@ class MainWindow(QMainWindow):
             return
 
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active and not self._resolve_inciso_gap():
+            return
         if was_active:
             self.play_complete_sound()
         self.application.navigate("next_section")
@@ -1745,6 +1851,8 @@ class MainWindow(QMainWindow):
     def previous_section(self) -> None:
         """Guarda el intento y vuelve a la sección anterior, si existe."""
         was_active = self.application.mode is not TimerMode.WAITING
+        if was_active and not self._resolve_inciso_gap():
+            return
         if self.application.navigate("previous_section"):
             if was_active:
                 self.play_complete_sound()
@@ -1779,7 +1887,20 @@ class MainWindow(QMainWindow):
         break_size = 20 if compact else 25
         is_dark = self.is_dark_mode
 
-        if self.application.mode is TimerMode.PLAY:
+        if self.application.is_timer_paused:
+            if hasattr(self, "exercise_card"):
+                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #050811; border: 1px solid #334155; border-radius: 14px; }")
+                self.break_card.setStyleSheet("QFrame#breakCard { background: #050811; border: 1px solid #334155; border-radius: 14px; }")
+            self.exercise_clock.setStyleSheet(f"color: #94a3b8; font-size: {clock_size}px; font-weight: 800;")
+            self.break_clock.setStyleSheet(f"color: #64748b; font-size: {break_size}px; font-weight: 700;")
+            if hasattr(self, "status_pill"):
+                self.status_pill.setText(" ⏸  PAUSADO")
+                if is_dark:
+                    self.status_pill.setStyleSheet("background: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+                else:
+                    self.status_pill.setStyleSheet("background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
+            self.status_label.setText("En pausa (resolviendo desfasaje de incisos)")
+        elif self.application.mode is TimerMode.PLAY:
             if hasattr(self, "exercise_card"):
                 self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #071510; border: 2px solid #10b981; border-radius: 14px; }")
                 self.break_card.setStyleSheet("QFrame#breakCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
@@ -2158,7 +2279,36 @@ class MainWindow(QMainWindow):
         dialog = ItemDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             if dialog.validated_item is not None:
-                self.application.add_item(dialog.validated_item)
+                item = dialog.validated_item
+                gap_items = self.application.find_inciso_gap_candidates(
+                    item.section_type,
+                    item.section_number,
+                    item.exercise,
+                    item.inciso,
+                )
+                if gap_items:
+                    from presentation.inciso_dialog import ACTION_CANCEL, ACTION_CUSTOM_VALUES
+
+                    action, sec_type, sec_num, ex, inc = self._prompt_inciso_gap_dialog(
+                        item.section_type,
+                        item.section_number,
+                        item.exercise,
+                        item.inciso,
+                        gap_items,
+                        always_resume=True,
+                    )
+                    if action == ACTION_CANCEL:
+                        return
+                    elif action == ACTION_CUSTOM_VALUES:
+                        item.section_type = sec_type
+                        item.section_number = sec_num
+                        item.exercise = ex
+                        item.inciso = inc
+
+                self.application.add_item(item)
+                self.application.sync_planner_with_records()
+                if hasattr(self, "planner"):
+                    self.planner.refresh_view()
             self.refresh_table()
 
     def edit_item(self, target: int | TimerItem) -> None:
@@ -2347,6 +2497,9 @@ class MainWindow(QMainWindow):
 
         if answer is QMessageBox.StandardButton.Save:
             self.finish_item(False, stop=True)
+            if self.application.mode is not TimerMode.WAITING:
+                event.ignore()
+                return
             event.accept()
         elif answer is QMessageBox.StandardButton.Discard:
             event.accept()

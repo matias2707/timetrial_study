@@ -37,6 +37,7 @@ class ItemDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None, item: TimerItem | None = None) -> None:
         super().__init__(parent)
+        self.existing = item
         self.validated_item: TimerItem | None = None
         self.setWindowTitle("Editar item" if item else "Agregar item")
 
@@ -99,7 +100,7 @@ class ItemDialog(QDialog):
     def accept(self) -> None:
         """Valida el formulario antes de cerrar el diálogo."""
         try:
-            self.validated_item = self.item()
+            self.validated_item = self.item(self.existing)
         except (TypeError, ValueError) as error:
             from PySide6.QtWidgets import QMessageBox
 
