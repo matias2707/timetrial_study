@@ -124,6 +124,68 @@ class TestMainWindowPlanner(unittest.TestCase):
         center_y_group = pos_group.y() + comp_group.height() // 2
         self.assertEqual(center_y_single, center_y_group)
 
+    def test_planner_single_segmented_progress_bar_for_completed_and_failed(self):
+        from domain.models import TimerItem
+        from presentation.planner_widget import PlannedSectionCard, SegmentedProgressBar
+        from PySide6.QtWidgets import QProgressBar
+
+        # Verificar que el planificador tiene una barra global unificada (tipo SegmentedProgressBar y QProgressBar)
+        self.assertTrue(hasattr(self.window.planner, "global_progress_bar"))
+        self.assertIsInstance(self.window.planner.global_progress_bar, SegmentedProgressBar)
+        self.assertIsInstance(self.window.planner.global_progress_bar, QProgressBar)
+
+        # Configurar una sección de 4 ejercicios
+        sec = PlannedSection(
+            section_type="Guía",
+            section_number=10,
+            total_exercises=4,
+        )
+        self.window.application.add_or_update_planned_section(sec)
+
+        # Agregar Ejercicio 1 completado y Ejercicio 2 fallado
+        self.window.application.record.items.append(
+            TimerItem(
+                section_type="Guía",
+                section_number=10,
+                exercise=1,
+                inciso=None,
+                exercise_time_ms=1000,
+                break_time_ms=0,
+                completed=True,
+            )
+        )
+        self.window.application.record.items.append(
+            TimerItem(
+                section_type="Guía",
+                section_number=10,
+                exercise=2,
+                inciso=None,
+                exercise_time_ms=800,
+                break_time_ms=0,
+                completed=False,
+            )
+        )
+
+        self.window.planner.refresh_view()
+
+        # Barra global unificada (1 de 4 completado = 25%, 1 de 4 en dificultad = 25%)
+        g_bar = self.window.planner.global_progress_bar
+        self.assertAlmostEqual(g_bar.completed_percentage, 25.0)
+        self.assertAlmostEqual(g_bar.failed_percentage, 25.0)
+        self.assertEqual(g_bar.value(), 25)
+
+        # Verificar barra de progreso en la tarjeta (debe ser una sola barra unificada)
+        cards = self.window.planner.findChildren(PlannedSectionCard)
+        target_card = [c for c in cards if c.sec_status.section.section_number == 10][0]
+
+        card_bars = target_card.findChildren(SegmentedProgressBar)
+        self.assertEqual(len(card_bars), 1)
+        sec_bar = card_bars[0]
+        self.assertEqual(sec_bar.objectName(), "sec_progress_bar")
+        self.assertAlmostEqual(sec_bar.completed_percentage, 25.0)
+        self.assertAlmostEqual(sec_bar.failed_percentage, 25.0)
+        self.assertEqual(sec_bar.value(), 25)
+
 
 if __name__ == "__main__":
     unittest.main()

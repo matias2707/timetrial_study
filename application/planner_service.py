@@ -78,6 +78,12 @@ class PlannedSectionStatus:
         return (self.completed_weight / self.total_units) * 100.0
 
     @property
+    def failed_percentage(self) -> float:
+        if self.total_units == 0:
+            return 0.0
+        return (self.failed_units / self.total_units) * 100.0
+
+    @property
     def completed_display(self) -> str:
         """Representación amigable del progreso completado (ej: '2' o '1.5')."""
         if self.completed_weight.is_integer():
@@ -101,6 +107,12 @@ class PlannerOverview:
         if self.total_units == 0:
             return 0.0
         return (self.completed_weight / self.total_units) * 100.0
+
+    @property
+    def global_failed_percentage(self) -> float:
+        if self.total_units == 0:
+            return 0.0
+        return (self.failed_units / self.total_units) * 100.0
 
     @property
     def completed_display(self) -> str:

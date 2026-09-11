@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -38,6 +39,105 @@ from presentation.planner_dialogs import (
     PlannedSectionDialog,
 )
 from presentation.presentation_formatters import format_milliseconds
+
+
+class SegmentedProgressBar(QProgressBar):
+    """Barra de progreso unificada que muestra segmentos de completado (verde) y dificultad (rojo) en la misma barra."""
+
+    def __init__(
+        self,
+        is_dark: bool = True,
+        corner_radius: int = 4,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.is_dark = is_dark
+        self.corner_radius = corner_radius
+        self.completed_val: float = 0.0
+        self.failed_val: float = 0.0
+        self.total_val: float = 100.0
+
+        self.setTextVisible(False)
+        self.setRange(0, 100)
+        self.setValue(0)
+        self.setStyleSheet("QProgressBar { border: none; background: transparent; }")
+
+    def set_dark_mode(self, is_dark: bool) -> None:
+        self.is_dark = is_dark
+        self.update()
+
+    def set_segmented_values(self, completed: float, failed: float, total: float = 100.0) -> None:
+        self.completed_val = max(0.0, float(completed))
+        self.failed_val = max(0.0, float(failed))
+        self.total_val = max(0.0001, float(total))
+        pct = int(round((self.completed_val / self.total_val) * 100.0))
+        super().setValue(min(100, max(0, pct)))
+        self.update()
+
+    @property
+    def completed_percentage(self) -> float:
+        if self.total_val <= 0:
+            return 0.0
+        return (self.completed_val / self.total_val) * 100.0
+
+    @property
+    def failed_percentage(self) -> float:
+        if self.total_val <= 0:
+            return 0.0
+        return (self.failed_val / self.total_val) * 100.0
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        w = rect.width()
+        h = rect.height()
+        if w <= 0 or h <= 0:
+            return
+
+        r = self.corner_radius
+
+        # Clip redondeado para garantizar bordes suaves
+        clip_path = QPainterPath()
+        clip_path.addRoundedRect(0, 0, w, h, r, r)
+        painter.setClipPath(clip_path)
+
+        # Fondo del canal
+        bg_color = QColor("#1e293b" if self.is_dark else "#e2e8f0")
+        painter.fillRect(rect, bg_color)
+
+        if self.total_val > 0:
+            tot = self.total_val
+            c_val = self.completed_val
+            f_val = self.failed_val
+
+            # Si la suma de valores excede el total, normalizar la escala
+            if c_val + f_val > tot:
+                scale = tot / (c_val + f_val)
+                c_val *= scale
+                f_val *= scale
+
+            w_comp = int(round((c_val / tot) * w))
+            w_failed = int(round((f_val / tot) * w))
+
+            # Si un valor es > 0, asegurar al menos 1 píxel si hay espacio disponible
+            if c_val > 0 and w_comp == 0 and w > 0:
+                w_comp = 1
+            if f_val > 0 and w_failed == 0 and w > 0:
+                w_failed = 1
+
+            # Ajustar para que la suma no sobrepase el ancho total
+            if w_comp + w_failed > w:
+                w_failed = max(0, w - w_comp)
+
+            # Segmento verde: Hechos / Completados (#bef264)
+            if w_comp > 0:
+                painter.fillRect(0, 0, w_comp, h, QColor("#bef264"))
+
+            # Segmento rojo: En dificultad / Fallados (#ef4444)
+            if w_failed > 0:
+                painter.fillRect(w_comp, 0, w_failed, h, QColor("#ef4444"))
 
 
 class ExerciseCellButton(QPushButton):
@@ -256,34 +356,41 @@ class PlannedSectionCard(QFrame):
         title_h.addStretch()
         v_title.addLayout(title_h)
 
-        # Barra de progreso y contador
+        # Barra de progreso unificada (Hechos en verde + En Dificultad en rojo en la misma barra)
         prog_h = QHBoxLayout()
         prog_h.setSpacing(10)
 
-        prog_bar = QProgressBar()
-        prog_bar.setRange(0, 100)
-        prog_bar.setValue(int(sec_status.completion_percentage))
-        prog_bar.setTextVisible(False)
+        prog_bar = SegmentedProgressBar(is_dark=is_dark, corner_radius=4)
+        prog_bar.setObjectName("sec_progress_bar")
         prog_bar.setFixedHeight(8)
-        prog_bar.setStyleSheet(
-            f"""
-            QProgressBar {{
-                background-color: {"#1e293b" if is_dark else "#e2e8f0"};
-                border: none;
-                border-radius: 4px;
-            }}
-            QProgressBar::chunk {{
-                background-color: #bef264;
-                border-radius: 4px;
-            }}
-            """
+        prog_bar.set_segmented_values(
+            completed=sec_status.completed_weight,
+            failed=sec_status.failed_units,
+            total=sec_status.total_units,
+        )
+        prog_bar.setToolTip(
+            f"Hechos: {sec_status.completed_display} / {sec_status.total_units} ({sec_status.completion_percentage:.1f}%) · "
+            f"En dificultad: {sec_status.failed_units} / {sec_status.total_units} ({sec_status.failed_percentage:.1f}%) · "
+            f"Pendientes: {sec_status.pending_units} / {sec_status.total_units}"
         )
         prog_h.addWidget(prog_bar, 1)
 
-        lbl_progress = QLabel(
-            f"{sec_status.completed_display} / {sec_status.total_units} hechos ({sec_status.completion_percentage:.1f}%)"
-        )
-        lbl_progress.setStyleSheet("font-size: 11px; font-weight: 600; color: #94a3b8;")
+        if sec_status.failed_units > 0:
+            comp_col = "#bef264" if is_dark else "#15803d"
+            fail_col = "#f87171" if is_dark else "#ef4444"
+            lbl_progress = QLabel(
+                f"<span style='color: {comp_col}; font-weight: 700;'>{sec_status.completed_display} hechos</span> "
+                f"({sec_status.completion_percentage:.1f}%) · "
+                f"<span style='color: {fail_col}; font-weight: 700;'>{sec_status.failed_units} en dificultad</span> "
+                f"({sec_status.failed_percentage:.1f}%)"
+            )
+        else:
+            lbl_progress = QLabel(
+                f"{sec_status.completed_display} / {sec_status.total_units} hechos ({sec_status.completion_percentage:.1f}%)"
+            )
+            lbl_progress.setStyleSheet("font-size: 11px; font-weight: 600; color: #94a3b8;")
+
+        lbl_progress.setObjectName("lbl_sec_progress")
         prog_h.addWidget(lbl_progress)
 
         v_title.addLayout(prog_h)
@@ -430,35 +537,28 @@ class PlannerWidget(QWidget):
         sum_layout.addLayout(self.lbl_card_failed)
         sum_layout.addLayout(self.lbl_card_pending)
 
-        # Barra de progreso global
+        # Barra de progreso global unificada
         v_prog = QVBoxLayout()
         v_prog.setSpacing(4)
+        v_prog.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        h_labels = QHBoxLayout()
         lbl_global_p = QLabel("Progreso Global:")
         lbl_global_p.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
-        v_prog.addWidget(lbl_global_p)
+        h_labels.addWidget(lbl_global_p)
 
-        self.global_progress_bar = QProgressBar()
-        self.global_progress_bar.setRange(0, 100)
-        self.global_progress_bar.setValue(0)
-        self.global_progress_bar.setTextVisible(True)
-        self.global_progress_bar.setFixedHeight(16)
-        self.global_progress_bar.setStyleSheet(
-            f"""
-            QProgressBar {{
-                background-color: {"#1e293b" if is_dark_mode else "#e2e8f0"};
-                border-radius: 8px;
-                text-align: center;
-                color: #0f172a;
-                font-weight: 700;
-                font-size: 10px;
-            }}
-            QProgressBar::chunk {{
-                background-color: #bef264;
-                border-radius: 8px;
-            }}
-            """
-        )
+        self.lbl_global_breakdown = QLabel("")
+        self.lbl_global_breakdown.setObjectName("planner_global_breakdown")
+        self.lbl_global_breakdown.setStyleSheet("font-size: 11px; font-weight: 600; color: #94a3b8;")
+        self.lbl_global_breakdown.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        h_labels.addWidget(self.lbl_global_breakdown, 1)
+        v_prog.addLayout(h_labels)
+
+        self.global_progress_bar = SegmentedProgressBar(is_dark=is_dark_mode, corner_radius=7)
+        self.global_progress_bar.setObjectName("planner_global_progress_bar")
+        self.global_progress_bar.setFixedHeight(14)
         v_prog.addWidget(self.global_progress_bar)
+
         sum_layout.addLayout(v_prog, 1)
 
         main_layout.addWidget(self.summary_frame)
@@ -492,6 +592,17 @@ class PlannerWidget(QWidget):
 
     def set_dark_mode(self, is_dark: bool) -> None:
         self.is_dark = is_dark
+        self.summary_frame.setStyleSheet(
+            f"""
+            QFrame#planner_summary_frame {{
+                background-color: {"#0f172a" if is_dark else "#ffffff"};
+                border: 1px solid {"#1e293b" if is_dark else "#e2e8f0"};
+                border-radius: 12px;
+                padding: 12px 16px;
+            }}
+            """
+        )
+        self.global_progress_bar.set_dark_mode(is_dark)
         self.refresh_view()
 
     def refresh_view(self) -> None:
@@ -504,9 +615,32 @@ class PlannerWidget(QWidget):
         self._update_stat_badge("en_dificultad", f"{overview.failed_units}")
         self._update_stat_badge("pendientes", f"{overview.pending_units}")
 
-        pct = int(round(overview.global_completion_percentage))
-        self.global_progress_bar.setValue(pct)
-        self.global_progress_bar.setFormat(f"{overview.global_completion_percentage:.1f}%")
+        # Actualizar barra de progreso global unificada
+        self.global_progress_bar.set_segmented_values(
+            completed=overview.completed_weight,
+            failed=overview.failed_units,
+            total=overview.total_units,
+        )
+
+        if overview.failed_units > 0:
+            comp_col = "#bef264" if self.is_dark else "#15803d"
+            fail_col = "#f87171" if self.is_dark else "#ef4444"
+            self.lbl_global_breakdown.setText(
+                f"<span style='color: {comp_col}; font-weight: 700;'>"
+                f"{overview.global_completion_percentage:.1f}% hechos</span> · "
+                f"<span style='color: {fail_col}; font-weight: 700;'>"
+                f"{overview.global_failed_percentage:.1f}% en dificultad</span>"
+            )
+        else:
+            self.lbl_global_breakdown.setText(
+                f"{overview.global_completion_percentage:.1f}% hechos"
+            )
+
+        self.global_progress_bar.setToolTip(
+            f"Hechos: {overview.completed_display} de {overview.total_units} ({overview.global_completion_percentage:.1f}%)\n"
+            f"En dificultad: {overview.failed_units} de {overview.total_units} ({overview.global_failed_percentage:.1f}%)\n"
+            f"Pendientes: {overview.pending_units} de {overview.total_units}"
+        )
 
         # Limpiar tarjetas anteriores
         while self.cards_layout.count():

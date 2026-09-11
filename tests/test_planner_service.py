@@ -29,6 +29,8 @@ class TestPlannerService(unittest.TestCase):
         self.assertEqual(overview.completed_weight, 0.0)
         self.assertEqual(overview.failed_units, 0)
         self.assertEqual(overview.global_completion_percentage, 0.0)
+        self.assertEqual(overview.global_failed_percentage, 0.0)
+        self.assertEqual(overview.sections[0].failed_percentage, 0.0)
 
     def test_overview_with_completed_and_failed_items(self):
         # Ejercicio 1 completado (aporta 1.0 de peso)
@@ -75,9 +77,11 @@ class TestPlannerService(unittest.TestCase):
         self.assertEqual(overview.pending_units, 3)    # Ej 3, Ej 4, Ej 5
         self.assertAlmostEqual(overview.completed_weight, 1.0 + 1 / 3)
         self.assertAlmostEqual(overview.global_completion_percentage, ((1.0 + 1 / 3) / 5) * 100.0)
+        self.assertAlmostEqual(overview.global_failed_percentage, (1 / 5) * 100.0)
 
         sec_status = overview.sections[0]
         self.assertEqual(len(sec_status.exercise_nodes), 5)
+        self.assertAlmostEqual(sec_status.failed_percentage, (1 / 5) * 100.0)
         # Check node for exercise 2 (has incisos)
         node_ex2 = sec_status.exercise_nodes[1]
         self.assertTrue(node_ex2.has_incisos)
