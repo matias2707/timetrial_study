@@ -1488,3 +1488,58 @@ def get_dialog_stylesheet(theme: str) -> str:
         QPushButton#ghost { background: transparent; color: #64748b; border: 1px solid #e2e8f0; }
         QPushButton#ghost:hover { background: #f1f5f9; }
     """
+
+
+def get_status_pill_style(state: str, is_dark: bool) -> str:
+    """Devuelve la hoja de estilo QSS para la pastilla visual de estado (status_pill).
+
+    Args:
+        state: 'paused', 'play', 'break', o 'waiting' (idle).
+        is_dark: True si el tema activo es oscuro.
+    """
+    if state == "paused":
+        if is_dark:
+            return "background: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+    elif state == "play":
+        if is_dark:
+            return "background: #064e3b; color: #6ee7b7; border: 1px solid #059669; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+    elif state == "break":
+        if is_dark:
+            return "background: #451a03; color: #fde68a; border: 1px solid #78350f; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #fffbeb; color: #b45309; border: 1px solid #fde68a; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+    else:  # waiting / idle
+        if is_dark:
+            return "background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+
+
+def get_timer_cards_style(state: str, is_dark: bool) -> tuple[str, str]:
+    """Devuelve la tupla de estilos (exercise_card_style, break_card_style) según el estado.
+
+    Args:
+        state: 'paused', 'play', 'break', o 'waiting'.
+        is_dark: True si el tema activo es oscuro.
+    """
+    if state == "paused":
+        return (
+            "QFrame#exerciseCard { background: #050811; border: 1px solid #334155; border-radius: 14px; }",
+            "QFrame#breakCard { background: #050811; border: 1px solid #334155; border-radius: 14px; }",
+        )
+    elif state == "play":
+        return (
+            "QFrame#exerciseCard { background: #071510; border: 2px solid #10b981; border-radius: 14px; }",
+            "QFrame#breakCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }",
+        )
+    elif state == "break":
+        return (
+            "QFrame#exerciseCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }",
+            "QFrame#breakCard { background: #191408; border: 2px solid #f59e0b; border-radius: 14px; }",
+        )
+    else:  # waiting
+        return (
+            "QFrame#exerciseCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }",
+            "QFrame#breakCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }",
+        )
+

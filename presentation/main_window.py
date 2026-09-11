@@ -75,92 +75,22 @@ from presentation.presentation_formatters import (
     format_milliseconds,
     timer_markup,
 )
-from presentation.theme import THEME_DARK, THEME_LIGHT, get_dialog_stylesheet, get_theme_stylesheet
+from presentation.theme import (
+    THEME_DARK,
+    THEME_LIGHT,
+    get_dialog_stylesheet,
+    get_status_pill_style,
+    get_theme_stylesheet,
+    get_timer_cards_style,
+)
+from presentation.weekly_chart_widget import WeeklyChartWidget
 
 DEFAULT_SECTION_TYPE = "Guía"
 APP_TITLE = "Study Timetrial"
 APP_VERSION = "v1.0"
 MAX_VALUE = 999_999
 
-
-class WeeklyChartWidget(QWidget):
-    """Componente visual que renderiza las barras de horas de estudio para 7 días."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.daily_stats: list[DailyStatistic] = []
-        self.dark_mode: bool = False
-        self.setMinimumHeight(175)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-    def set_stats(self, daily_stats: list[DailyStatistic]) -> None:
-        self.daily_stats = daily_stats
-        self.update()
-
-    def set_dark_mode(self, dark_mode: bool) -> None:
-        self.dark_mode = dark_mode
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        width = float(self.width())
-        height = float(self.height())
-
-        if not self.daily_stats:
-            return
-
-        n_days = len(self.daily_stats)
-        col_width = width / n_days
-        bar_width = min(42.0, max(24.0, col_width * 0.50))
-
-        max_ms = max([d.exercise_time_ms for d in self.daily_stats] + [3_600_000])
-
-        top_margin = 32.0
-        bottom_margin = 46.0
-        available_bar_height = height - top_margin - bottom_margin
-
-        bar_bg_color = QColor("#1e293b" if self.dark_mode else "#edf3ed")
-        text_primary = QColor("#f8fafc" if self.dark_mode else "#0f172a")
-        text_muted = QColor("#94a3b8" if self.dark_mode else "#64748b")
-        text_zero = QColor("#64748b" if self.dark_mode else "#94a3b8")
-
-        for i, stat in enumerate(self.daily_stats):
-            center_x = i * col_width + (col_width / 2.0)
-            bar_x = center_x - (bar_width / 2.0)
-
-            bg_rect = QRectF(bar_x, top_margin, bar_width, available_bar_height)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(bar_bg_color))
-            painter.drawRoundedRect(bg_rect, 6.0, 6.0)
-
-            if stat.exercise_time_ms > 0:
-                ratio = min(1.0, stat.exercise_time_ms / max_ms)
-                bar_h = max(8.0, ratio * available_bar_height)
-                bar_y = height - bottom_margin - bar_h
-                bar_rect = QRectF(bar_x, bar_y, bar_width, bar_h)
-                painter.setBrush(QBrush(QColor("#84cc16")))
-                painter.drawRoundedRect(bar_rect, 6.0, 6.0)
-
-            time_text = format_hh_mm(stat.exercise_time_ms)
-            font_time = QFont("Segoe UI", 9, QFont.Weight.Bold)
-            painter.setFont(font_time)
-            painter.setPen(text_primary if stat.exercise_time_ms > 0 else text_zero)
-            time_rect = QRectF(center_x - (col_width / 2.0), top_margin - 24.0, col_width, 18.0)
-            painter.drawText(time_rect, Qt.AlignmentFlag.AlignCenter, time_text)
-
-            font_day = QFont("Segoe UI", 9, QFont.Weight.Bold)
-            painter.setFont(font_day)
-            painter.setPen(text_primary)
-            day_rect = QRectF(center_x - (col_width / 2.0), height - bottom_margin + 5.0, col_width, 16.0)
-            painter.drawText(day_rect, Qt.AlignmentFlag.AlignCenter, stat.day_name)
-
-            font_date = QFont("Segoe UI", 8)
-            painter.setFont(font_date)
-            painter.setPen(text_muted)
-            date_rect = QRectF(center_x - (col_width / 2.0), height - bottom_margin + 22.0, col_width, 14.0)
-            painter.drawText(date_rect, Qt.AlignmentFlag.AlignCenter, stat.date_str)
+__all__ = ["MainWindow", "WeeklyChartWidget"]
 
 
 class MainWindow(QMainWindow):
@@ -1717,6 +1647,39 @@ class MainWindow(QMainWindow):
         self.sync_location()
         self.tabs.setCurrentIndex(0)
 
+    def _execute_navigation(
+        self,
+        nav_action: str,
+        target_loc: SessionLocation | None = None,
+        update_inputs_callback=None,
+    ) -> None:
+        """Ejecuta una acción de navegación, gestionando desfasajes, sonidos y refresco visual."""
+        if target_loc is not None and not self._check_boundary_permission(target_loc):
+            return
+
+        was_active = self.application.mode is not TimerMode.WAITING
+        if was_active and not self._resolve_inciso_gap():
+            return
+
+        moved = self.application.navigate(nav_action)
+        if moved and was_active:
+            self.play_complete_sound()
+
+        if moved and update_inputs_callback:
+            update_inputs_callback()
+
+        self.sync_location()
+        self.application.sync_planner_with_records()
+        if hasattr(self, "planner"):
+            self.planner.refresh_view()
+
+        if was_active:
+            self.set_locked(False)
+            self.update_session_button()
+            self.update_timer_visual_state()
+            self.refresh_table()
+            self.refresh_clock()
+
     def next_inciso(self) -> None:
         """Guarda el ejercicio actual y avanza al siguiente inciso."""
         target_loc = SessionLocation(
@@ -1725,46 +1688,19 @@ class MainWindow(QMainWindow):
             exercise=self.exercise_input.value(),
             inciso=(self.inciso_input.value() or 0) + 1,
         )
-        if not self._check_boundary_permission(target_loc):
-            return
-
-        was_active = self.application.mode is not TimerMode.WAITING
-        if was_active and not self._resolve_inciso_gap():
-            return
-        if was_active:
-            self.play_complete_sound()
-        self.application.navigate("next_inciso")
-        self.inciso_input.setValue(self.application.location.inciso or 0)
-        self.sync_location()
-        self.application.sync_planner_with_records()
-        if hasattr(self, "planner"):
-            self.planner.refresh_view()
-        if was_active:
-            self.set_locked(False)
-            self.update_session_button()
-            self.update_timer_visual_state()
-            self.refresh_table()
-            self.refresh_clock()
+        self._execute_navigation(
+            "next_inciso",
+            target_loc,
+            lambda: self.inciso_input.setValue(self.application.location.inciso or 0),
+        )
 
     def previous_inciso(self) -> None:
         """Guarda el intento y vuelve al inciso anterior, si existe."""
-        was_active = self.application.mode is not TimerMode.WAITING
-        if was_active and not self._resolve_inciso_gap():
-            return
-        if self.application.navigate("previous_inciso"):
-            if was_active:
-                self.play_complete_sound()
-            self.inciso_input.setValue(self.application.location.inciso or 0)
-        self.sync_location()
-        self.application.sync_planner_with_records()
-        if hasattr(self, "planner"):
-            self.planner.refresh_view()
-        if was_active:
-            self.set_locked(False)
-            self.update_session_button()
-            self.update_timer_visual_state()
-            self.refresh_table()
-            self.refresh_clock()
+        self._execute_navigation(
+            "previous_inciso",
+            None,
+            lambda: self.inciso_input.setValue(self.application.location.inciso or 0),
+        )
 
     def next_exercise(self) -> None:
         """Guarda el ejercicio y pasa al siguiente ejercicio de la sección."""
@@ -1774,48 +1710,19 @@ class MainWindow(QMainWindow):
             exercise=self.exercise_input.value() + 1,
             inciso=None,
         )
-        if not self._check_boundary_permission(target_loc):
-            return
+        def _update() -> None:
+            self.exercise_input.setValue(self.application.location.exercise)
+            self.inciso_input.setValue(0)
 
-        was_active = self.application.mode is not TimerMode.WAITING
-        if was_active and not self._resolve_inciso_gap():
-            return
-        if was_active:
-            self.play_complete_sound()
-        self.application.navigate("next_exercise")
-        self.exercise_input.setValue(self.application.location.exercise)
-        self.inciso_input.setValue(0)
-        self.sync_location()
-        self.application.sync_planner_with_records()
-        if hasattr(self, "planner"):
-            self.planner.refresh_view()
-        if was_active:
-            self.set_locked(False)
-            self.update_session_button()
-            self.update_timer_visual_state()
-            self.refresh_table()
-            self.refresh_clock()
+        self._execute_navigation("next_exercise", target_loc, _update)
 
     def previous_exercise(self) -> None:
         """Guarda el intento y vuelve al ejercicio anterior, si existe."""
-        was_active = self.application.mode is not TimerMode.WAITING
-        if was_active and not self._resolve_inciso_gap():
-            return
-        if self.application.navigate("previous_exercise"):
-            if was_active:
-                self.play_complete_sound()
+        def _update() -> None:
             self.exercise_input.setValue(self.application.location.exercise)
-        self.inciso_input.setValue(0)
-        self.sync_location()
-        self.application.sync_planner_with_records()
-        if hasattr(self, "planner"):
-            self.planner.refresh_view()
-        if was_active:
-            self.set_locked(False)
-            self.update_session_button()
-            self.update_timer_visual_state()
-            self.refresh_table()
-            self.refresh_clock()
+            self.inciso_input.setValue(0)
+
+        self._execute_navigation("previous_exercise", None, _update)
 
     def next_section(self) -> None:
         """Guarda el ejercicio actual y avanza a la siguiente sección."""
@@ -1825,50 +1732,21 @@ class MainWindow(QMainWindow):
             exercise=1,
             inciso=None,
         )
-        if not self._check_boundary_permission(target_loc):
-            return
+        def _update() -> None:
+            self.section_number_input.setValue(self.application.location.section_number)
+            self.exercise_input.setValue(1)
+            self.inciso_input.setValue(0)
 
-        was_active = self.application.mode is not TimerMode.WAITING
-        if was_active and not self._resolve_inciso_gap():
-            return
-        if was_active:
-            self.play_complete_sound()
-        self.application.navigate("next_section")
-        self.section_number_input.setValue(self.application.location.section_number)
-        self.exercise_input.setValue(1)
-        self.inciso_input.setValue(0)
-        self.sync_location()
-        self.application.sync_planner_with_records()
-        if hasattr(self, "planner"):
-            self.planner.refresh_view()
-        if was_active:
-            self.set_locked(False)
-            self.update_session_button()
-            self.update_timer_visual_state()
-            self.refresh_table()
-            self.refresh_clock()
+        self._execute_navigation("next_section", target_loc, _update)
 
     def previous_section(self) -> None:
         """Guarda el intento y vuelve a la sección anterior, si existe."""
-        was_active = self.application.mode is not TimerMode.WAITING
-        if was_active and not self._resolve_inciso_gap():
-            return
-        if self.application.navigate("previous_section"):
-            if was_active:
-                self.play_complete_sound()
+        def _update() -> None:
             self.section_number_input.setValue(self.application.location.section_number)
-        self.exercise_input.setValue(1)
-        self.inciso_input.setValue(0)
-        self.sync_location()
-        self.application.sync_planner_with_records()
-        if hasattr(self, "planner"):
-            self.planner.refresh_view()
-        if was_active:
-            self.set_locked(False)
-            self.update_session_button()
-            self.update_timer_visual_state()
-            self.refresh_table()
-            self.refresh_clock()
+            self.exercise_input.setValue(1)
+            self.inciso_input.setValue(0)
+
+        self._execute_navigation("previous_section", None, _update)
 
     def refresh_clock(self) -> None:
         """Actualiza los labels con los tiempos actuales del cronómetro."""
@@ -1888,57 +1766,42 @@ class MainWindow(QMainWindow):
         is_dark = self.is_dark_mode
 
         if self.application.is_timer_paused:
-            if hasattr(self, "exercise_card"):
-                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #050811; border: 1px solid #334155; border-radius: 14px; }")
-                self.break_card.setStyleSheet("QFrame#breakCard { background: #050811; border: 1px solid #334155; border-radius: 14px; }")
-            self.exercise_clock.setStyleSheet(f"color: #94a3b8; font-size: {clock_size}px; font-weight: 800;")
-            self.break_clock.setStyleSheet(f"color: #64748b; font-size: {break_size}px; font-weight: 700;")
-            if hasattr(self, "status_pill"):
-                self.status_pill.setText(" ⏸  PAUSADO")
-                if is_dark:
-                    self.status_pill.setStyleSheet("background: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-                else:
-                    self.status_pill.setStyleSheet("background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-            self.status_label.setText("En pausa (resolviendo desfasaje de incisos)")
+            state = "paused"
+            pill_text = " ⏸  PAUSADO"
+            status_text = "En pausa (resolviendo desfasaje de incisos)"
+            ex_color = "#94a3b8"
+            br_color = "#64748b"
         elif self.application.mode is TimerMode.PLAY:
-            if hasattr(self, "exercise_card"):
-                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #071510; border: 2px solid #10b981; border-radius: 14px; }")
-                self.break_card.setStyleSheet("QFrame#breakCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
-            self.exercise_clock.setStyleSheet(f"color: #34d399; font-size: {clock_size}px; font-weight: 800;")
-            self.break_clock.setStyleSheet(f"color: #64748b; font-size: {break_size}px; font-weight: 700;")
-            if hasattr(self, "status_pill"):
-                self.status_pill.setText(" ●  SESIÓN EN CURSO")
-                if is_dark:
-                    self.status_pill.setStyleSheet("background: #064e3b; color: #6ee7b7; border: 1px solid #059669; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-                else:
-                    self.status_pill.setStyleSheet("background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-            self.status_label.setText("Sesión en curso")
+            state = "play"
+            pill_text = " ●  SESIÓN EN CURSO"
+            status_text = "Sesión en curso"
+            ex_color = "#34d399"
+            br_color = "#64748b"
         elif self.application.mode is TimerMode.BREAK:
-            if hasattr(self, "exercise_card"):
-                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
-                self.break_card.setStyleSheet("QFrame#breakCard { background: #191408; border: 2px solid #f59e0b; border-radius: 14px; }")
-            self.exercise_clock.setStyleSheet(f"color: #64748b; font-size: {clock_size}px; font-weight: 800;")
-            self.break_clock.setStyleSheet(f"color: #fbbf24; font-size: {break_size}px; font-weight: 700;")
-            if hasattr(self, "status_pill"):
-                self.status_pill.setText(" ●  RECESO EN CURSO")
-                if is_dark:
-                    self.status_pill.setStyleSheet("background: #451a03; color: #fde68a; border: 1px solid #78350f; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-                else:
-                    self.status_pill.setStyleSheet("background: #fffbeb; color: #b45309; border: 1px solid #fde68a; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-            self.status_label.setText("Receso en curso")
+            state = "break"
+            pill_text = " ●  RECESO EN CURSO"
+            status_text = "Receso en curso"
+            ex_color = "#64748b"
+            br_color = "#fbbf24"
         else:
-            if hasattr(self, "exercise_card"):
-                self.exercise_card.setStyleSheet("QFrame#exerciseCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
-                self.break_card.setStyleSheet("QFrame#breakCard { background: #050811; border: 1px solid #1e293b; border-radius: 14px; }")
-            self.exercise_clock.setStyleSheet(f"color: #e2e8f0; font-size: {clock_size}px; font-weight: 800;")
-            self.break_clock.setStyleSheet(f"color: #64748b; font-size: {break_size}px; font-weight: 700;")
-            if hasattr(self, "status_pill"):
-                self.status_pill.setText(" ●  LISTO PARA COMENZAR")
-                if is_dark:
-                    self.status_pill.setStyleSheet("background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-                else:
-                    self.status_pill.setStyleSheet("background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;")
-            self.status_label.setText("Listo para comenzar")
+            state = "waiting"
+            pill_text = " ●  LISTO PARA COMENZAR"
+            status_text = "Listo para comenzar"
+            ex_color = "#e2e8f0"
+            br_color = "#64748b"
+
+        ex_card_style, br_card_style = get_timer_cards_style(state, is_dark)
+        if hasattr(self, "exercise_card"):
+            self.exercise_card.setStyleSheet(ex_card_style)
+            self.break_card.setStyleSheet(br_card_style)
+
+        self.exercise_clock.setStyleSheet(f"color: {ex_color}; font-size: {clock_size}px; font-weight: 800;")
+        self.break_clock.setStyleSheet(f"color: {br_color}; font-size: {break_size}px; font-weight: 700;")
+
+        if hasattr(self, "status_pill"):
+            self.status_pill.setText(pill_text)
+            self.status_pill.setStyleSheet(get_status_pill_style(state, is_dark))
+        self.status_label.setText(status_text)
 
     def autosave(self) -> None:
         """Guarda el registro activo en el archivo asociado."""

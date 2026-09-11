@@ -1,126 +1,124 @@
 # Especificación funcional de Study Timetrial
 
-**Fecha de revisión:** 2026-09-07  
+**Fecha de revisión:** 2026-09-11  
 **Estado:** vigente para la implementación actual
 
 ## 1. Propósito y alcance
 
-Study Timetrial es una aplicación de escritorio local para medir sesiones de
-estudio por ejercicio y guardar intentos en archivos JSON. No requiere servidor
-ni base de datos. Un archivo de registro puede contener múltiples intentos y
-solo hay un archivo activo en la sesión de la aplicación.
+Study Timetrial es una aplicación de escritorio local desarrollada en Python y PySide6 para medir, estructurar y analizar sesiones de estudio por ejercicio. Permite registrar intentos de resolución, clasificar resultados, visualizar estadísticas de dedicación y planificar guías de estudio completas en archivos JSON locales sin requerir conexión a internet, servidores ni bases de datos externas.
 
-La interfaz principal tiene dos vistas:
+La interfaz de usuario se compone de cuatro vistas principales en pestañas:
 
-- **Cronómetro:** selección de ubicación, reloj, controles de sesión y navegación.
-- **Registros:** consulta y mantenimiento de los intentos guardados.
+1. **Cronómetro:** Selección de ubicación, reloj digital de alta precisión, controles de sesión, navegación rápida, atajos de teclado y notas inmediatas.
+2. **Registros:** Tabla analítica de intentos guardados con filtrado interactivo estilo Excel, ordenamiento jerárquico múltiple, reordenamiento de columnas y acciones rápidas.
+3. **Estadísticas:** Panel de métricas acumuladas, gráficos semanales de barras antialiasing, ratios de estudio vs. receso y análisis por sección.
+4. **Planificador:** Matriz visual del universo de estudio por secciones y ejercicios, seguimiento de completitud por incisos, pesos ponderados y carga directa al cronómetro.
 
 ## 2. Modelo de ubicación
 
-Cada intento se identifica visualmente por:
+Cada ejercicio o intento se ubica mediante una coordenada académica:
 
 ```text
-Tipo de sección + número de sección + ejercicio + inciso opcional
+Tipo de sección + Número de sección + Número de ejercicio + Inciso opcional
 ```
 
-Los valores iniciales son `Guía`, sección `1`, ejercicio `1` y sin inciso.
+- **Tipo de sección:** Texto descriptivo; por defecto `"Guía"` (también `"Práctica"`, `"Parcial"`, etc.).
+- **Número de sección:** Entero positivo desde `1`.
+- **Ejercicio:** Entero positivo desde `1`.
+- **Inciso:** Entero positivo desde `1` o `null`. En la interfaz se presenta `0` como "Sin inciso", normalizándose internamente a `null`.
 
-- El tipo de sección es texto libre; por defecto es `Guía`.
-- El número de sección y el ejercicio son enteros desde `1`.
-- El inciso es `null` cuando no existe. En la interfaz, el valor `0` representa
-  "Sin inciso" y nunca se persiste como `0`.
-- La aplicación no necesita conocer de antemano qué secciones, ejercicios o
-  incisos existen.
+## 3. Estados y ciclo de vida del cronómetro
 
-## 3. Estados del cronómetro
+El servicio de temporización utiliza tres modos centrales y un estado auxiliar de pausa:
 
-El servicio de dominio usa exactamente estos estados:
+| Modo | Significado visual | Comportamiento |
+|---|---|---|
+| `WAITING` | `LISTO PARA COMENZAR` (Gris / Pizarra) | Cronómetros en reposo. Permite modificar libremente la ubicación y crear o planificar secciones. |
+| `PLAY` | `SESIÓN EN CURSO` (Verde esmeralda) | El reloj de ejercicio acumula tiempo monotónico. La ubicación permanece bloqueada. |
+| `BREAK` | `RECESO EN CURSO` (Ámbar / Naranja) | El reloj de ejercicio se pausa; el reloj de receso acumula tiempo de descanso. |
+| *Pausa Temporal* | `PAUSADO` (Azul pizarra) | Se congela el reloj mientras se resuelve un diálogo de confirmación (ej. desfasaje de incisos). |
 
-| Estado | Significado |
-|---|---|
-| `WAITING` | No hay sesión activa. La ubicación se puede editar. |
-| `PLAY` | El tiempo de ejercicio está avanzando. |
-| `BREAK` | El tiempo de receso está avanzando y el de ejercicio está pausado. |
+### Acciones de sesión
 
-Los tiempos se miden con un reloj monotónico y se acumulan en milisegundos.
-El receso no se guarda como períodos individuales, sino como un único total por
-intento.
+- **Iniciar / Alternar sesión (Espacio / Botón central):**
+  - Si está en `WAITING`, pasa a `PLAY` (emite sonido de inicio si no está silenciado).
+  - Si está en `PLAY`, conmuta a `BREAK`.
+  - Si está en `BREAK`, conmuta a `PLAY`.
+- **Detener:** Cancela la sesión actual, descarta los tiempos no guardados y regresa a `WAITING`.
+- **Completo:** Finaliza la sesión, registra un `TimerItem` con `completed = True`, emite sonido de éxito y vuelve a `WAITING`.
+- **Incompleto:** Finaliza la sesión, registra un `TimerItem` con `completed = False` y vuelve a `WAITING`.
+- **Comentario:** Permite redactar una anotación que se adjunta al intento al completarlo o marcarlo incompleto.
 
-## 4. Acciones de sesión
+## 4. Navegación y comprobación de límites
 
-| Acción visible | Resultado |
-|---|---|
-| `INICIAR` | Pasa de `WAITING` a `PLAY`. |
-| `RECESO` | Pasa de `PLAY` a `BREAK`. |
-| `CONTINUAR` | Pasa de `BREAK` a `PLAY`. |
-| `DETENER` | Descarta la sesión actual, borra ambos contadores y vuelve a `WAITING`. |
-| `INCOMPLETO` | Guarda el intento con `completed = false` y reinicia el cronómetro. |
-| `COMPLETO` | Guarda el intento con `completed = true` y reinicia el cronómetro. |
-| `REINICIAR` en registros | Pone en cero los tiempos de un intento ya guardado. |
+Los controles de navegación permiten avanzar o retroceder de manera fluida entre incisos, ejercicios y secciones:
 
-La ubicación queda bloqueada mientras el estado no sea `WAITING`. Al finalizar
-un intento se desbloquea y se conserva la ubicación actual, salvo que una
-navegación la cambie.
+- **Siguiente Inciso:** Avanza al inciso inmediato superior (`null -> 1`, `1 -> 2`, etc.).
+- **Anterior Inciso:** Retrocede al inciso anterior (`2 -> 1`, `1 -> null`).
+- **Siguiente Ejercicio:** Incrementa el número de ejercicio y reinicia el inciso a `null`.
+- **Anterior Ejercicio:** Decrementa el ejercicio (si es `> 1`) y reinicia el inciso a `null`.
+- **Siguiente Sección:** Incrementa la sección, estableciendo ejercicio en `1` e inciso en `null`.
+- **Anterior Sección:** Decrementa la sección (si es `> 1`), con ejercicio `1` e inciso `null`.
 
-## 5. Navegación
+Si se ejecuta una acción de avance mientras hay una sesión activa en `PLAY` o `BREAK`, la sesión se guarda automáticamente como completada antes de desplazarse.
 
-Las acciones de navegación finalizan el intento activo como completado. Si no
-hay sesión activa, solo cambian la ubicación.
+### Control de límites del Planificador
+Antes de navegar hacia adelante (`next_*`), el sistema consulta a `PlannerService`:
+- Si el ejercicio o inciso resultante excede la cantidad total configurada en la sección planificada activa, se muestra un diálogo de advertencia informando el límite y solicitando confirmación del usuario para continuar o permanecer dentro del rango planificado.
 
-- **Siguiente inciso:** desde `null` pasa a `1`; después incrementa en uno.
-- **Anterior inciso:** decrementa en uno; desde `1` pasa a `null`; desde `null`
-  no realiza cambios.
-- **Siguiente ejercicio:** incrementa el ejercicio y establece inciso `null`.
-- **Anterior ejercicio:** decrementa el ejercicio si es mayor que `1` y establece
-  inciso `null`.
-- **Siguiente sección:** incrementa la sección, establece ejercicio `1` e inciso
-  `null`.
-- **Anterior sección:** decrementa la sección si es mayor que `1`, establece
-  ejercicio `1` e inciso `null`.
+## 5. Detección y resolución de desfasajes de incisos (Inciso Gap Resolution)
 
-La navegación no borra intentos existentes.
+Cuando el usuario registra o navega a un ejercicio con inciso (por ejemplo `Ej. 1, Inciso 2`), pero en el registro ya existían intentos previos de ese mismo ejercicio registrados sin inciso (`inciso = null`):
 
-## 6. Intentos y comentarios
+1. El cronómetro entra en pausa temporal para preservar los tiempos exactos.
+2. Se abre el diálogo modal `IncisoGapDialog`, que presenta tres opciones:
+   - **Promover registros existentes:** Asigna retroactivamente `inciso = 1` a los intentos previos no clasificados.
+   - **Personalizar valores:** Permite editar manualmente la ubicación de destino.
+   - **Cancelar:** Cancela la operación y reanuda el cronómetro sin alterar los registros.
 
-Al finalizar una sesión se crea un `TimerItem` independiente con identificador
-UUID, ubicación, tiempos, estado, comentario y fecha de creación. Dos items con
-la misma ubicación siguen siendo intentos distintos.
+## 6. Vista de Registros
 
-El comentario preparado durante la sesión se recorta con `strip()` y se guarda
-con el intento. En la vista Registros también se puede añadir o editar el
-comentario de un item ya guardado.
+Permite auditar, filtrar y modificar todos los intentos almacenados:
 
-La vista Registros permite además:
+- **Filtros emergentes estilo Excel:** Menú en cada cabecera con casilla de búsqueda, lista de selección de valores únicos, indicador visual de filtro activo y botón general para limpiar filtros.
+- **Ordenamiento jerárquico multicomponente:** Al hacer clic en las cabeceras se alternan órdenes ascendente, descendente o natural, manteniendo la precedencia visual configurada.
+- **Reordenamiento de columnas:** Arrastrar y soltar cabeceras para reconfigurar el orden visual de las columnas.
+- **Búsqueda global:** Caja de texto con filtrado en tiempo real sobre todas las columnas.
+- **KPI Cards superiores:** Conteo total de intentos visibles, tiempo acumulado de ejercicio, tiempo de descanso y tasa de efectividad (%).
+- **Acciones en línea por fila:** Botones compactos con tooltips para ver/editar comentarios, modificar datos del intento, reiniciar tiempos a cero o eliminar el registro tras confirmación.
 
-- agregar manualmente un intento;
-- editar sus campos con validación;
-- importar items seleccionados desde otro archivo;
-- guardar como y renombrar el archivo activo;
-- abrir archivos recientes, hasta diez;
-- eliminar items tras confirmación.
+## 7. Vista de Estadísticas
 
-## 7. Persistencia
+Ofrece visualizaciones analíticas agregadas sin requerir dependencias externas de trazado:
 
-Cada finalización, alta, edición, reset, eliminación o importación guarda el
-archivo activo automáticamente. El formato exacto y sus reglas de compatibilidad
-están en [CONTRATO_JSON.md](CONTRATO_JSON.md).
+- **Métricas de resumen:** Total de horas estudiadas, promedio por ejercicio, sesión más prolongada, porcentaje de completitud y balance estudio/descanso.
+- **Gráfico semanal de dedicación (`WeeklyChartWidget`):** Gráfico de 7 barras diarias renderizado con `QPainter` en alta resolución antialiasing, adaptado dinámicamente al Modo Claro y Modo Oscuro.
+- **Resumen por sección:** Tabla desagregada con tiempos acumulados, cantidad de intentos, ejercicios únicos y porcentaje de avance respecto a la planificación.
 
-Al cerrar la ventana con una sesión activa se solicita confirmación. La opción
-de guardar conserva el intento como incompleto; la cancelación mantiene abierta
-la aplicación.
+## 8. Vista del Planificador
 
-## 8. Reglas de compatibilidad
+Permite configurar la estructura académica previa de guías y materias:
 
-- Los nombres de campos JSON forman parte del contrato público local.
-- Los tiempos persistidos son enteros no negativos en milisegundos.
-- Los archivos válidos usan `schema_version: 1`.
-- Un `inciso` ausente, `null` o legado con valor `0` se interpreta como sin
-  inciso.
-- Los campos opcionales ausentes (`comment`, `id`, fechas) reciben valores
-  compatibles al cargar.
+- **Tarjetas de Sección (`PlannedSectionCard`):** Contienen el título, conteo total de ejercicios, barra de progreso porcentual y resumen de completitud.
+- **Mapeo de Incisos:** Configuración personalizada de ejercicios compuestos con cantidad variable de incisos (ej. Ejercicio 1 con incisos `a`, `b`, `c`).
+- **Ponderación de completitud (`completed_weight`):** Un ejercicio con 4 incisos completados en 2 de ellos suma `0.5` al progreso total de la sección.
+- **Código de colores interactivo:**
+  - **Verde:** Ejercicio o inciso completado satisfactoriamente.
+  - **Rojo:** Ejercicio o inciso con intentos fallidos / incompletos sin resolver.
+  - **Gris:** Ejercicio pendiente de resolución.
+- **Carga al cronómetro:** Al hacer clic en cualquier ejercicio del planificador, se consulta si se desea transferir esa ubicación directamente a la pestaña Cronómetro.
+- **Sincronización automática:** Cualquier intento registrado en el cronómetro que pertenezca a la sección se refleja de inmediato en el planificador.
 
-## 9. Fuera de alcance actual
+## 9. Temas y Experiencia de Usuario
 
-No forman parte de la implementación actual: sincronización remota, usuarios,
-autenticación, base de datos, múltiples ventanas de registro, edición de
-períodos de receso separados y conocimiento previo de la estructura académica.
+- **Selector de temas:** Soporte integrado para **Modo Claro** y **Modo Oscuro** con diseño moderno, alto contraste y paletas HSL afinadas.
+- **Notificaciones sonoras:** Efectos de sonido para inicio y finalización de ejercicios, con opción de silenciar (*Mute*) accesible desde el menú superior.
+- **Persistencia de preferencias:** El tema seleccionado y el estado de silencio de audio se guardan automáticamente en la configuración local del sistema operativo (`QSettings`).
+- **Diseño adaptable:** Distribución responsiva que ajusta los paneles de control y navegación cuando la ventana se redimensiona a anchos reducidos.
+
+## 10. Persistencia y almacenamiento
+
+- Persistencia en archivos JSON atómicos locales con esquema versión `1`.
+- Guardado automático tras cada finalización, edición, importación o borrado.
+- Menú de archivos recientes con acceso directo a los últimos 10 registros utilizados.
+- Diálogo de advertencia ante intentos de cierre con cronómetro en marcha.

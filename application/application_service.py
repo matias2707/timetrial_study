@@ -6,10 +6,17 @@ inyectables. La interfaz solo traduce eventos y muestra sus resultados.
 
 from __future__ import annotations
 
+from datetime import date
 from dataclasses import dataclass
 from pathlib import Path
 
-from domain.models import Record, TimerItem
+from application.planner_service import PlannerOverview, PlannerService
+from application.statistics_service import (
+    RecordStatistics,
+    compute_statistics,
+    compute_today_study_time_ms,
+)
+from domain.models import PlannedSection, Record, TimerItem
 from domain.timer_service import TimerMode, TimerService
 from infrastructure.storage_service import StorageService
 
@@ -258,48 +265,36 @@ class StudyApplicationService:
             item.inciso = target_inciso
         self.save()
 
-    def get_statistics(self, reference_date=None):
+    def get_statistics(self, reference_date: date | None = None) -> RecordStatistics:
         """Calcula y devuelve el resumen estadístico del registro actual."""
-        from application.statistics_service import compute_statistics
-
         return compute_statistics(self.record, reference_date=reference_date)
 
-    def get_today_study_time_ms(self, include_current: bool = True, reference_date=None) -> int:
+    def get_today_study_time_ms(self, include_current: bool = True, reference_date: date | None = None) -> int:
         """Calcula los milisegundos totales estudiados en el día de hoy (incluyendo sesión activa)."""
-        from application.statistics_service import compute_today_study_time_ms
-
         total = compute_today_study_time_ms(self.record, reference_date=reference_date)
         if include_current and self.mode is not TimerMode.WAITING:
             exercise_ms, _ = self.timer.snapshot()
             total += exercise_ms
         return total
 
-    def get_planner_overview(self):
+    def get_planner_overview(self) -> PlannerOverview:
         """Calcula el resumen del universo planificado y estados de ejercicios."""
-        from application.planner_service import PlannerService
-
         return PlannerService.compute_overview(self.record)
 
     def sync_planner_with_records(self) -> bool:
         """Sincroniza la planificación agregando ejercicios no planificados que existan en registros."""
-        from application.planner_service import PlannerService
-
         changed = PlannerService.sync_planner_with_records(self.record)
         if changed:
             self.save()
         return changed
 
-    def add_or_update_planned_section(self, section) -> None:
+    def add_or_update_planned_section(self, section: PlannedSection) -> None:
         """Añade o edita una sección en la planificación y guarda el registro."""
-        from application.planner_service import PlannerService
-
         PlannerService.add_or_update_section(self.record, section)
         self.save()
 
     def delete_planned_section(self, section_type: str, section_number: int) -> bool:
         """Elimina una sección de la planificación y guarda el registro."""
-        from application.planner_service import PlannerService
-
         deleted = PlannerService.delete_section(self.record, section_type, section_number)
         if deleted:
             self.save()
@@ -307,8 +302,6 @@ class StudyApplicationService:
 
     def check_location_boundary(self, location: SessionLocation) -> tuple[bool, str]:
         """Comprueba si la ubicación indicada está dentro de la planificación configurada."""
-        from application.planner_service import PlannerService
-
         return PlannerService.is_location_within_plan(
             self.record,
             location.section_type,
