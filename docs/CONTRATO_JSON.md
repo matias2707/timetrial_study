@@ -82,7 +82,7 @@ Un registro es un objeto JSON autosuficiente que contiene tanto el historial de 
 
 ## Archivos auxiliares
 
-`.study_timetrial_recent.json` contiene una lista JSON con las rutas absolutas a los archivos de registro abiertos recientemente. Se conservan como máximo 10 rutas existentes válidas. Este archivo es un índice local de sesión y no forma parte del registro académico.
+`.study_timetrial_recent.json` (ubicado preferentemente en `data/.study_timetrial_recent.json` o en la raíz por retrocompatibilidad) contiene una lista JSON con las rutas absolutas a los archivos de registro abiertos recientemente. Se conservan como máximo 10 rutas existentes válidas. Este archivo es un índice local de sesión y no forma parte del registro académico.
 
 ## Reglas de evolución y compatibilidad hacia atrás
 

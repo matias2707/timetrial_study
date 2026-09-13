@@ -7,10 +7,11 @@
 
 La documentación técnica y funcional de Study Timetrial está organizada en cuatro especificaciones complementarias:
 
-1. [Arquitectura](ARQUITECTURA_2026-09-07.md): Capas de diseño (Presentación, Aplicación, Dominio, Infraestructura), diagrama Mermaid, responsabilidades de cada módulo y reglas de diseño.
-2. [Especificación funcional](Study%20Timetrial%20%E2%80%94%20Especificaci%C3%B3n%20funcional%20y%20estructura%20de%20datos.md): Descripción funcional detallada de las 4 vistas (Cronómetro, Registros, Estadísticas, Planificador), flujo de sesión, navegación con control de límites, resolución de desfasaje de incisos, filtros estilo Excel, temas y sonido.
-3. [Contrato de persistencia JSON](CONTRATO_JSON.md): Esquema JSON versión `1` para `Record`, `TimerItem` y `PlannedSection`, estructura de archivos auxiliares y reglas de compatibilidad hacia atrás.
-4. [Operación y validación](OPERACION_Y_VALIDACION.md): Requisitos de entorno, instrucciones de instalación, ejecución de tests unitarios, comandos de compilación de sintaxis y protocolo de validación manual paso a paso.
+1. [Arquitectura general](ARQUITECTURA_2026-09-07.md): Capas de diseño (Presentación, Aplicación, Dominio, Infraestructura), diagrama Mermaid, responsabilidades de cada módulo y reglas de diseño.
+2. [Arquitectura de presentación](ARQUITECTURA_PRESENTACION.md): Descomposición modular de la interfaz gráfica, componentes especializados, motor de temas con tokens de diseño y guía de extensibilidad.
+3. [Especificación funcional](Study%20Timetrial%20%E2%80%94%20Especificaci%C3%B3n%20funcional%20y%20estructura%20de%20datos.md): Descripción funcional detallada de las 4 vistas (Cronómetro, Registros, Estadísticas, Planificador), flujo de sesión, navegación con control de límites, resolución de desfasaje de incisos, filtros estilo Excel, temas y sonido.
+4. [Contrato de persistencia JSON](CONTRATO_JSON.md): Esquema JSON versión `1` para `Record`, `TimerItem` y `PlannedSection`, estructura de archivos auxiliares y reglas de compatibilidad hacia atrás.
+5. [Operación y validación](OPERACION_Y_VALIDACION.md): Requisitos de entorno, instrucciones de instalación, ejecución de tests unitarios, comandos de compilación de sintaxis y protocolo de validación manual paso a paso.
 
 ## Convenciones de estado
 

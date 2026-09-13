@@ -122,8 +122,8 @@ class StudyApplicationService:
     def save(self) -> None:
         self.storage.save(self.record)
 
-    def new_record(self, record_name: str | None = None) -> Path:
-        """Crea un registro nuevo en el directorio actual con un nombre único."""
+    def new_record(self, record_name: str | None = None, directory: Path | None = None) -> Path:
+        """Crea un registro nuevo con un nombre único en el directorio especificado o estándar."""
         requested_name = (record_name or self.record.record_name or "StudyTimetrial").strip()
         if not requested_name:
             requested_name = self.record.record_name or "StudyTimetrial"
@@ -131,9 +131,13 @@ class StudyApplicationService:
         base_name = requested_name.removesuffix(".json")
         candidate_name = base_name
         suffix = 1
+        base_dir = directory
+        if base_dir is None:
+            base_dir = getattr(self.storage, "default_directory", Path.cwd())
+        base_dir.mkdir(parents=True, exist_ok=True)
 
         while True:
-            path = Path.cwd() / f"{candidate_name}.json"
+            path = base_dir / f"{candidate_name}.json"
             if not path.exists():
                 self.record = Record(record_name=candidate_name)
                 self.storage.path = path

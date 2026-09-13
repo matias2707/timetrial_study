@@ -13,7 +13,19 @@ class RecentFilesManager:
     """Mantiene una lista de archivos abiertos recientemente en disco."""
 
     def __init__(self, path: Path | str | None = None) -> None:
-        self.path = Path(path) if path is not None else Path.cwd() / ".study_timetrial_recent.json"
+        if path is not None:
+            self.path = Path(path)
+        else:
+            data_recent = Path.cwd() / "data" / ".study_timetrial_recent.json"
+            root_recent = Path.cwd() / ".study_timetrial_recent.json"
+            if data_recent.exists():
+                self.path = data_recent
+            elif root_recent.exists():
+                self.path = root_recent
+            elif (Path.cwd() / "data").exists():
+                self.path = data_recent
+            else:
+                self.path = root_recent
         self._paths: list[Path] = []
         self.load()
 
@@ -42,6 +54,7 @@ class RecentFilesManager:
 
     def save(self) -> None:
         payload = [str(path) for path in self._paths[:10]]
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def add(self, path: str | Path) -> None:
@@ -58,9 +71,24 @@ class RecentFilesManager:
 class StorageService:
     """Gestiona el almacenamiento local del registro en formato JSON."""
 
-    def __init__(self, recent_files_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        recent_files_path: Path | str | None = None,
+        default_dir: Path | str | None = None,
+    ) -> None:
         self.path: Path | None = None
+        self._default_dir = Path(default_dir) if default_dir is not None else None
         self.recent_files = RecentFilesManager(recent_files_path)
+
+    @property
+    def default_directory(self) -> Path:
+        """Devuelve el directorio estándar para almacenar registros."""
+        if self._default_dir is not None:
+            return self._default_dir
+        records_dir = Path.cwd() / "data" / "records"
+        if records_dir.exists():
+            return records_dir
+        return Path.cwd()
 
     @property
     def is_open(self) -> bool:
@@ -70,7 +98,9 @@ class StorageService:
     def create_automatic(self) -> Record:
         """Crea un registro nuevo con un nombre basado en la fecha actual."""
         stamp = datetime.now().strftime("%Y%m%d")
-        self.path = Path.cwd() / f"StudyTimetrial_{stamp}.json"
+        target_dir = self.default_directory
+        target_dir.mkdir(parents=True, exist_ok=True)
+        self.path = target_dir / f"StudyTimetrial_{stamp}.json"
         return Record(record_name=self.path.stem)
 
     def save(self, record: Record, path: Path | None = None) -> None:

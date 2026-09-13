@@ -20,14 +20,28 @@ gestiona la persistencia en archivos JSON locales.
 ```mermaid
 flowchart TD
     subgraph UI [Capa de Presentación - presentation/]
-        MW[MainWindow - main_window.py]
+        MW[MainWindow - main_window.py\nLean Shell / Mediador]
+        TB[AppToolbar - app_toolbar.py]
+        ASnd[AudioService - audio_service.py]
+        HV[HomeViewWidget - home_view.py]
+        RV[RecordsViewWidget - records_view.py]
+        SV[StatisticsViewWidget - statistics_view.py]
         PW[PlannerWidget - planner_widget.py]
         WC[WeeklyChartWidget - weekly_chart_widget.py]
         EF[ExcelFilterPopup - excel_filter_popup.py]
         ID[IncisoDialog - inciso_dialog.py]
         PD[PresentationDialogs - presentation_dialogs.py]
         PF[Formatters - presentation_formatters.py]
+        TK[ThemeTokens - theme_tokens.py]
         TH[Theme & Estilos - theme.py]
+
+        MW --> TB
+        MW --> ASnd
+        MW --> HV
+        MW --> RV
+        MW --> SV
+        MW --> PW
+        TH --> TK
     end
 
     subgraph APP [Capa de Aplicación - application/]
@@ -60,7 +74,12 @@ flowchart TD
 ### Detalle de módulos por capa
 
 - **Presentación (`presentation/`):**
-  - `main_window.py`: Coordina la ventana principal, toolbar superior, pestañas (Cronómetro, Registros, Estadísticas, Planificador), navegación de ejercicios, audio y ciclo de vida de archivos.
+  - `main_window.py`: Ventana principal (Lean Shell / Mediador). Coordina la integración del contenedor de pestañas (`QTabWidget`), la barra superior, la propagación de eventos entre vistas y el ciclo de vida del archivo con compatibilidad total hacia atrás.
+  - `app_toolbar.py`: Barra de herramientas superior (`AppToolbar`) con menús desplegables de Archivo (Nuevo, Abrir, Recientes, Guardar como, Cerrar) y Configuración (Temas y conmutación de sonido).
+  - `audio_service.py`: Servicio desacoplado (`AudioService`) que encapsula la carga y reproducción de sonidos `QSoundEffect`, persistencia en `QSettings` y estado de silenciamiento.
+  - `home_view.py`: Vista modular del cronómetro (`HomeViewWidget`). Contiene relojes digitales, tarjeta de hoy, badges de ubicación, steppers táctiles numéricos y cuadrícula responsiva de botones de sesión.
+  - `records_view.py`: Vista modular de registros (`RecordsViewWidget`). Encapsula la tabla interactiva de 12 columnas, KPIs superiores, búsqueda, popups estilo Excel y acciones sobre items.
+  - `statistics_view.py`: Vista modular de estadísticas (`StatisticsViewWidget`). Presenta métricas agregadas globales, barras de proporción de estudio/receso, desglose por secciones e integra el gráfico semanal.
   - `weekly_chart_widget.py`: Renderiza el gráfico semanal con `QPainter` en alta resolución antialiasing, adaptado a modo claro y oscuro.
   - `planner_widget.py`: Visualiza la cuadrícula de planificación con tarjetas (`PlannedSectionCard`), grupos de ejercicios e incisos, barra de progreso y diálogo de carga de ejercicio.
   - `planner_dialogs.py`: Diálogos modales para alta, edición y configuración de secciones planificadas.
@@ -69,9 +88,10 @@ flowchart TD
   - `flow_layout.py`: Distribución adaptativa de elementos que ajusta filas y columnas automáticamente al redimensionar.
   - `presentation_dialogs.py`: Diálogos Qt para alta/edición manual de registros e importación selectiva desde otros archivos JSON.
   - `presentation_formatters.py`: Adaptadores para representar tiempos (`format_milliseconds`, `format_hh_mm`, `format_hh_mm_ss`, `timer_markup`).
-  - `theme.py`: Generador central de hojas de estilo QSS para Modo Claro y Modo Oscuro, temas de diálogos y estilos dinámicos del cronómetro.
-  - `media/`: Efectos de audio en formato WAV para inicio y finalización de ejercicios.
-  - `main.py`: Punto de entrada que inicializa `QApplication` y levanta `MainWindow`.
+  - `theme_tokens.py`: Definición tipada de tokens de diseño semánticos (`ThemeTokens`) para Modo Claro y Modo Oscuro, centralizando la paleta de colores.
+  - `theme.py`: Motor paramétrico de generación de hojas de estilo QSS a partir de tokens de diseño, eliminando la duplicación de código CSS y facilitando temas adicionales.
+  - `media/`: Recursos multimedia: efectos de audio (`.wav`) e iconos oficiales de la aplicación (`app_icon.ico`, `app_icon.png`, `stopwatch_vector.svg`).
+  - `main.py`: Punto de entrada que configura `AppUserModelID` en Windows para la barra de tareas, inicializa `QApplication` con el icono oficial y levanta `MainWindow`.
 
 - **Aplicación (`application/`):**
   - `application_service.py`: Fachada principal (`StudyApplicationService`) que expone casos de uso para sesión del cronómetro, navegación, comentarios pendientes, importación, límites de sesión y persistencia.
@@ -84,10 +104,15 @@ flowchart TD
   - `timer_service.py`: Reloj monotónico de precisión milimétrica (`TimerService`) con estados `WAITING`, `PLAY` y `BREAK`, y soporte de pausa temporal sin pérdida de tiempo.
 
 - **Infraestructura (`infrastructure/`):**
-  - `storage_service.py`: Encapsula la lectura/escritura JSON atómica de `Record` (`StorageService`) y la gestión de la lista de archivos recientes (`RecentFilesManager`).
+  - `storage_service.py`: Encapsula la lectura/escritura JSON atómica de `Record` (`StorageService`), resolución del directorio estándar (`default_directory`) y la gestión de la lista de archivos recientes (`RecentFilesManager`).
+
+- **Capa de Datos y Persistencia (`data/`):**
+  - `records/`: Almacén estructurado para archivos de registro de estudio (`StudyTimetrial_YYYYMMDD.json`), manteniendo la raíz del repositorio limpia.
+  - `samples/`: Datasets y registros de prueba o demostración (`Algebra_Demo.json`).
+  - `.study_timetrial_recent.json`: Índice de archivos de sesión abiertos recientemente.
 
 - **Pruebas (`tests/`):**
-  - 11 suites de pruebas unitarias (`test_application_service.py`, `test_planner_service.py`, `test_statistics_service.py`, `test_record_query.py`, `test_inciso_correction.py`, `test_main_window_records.py`, `test_main_window_planner.py`, `test_theme.py`, etc.) que cubren la aplicación completa sin necesidad de abrir ventanas gráficas interactivas.
+  - 12 suites de pruebas unitarias (`test_application_service.py`, `test_planner_service.py`, `test_statistics_service.py`, `test_record_query.py`, `test_inciso_correction.py`, `test_main_window_records.py`, `test_main_window_planner.py`, `test_theme.py`, `test_app_icon.py`, etc.) que cubren la aplicación completa sin necesidad de abrir ventanas gráficas interactivas.
 
 ## Reglas de diseño
 
@@ -115,7 +140,7 @@ La comprobación mínima tras una refactorización o cambio es:
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m py_compile main.py presentation/main_window.py presentation/weekly_chart_widget.py presentation/planner_widget.py presentation/planner_dialogs.py presentation/inciso_dialog.py presentation/excel_filter_popup.py presentation/flow_layout.py presentation/presentation_dialogs.py presentation/presentation_formatters.py presentation/theme.py application/application_service.py application/planner_service.py application/statistics_service.py application/record_query.py domain/models.py domain/timer_service.py infrastructure/storage_service.py
+python -m py_compile main.py presentation/main_window.py presentation/app_toolbar.py presentation/audio_service.py presentation/home_view.py presentation/records_view.py presentation/statistics_view.py presentation/weekly_chart_widget.py presentation/planner_widget.py presentation/planner_dialogs.py presentation/inciso_dialog.py presentation/excel_filter_popup.py presentation/flow_layout.py presentation/presentation_dialogs.py presentation/presentation_formatters.py presentation/theme_tokens.py presentation/theme.py application/application_service.py application/planner_service.py application/statistics_service.py application/record_query.py domain/models.py domain/timer_service.py infrastructure/storage_service.py
 ```
 
 No se debe editar manualmente ningún JSON de usuario para resolver un problema de código. Los pasos completos están detallados en [OPERACION_Y_VALIDACION.md](OPERACION_Y_VALIDACION.md).
