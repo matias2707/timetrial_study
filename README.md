@@ -4,10 +4,10 @@ Aplicación de escritorio local desarrollada en Python y PySide6 para cronometra
 
 ## Características principales
 
-- **Cronómetro de alta precisión:** Reloj digital monotónico con tiempos netos de ejercicio y descanso, navegación rápida entre incisos/ejercicios/secciones, atajos de teclado y notas inmediatas.
+- **Cronómetro de alta precisión:** Reloj digital monotónico con tiempos netos de ejercicio y descanso, controles de sesión y notas inmediatas.
 - **Tabla de Registros analítica:** Filtros interactivos emergentes estilo Excel, ordenamiento múltiple jerárquico, reordenamiento de columnas, búsqueda global, KPI cards y badges de estado.
 - **Panel de Estadísticas:** Resumen de métricas acumuladas, gráfico semanal de dedicación renderizado en alta resolución antialiasing y análisis desagregado por sección.
-- **Planificador de estudio:** Estructuración previa de guías académicas con ejercicios simples y compuestos (incisos), pesos ponderados de completitud (`completed_weight`) y carga directa al cronómetro con verificación de límites.
+- **Planificador de estudio:** Estructuración previa de guías académicas con ejercicios simples y compuestos (incisos), pesos ponderados de completitud (`completed_weight`) y carga directa al cronómetro.
 - **Resolución de desfasaje de incisos:** Pausa automática del cronómetro y diálogo modal inteligente ante detección de intentos previos sin clasificar.
 - **Temas y Audio:** Soporte instantáneo para **Modo Claro** y **Modo Oscuro**, y notificaciones sonoras con opción de silencio.
 - **Persistencia local y segura:** Archivos JSON atómicos y portables (esquema versión `1`), sin dependencia de servicios en la nube ni bases de datos externas.

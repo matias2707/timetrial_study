@@ -101,7 +101,7 @@ class ThemeTests(unittest.TestCase):
         self.assertIn("LISTO PARA COMENZAR", window.status_pill.text())
         self.assertIn("#1e293b", window.status_pill.styleSheet())
 
-    def test_steppers_and_navigation_pods(self) -> None:
+    def test_steppers_and_session_controls(self) -> None:
         window = MainWindow()
 
         # Stylesheet checks
@@ -109,8 +109,6 @@ class ThemeTests(unittest.TestCase):
         dark_css = get_theme_stylesheet(THEME_DARK)
         self.assertIn("QPushButton#stepper_button", light_css)
         self.assertIn("QPushButton#stepper_button", dark_css)
-        self.assertIn("QFrame#nav_pod", light_css)
-        self.assertIn("QFrame#nav_pod", dark_css)
 
         # Steppers exist and click logic
         self.assertTrue(hasattr(window, "stepper_buttons"))
@@ -146,12 +144,6 @@ class ThemeTests(unittest.TestCase):
         for btn in window.stepper_buttons:
             self.assertTrue(btn.isEnabled())
 
-        # Navigation pods test
-        self.assertTrue(hasattr(window, "nav_pod_section"))
-        self.assertTrue(hasattr(window, "nav_pod_exercise"))
-        self.assertTrue(hasattr(window, "nav_pod_inciso"))
-        self.assertEqual(len(window.navigation_buttons), 6)
-
         # Primary controls arrangement
         self.assertTrue(hasattr(window, "primary_controls"))
         self.assertTrue(hasattr(window, "stop_button"))
@@ -163,8 +155,6 @@ class ThemeTests(unittest.TestCase):
         window._arrange_session_controls(compact=False, very_compact=False)
         window._arrange_session_controls(compact=True, very_compact=False)
         window._arrange_session_controls(compact=True, very_compact=True)
-        window._arrange_navigation_pods(compact=False)
-        window._arrange_navigation_pods(compact=True)
 
 
 if __name__ == "__main__":

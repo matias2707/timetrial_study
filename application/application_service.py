@@ -118,37 +118,6 @@ class StudyApplicationService:
         self.pending_comment = ""
         return True
 
-    def navigate(self, target: str) -> bool:
-        """Finaliza el intento y mueve la ubicación en una dirección válida."""
-        if target == "previous_inciso" and self.location.inciso is None:
-            return False
-        if target == "previous_exercise" and self.location.exercise <= 1:
-            return False
-        if target == "previous_section" and self.location.section_number <= 1:
-            return False
-
-        self.finish_item(True)
-        if target == "next_inciso":
-            self.location.inciso = (self.location.inciso or 0) + 1
-        elif target == "previous_inciso":
-            self.location.inciso = self.location.inciso - 1 or None
-        elif target == "next_exercise":
-            self.location.exercise += 1
-            self.location.inciso = None
-        elif target == "previous_exercise":
-            self.location.exercise -= 1
-            self.location.inciso = None
-        elif target == "next_section":
-            self.location.section_number += 1
-            self.location.exercise = 1
-            self.location.inciso = None
-        elif target == "previous_section":
-            self.location.section_number -= 1
-            self.location.exercise = 1
-            self.location.inciso = None
-        else:
-            raise ValueError(f"Dirección de navegación desconocida: {target}")
-        return True
 
     def save(self) -> None:
         self.storage.save(self.record)

@@ -34,8 +34,6 @@ from domain.models import PlannedSection
 from presentation.presentation_formatters import format_milliseconds
 
 ACTION_CANCEL = "cancel"
-ACTION_GO_PLANNER = "go_planner"
-ACTION_CONTINUE = "continue"
 
 
 class PlannedSectionDialog(QDialog):
@@ -414,77 +412,3 @@ class ExerciseDetailPopup(QDialog):
         self.accept()
 
 
-class BoundaryWarningDialog(QDialog):
-    """Diálogo emergente cuando la navegación excede el rango planificado."""
-
-    def __init__(
-        self,
-        parent: QWidget | None,
-        boundary_message: str,
-        is_dark: bool = True,
-    ) -> None:
-        super().__init__(parent)
-        self.result_action = ACTION_CANCEL
-        self.setWindowTitle("Aviso de Planificación")
-        self.resize(480, 240)
-
-        layout = QVBoxLayout(self)
-        layout.setSpacing(14)
-
-        header_layout = QHBoxLayout()
-        icon_lbl = QLabel()
-        icon_lbl.setPixmap(qta.icon("fa5s.exclamation-triangle", color="#f59e0b").pixmap(36, 36))
-        header_layout.addWidget(icon_lbl)
-
-        msg_layout = QVBoxLayout()
-        title_lbl = QLabel("Ejercicio fuera del rango planificado")
-        title_lbl.setStyleSheet("font-size: 15px; font-weight: 700;")
-        msg_layout.addWidget(title_lbl)
-
-        detail_lbl = QLabel(boundary_message)
-        detail_lbl.setWordWrap(True)
-        detail_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
-        msg_layout.addWidget(detail_lbl)
-        header_layout.addLayout(msg_layout)
-        layout.addLayout(header_layout)
-
-        info_lbl = QLabel(
-            "¿Cómo deseas proceder?\n"
-            "• Modificar la planificación: Abre el Planificador para ajustar la guía.\n"
-            "• Continuar sin modificar: Avanza y el Planificador incorporará el ejercicio automáticamente.\n"
-            "• Cancelar: Permanece en el ejercicio actual."
-        )
-        info_lbl.setWordWrap(True)
-        info_lbl.setStyleSheet("font-size: 11px; color: #cbd5e1;")
-        layout.addWidget(info_lbl)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(8)
-
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.clicked.connect(self._on_cancel)
-        btn_layout.addWidget(btn_cancel)
-
-        btn_plan = QPushButton("Ir a la Planificación")
-        btn_plan.setIcon(qta.icon("fa5s.tasks", color="#38bdf8"))
-        btn_plan.clicked.connect(self._on_go_plan)
-        btn_layout.addWidget(btn_plan)
-
-        btn_continue = QPushButton("Continuar sin modificar")
-        btn_continue.setStyleSheet("font-weight: 600;")
-        btn_continue.clicked.connect(self._on_continue)
-        btn_layout.addWidget(btn_continue)
-
-        layout.addLayout(btn_layout)
-
-    def _on_cancel(self) -> None:
-        self.result_action = ACTION_CANCEL
-        self.reject()
-
-    def _on_go_plan(self) -> None:
-        self.result_action = ACTION_GO_PLANNER
-        self.accept()
-
-    def _on_continue(self) -> None:
-        self.result_action = ACTION_CONTINUE
-        self.accept()

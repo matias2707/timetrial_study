@@ -281,13 +281,6 @@ class MainWindow(QMainWindow):
                 icon_name = "fa5s.minus" if (i % 2 == 0) else "fa5s.plus"
                 btn.setIcon(qta.icon(icon_name, color=stepper_icon_color))
 
-        # Iconos de botones de navegación rápida
-        nav_icon_color = "#94a3b8" if is_dark else "#475569"
-        if hasattr(self, "navigation_buttons"):
-            for i, btn in enumerate(self.navigation_buttons):
-                icon_name = "fa5s.chevron-left" if (i % 2 == 0) else "fa5s.chevron-right"
-                btn.setIcon(qta.icon(icon_name, color=nav_icon_color))
-
         self.update_session_button()
 
     def _on_tab_changed(self, index: int) -> None:
@@ -651,73 +644,6 @@ class MainWindow(QMainWindow):
 
         controls_layout.addLayout(self.primary_controls)
         self._arrange_session_controls(compact=False, very_compact=False)
-
-        # Navigation Header & Pods
-        nav_header = QLabel("NAVEGACIÓN RÁPIDA")
-        nav_header.setObjectName("eyebrow")
-        nav_header.setStyleSheet("margin-top: 6px;")
-        controls_layout.addWidget(nav_header)
-
-        # Botones de navegación con iconos y tooltips claros
-        self.btn_prev_section = QPushButton("  Anterior")
-        self.btn_prev_section.setObjectName("nav_button")
-        self.btn_prev_section.setToolTip("Guardar intento y volver a la sección anterior")
-        self.btn_prev_section.setIcon(qta.icon("fa5s.chevron-left", color="#94a3b8"))
-        self.btn_prev_section.clicked.connect(self.previous_section)
-
-        self.btn_next_section = QPushButton("Siguiente  ")
-        self.btn_next_section.setObjectName("nav_button")
-        self.btn_next_section.setToolTip("Guardar intento y avanzar a la siguiente sección")
-        self.btn_next_section.setIcon(qta.icon("fa5s.chevron-right", color="#94a3b8"))
-        self.btn_next_section.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.btn_next_section.clicked.connect(self.next_section)
-
-        self.btn_prev_exercise = QPushButton("  Anterior")
-        self.btn_prev_exercise.setObjectName("nav_button")
-        self.btn_prev_exercise.setToolTip("Guardar intento y volver al ejercicio anterior")
-        self.btn_prev_exercise.setIcon(qta.icon("fa5s.chevron-left", color="#94a3b8"))
-        self.btn_prev_exercise.clicked.connect(self.previous_exercise)
-
-        self.btn_next_exercise = QPushButton("Siguiente  ")
-        self.btn_next_exercise.setObjectName("nav_button")
-        self.btn_next_exercise.setToolTip("Guardar intento y pasar al siguiente ejercicio")
-        self.btn_next_exercise.setIcon(qta.icon("fa5s.chevron-right", color="#94a3b8"))
-        self.btn_next_exercise.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.btn_next_exercise.clicked.connect(self.next_exercise)
-
-        self.btn_prev_inciso = QPushButton("  Anterior")
-        self.btn_prev_inciso.setObjectName("nav_button")
-        self.btn_prev_inciso.setToolTip("Guardar intento y volver al inciso anterior")
-        self.btn_prev_inciso.setIcon(qta.icon("fa5s.chevron-left", color="#94a3b8"))
-        self.btn_prev_inciso.clicked.connect(self.previous_inciso)
-
-        self.btn_next_inciso = QPushButton("Siguiente  ")
-        self.btn_next_inciso.setObjectName("nav_button")
-        self.btn_next_inciso.setToolTip("Guardar intento y avanzar al siguiente inciso")
-        self.btn_next_inciso.setIcon(qta.icon("fa5s.chevron-right", color="#94a3b8"))
-        self.btn_next_inciso.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.btn_next_inciso.clicked.connect(self.next_inciso)
-
-        self.navigation_buttons = [
-            self.btn_prev_section,
-            self.btn_next_section,
-            self.btn_prev_exercise,
-            self.btn_next_exercise,
-            self.btn_prev_inciso,
-            self.btn_next_inciso,
-        ]
-
-        # 3 Pods jerárquicos alineados: Sección, Ejercicio, Inciso
-        self.nav_pod_section = self._create_nav_pod("Sección", "fa5s.bookmark", self.btn_prev_section, self.btn_next_section)
-        self.nav_pod_exercise = self._create_nav_pod("Ejercicio", "fa5s.tasks", self.btn_prev_exercise, self.btn_next_exercise)
-        self.nav_pod_inciso = self._create_nav_pod("Inciso", "fa5s.list-ol", self.btn_prev_inciso, self.btn_next_inciso)
-
-        self.navigation = QGridLayout()
-        self.navigation.setHorizontalSpacing(10)
-        self.navigation.setVerticalSpacing(10)
-        self._arrange_navigation_pods(compact=False)
-        controls_layout.addLayout(self.navigation)
-
         self.status_label = QLabel("Listo para comenzar")
         self.status_label.setObjectName("status")
         self.status_label.setVisible(False)
@@ -767,47 +693,6 @@ class MainWindow(QMainWindow):
 
         return container
 
-    def _create_nav_pod(
-        self,
-        title: str,
-        icon_name: str,
-        prev_btn: QPushButton,
-        next_btn: QPushButton,
-    ) -> QFrame:
-        """Crea un módulo visual agrupado para navegar por Sección, Ejercicio o Inciso."""
-        pod = QFrame()
-        pod.setObjectName("nav_pod")
-        pod_layout = QVBoxLayout(pod)
-        pod_layout.setContentsMargins(12, 10, 12, 12)
-        pod_layout.setSpacing(8)
-
-        # Encabezado del pod
-        header = QHBoxLayout()
-        header.setContentsMargins(2, 0, 2, 0)
-        header.setSpacing(6)
-        icon_label = QLabel()
-        icon_color = "#bef264" if self.is_dark_mode else "#65a30d"
-        icon_label.setPixmap(qta.icon(icon_name, color=icon_color).pixmap(12, 12))
-        header.addWidget(icon_label)
-
-        lbl = QLabel(title.upper())
-        lbl.setObjectName("eyebrow")
-        lbl.setStyleSheet("font-size: 10px; font-weight: 800; letter-spacing: 1.2px;")
-        header.addWidget(lbl)
-        header.addStretch()
-        pod_layout.addLayout(header)
-
-        # Botones Anterior / Siguiente en fila
-        btn_layout = QHBoxLayout()
-        btn_layout.setContentsMargins(0, 0, 0, 0)
-        btn_layout.setSpacing(8)
-        prev_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        next_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        btn_layout.addWidget(prev_btn)
-        btn_layout.addWidget(next_btn)
-        pod_layout.addLayout(btn_layout)
-
-        return pod
 
     def _arrange_session_controls(self, compact: bool = False, very_compact: bool = False) -> None:
         """Distribuye simétricamente los controles de sesión en cuadrícula según el ancho."""
@@ -841,24 +726,6 @@ class MainWindow(QMainWindow):
             self.primary_controls.addWidget(self.complete_button, 1, 0, 1, 2)
             self.primary_controls.addWidget(self.incomplete_button, 1, 2, 1, 2)
 
-    def _arrange_navigation_pods(self, compact: bool = False) -> None:
-        """Distribuye los 3 pods de navegación en 3 columnas o 3 filas según el ancho."""
-        while self.navigation.count():
-            self.navigation.takeAt(0)
-
-        pods = (self.nav_pod_section, self.nav_pod_exercise, self.nav_pod_inciso)
-        if compact:
-            # 3 filas de 1 pod cada una
-            for row, pod in enumerate(pods):
-                self.navigation.addWidget(pod, row, 0)
-            self.navigation.setColumnStretch(0, 1)
-            self.navigation.setColumnStretch(1, 0)
-            self.navigation.setColumnStretch(2, 0)
-        else:
-            # 3 columnas lado a lado (1 fila)
-            for col, pod in enumerate(pods):
-                self.navigation.addWidget(pod, 0, col)
-                self.navigation.setColumnStretch(col, 1)
 
     def resizeEvent(self, event) -> None:
         """Refluye controles y adapta los relojes y cuadrículas responsivamente."""
@@ -869,9 +736,6 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "primary_controls"):
             self._arrange_session_controls(compact, very_compact)
-
-        if hasattr(self, "navigation"):
-            self._arrange_navigation_pods(compact)
 
         if hasattr(self, "metrics_layout"):
             self.metrics_layout.setDirection(
@@ -1601,28 +1465,6 @@ class MainWindow(QMainWindow):
         self.refresh_clock()
         self.refresh_table()
 
-    def _check_boundary_permission(self, target_location: SessionLocation) -> bool:
-        """Verifica si la ubicación excede la planificación y muestra aviso interactivo si es necesario."""
-        is_ok, msg = self.application.check_location_boundary(target_location)
-        if is_ok:
-            return True
-
-        from presentation.planner_dialogs import (
-            ACTION_CANCEL,
-            ACTION_CONTINUE,
-            ACTION_GO_PLANNER,
-            BoundaryWarningDialog,
-        )
-
-        dlg = BoundaryWarningDialog(self, msg, is_dark=self.is_dark_mode)
-        dlg.exec()
-        if dlg.result_action == ACTION_GO_PLANNER:
-            self.tabs.setCurrentIndex(3)
-            return False
-        elif dlg.result_action == ACTION_CONTINUE:
-            return True
-        else:
-            return False
 
     def _on_planner_load_timer(
         self, section_type: str, section_number: int, exercise: int, inciso: int | None
@@ -1647,106 +1489,6 @@ class MainWindow(QMainWindow):
         self.sync_location()
         self.tabs.setCurrentIndex(0)
 
-    def _execute_navigation(
-        self,
-        nav_action: str,
-        target_loc: SessionLocation | None = None,
-        update_inputs_callback=None,
-    ) -> None:
-        """Ejecuta una acción de navegación, gestionando desfasajes, sonidos y refresco visual."""
-        if target_loc is not None and not self._check_boundary_permission(target_loc):
-            return
-
-        was_active = self.application.mode is not TimerMode.WAITING
-        if was_active and not self._resolve_inciso_gap():
-            return
-
-        moved = self.application.navigate(nav_action)
-        if moved and was_active:
-            self.play_complete_sound()
-
-        if moved and update_inputs_callback:
-            update_inputs_callback()
-
-        self.sync_location()
-        self.application.sync_planner_with_records()
-        if hasattr(self, "planner"):
-            self.planner.refresh_view()
-
-        if was_active:
-            self.set_locked(False)
-            self.update_session_button()
-            self.update_timer_visual_state()
-            self.refresh_table()
-            self.refresh_clock()
-
-    def next_inciso(self) -> None:
-        """Guarda el ejercicio actual y avanza al siguiente inciso."""
-        target_loc = SessionLocation(
-            section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
-            section_number=self.section_number_input.value(),
-            exercise=self.exercise_input.value(),
-            inciso=(self.inciso_input.value() or 0) + 1,
-        )
-        self._execute_navigation(
-            "next_inciso",
-            target_loc,
-            lambda: self.inciso_input.setValue(self.application.location.inciso or 0),
-        )
-
-    def previous_inciso(self) -> None:
-        """Guarda el intento y vuelve al inciso anterior, si existe."""
-        self._execute_navigation(
-            "previous_inciso",
-            None,
-            lambda: self.inciso_input.setValue(self.application.location.inciso or 0),
-        )
-
-    def next_exercise(self) -> None:
-        """Guarda el ejercicio y pasa al siguiente ejercicio de la sección."""
-        target_loc = SessionLocation(
-            section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
-            section_number=self.section_number_input.value(),
-            exercise=self.exercise_input.value() + 1,
-            inciso=None,
-        )
-        def _update() -> None:
-            self.exercise_input.setValue(self.application.location.exercise)
-            self.inciso_input.setValue(0)
-
-        self._execute_navigation("next_exercise", target_loc, _update)
-
-    def previous_exercise(self) -> None:
-        """Guarda el intento y vuelve al ejercicio anterior, si existe."""
-        def _update() -> None:
-            self.exercise_input.setValue(self.application.location.exercise)
-            self.inciso_input.setValue(0)
-
-        self._execute_navigation("previous_exercise", None, _update)
-
-    def next_section(self) -> None:
-        """Guarda el ejercicio actual y avanza a la siguiente sección."""
-        target_loc = SessionLocation(
-            section_type=self.section_input.text().strip() or DEFAULT_SECTION_TYPE,
-            section_number=self.section_number_input.value() + 1,
-            exercise=1,
-            inciso=None,
-        )
-        def _update() -> None:
-            self.section_number_input.setValue(self.application.location.section_number)
-            self.exercise_input.setValue(1)
-            self.inciso_input.setValue(0)
-
-        self._execute_navigation("next_section", target_loc, _update)
-
-    def previous_section(self) -> None:
-        """Guarda el intento y vuelve a la sección anterior, si existe."""
-        def _update() -> None:
-            self.section_number_input.setValue(self.application.location.section_number)
-            self.exercise_input.setValue(1)
-            self.inciso_input.setValue(0)
-
-        self._execute_navigation("previous_section", None, _update)
 
     def refresh_clock(self) -> None:
         """Actualiza los labels con los tiempos actuales del cronómetro."""

@@ -391,27 +391,7 @@ def get_theme_stylesheet(theme: str) -> str:
             color: #ffffff;
         }
 
-        QPushButton#nav_button {
-            background: #1e293b;
-            color: #e2e8f0;
-            border: 1px solid #334155;
-            border-radius: 9px;
-            padding: 8px 14px;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        QPushButton#nav_button:hover {
-            border-color: #bef264;
-            background: #273549;
-            color: #ffffff;
-        }
-        QPushButton#nav_button:disabled {
-            background: #111827;
-            color: #475569;
-            border-color: #1f2937;
-        }
-
-        /* Steppers y Pods de navegación */
+        /* Steppers numéricos */
         QPushButton#stepper_button {
             background: #1e293b;
             color: #f1f5f9;
@@ -435,15 +415,6 @@ def get_theme_stylesheet(theme: str) -> str:
             background: #111827;
             color: #475569;
             border-color: #1f2937;
-        }
-
-        QFrame#nav_pod {
-            background: #070b14;
-            border: 1px solid #1e293b;
-            border-radius: 12px;
-        }
-        QFrame#nav_pod:hover {
-            border-color: #334155;
         }
 
         QPushButton#toolbar_primary {
@@ -1111,27 +1082,7 @@ def get_theme_stylesheet(theme: str) -> str:
             color: #0f172a;
         }
 
-        QPushButton#nav_button {
-            background: #ffffff;
-            color: #1e293b;
-            border: 1px solid #cbd5e1;
-            border-radius: 9px;
-            padding: 8px 14px;
-            font-size: 12px;
-            font-weight: 700;
-        }
-        QPushButton#nav_button:hover {
-            border-color: #84cc16;
-            background: #f8fafc;
-            color: #0f172a;
-        }
-        QPushButton#nav_button:disabled {
-            background: #f1f5f9;
-            color: #94a3b8;
-            border-color: #e2e8f0;
-        }
-
-        /* Steppers y Pods de navegación */
+        /* Steppers numéricos */
         QPushButton#stepper_button {
             background: #ffffff;
             color: #1e293b;
@@ -1155,15 +1106,6 @@ def get_theme_stylesheet(theme: str) -> str:
             background: #f1f5f9;
             color: #94a3b8;
             border-color: #e2e8f0;
-        }
-
-        QFrame#nav_pod {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-        }
-        QFrame#nav_pod:hover {
-            border-color: #cbd5e1;
         }
 
         QPushButton#toolbar_primary {

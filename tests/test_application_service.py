@@ -43,16 +43,6 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertTrue(application.record.items[0].completed)
         self.assertTrue(storage.saved_records)
 
-    def test_navigation_from_an_exercise_without_active_session(self) -> None:
-        application = StudyApplicationService(storage=MemoryStorage())
-
-        self.assertTrue(application.navigate("next_exercise"))
-        self.assertEqual(application.location.exercise, 2)
-        self.assertIsNone(application.location.inciso)
-
-        self.assertTrue(application.navigate("previous_exercise"))
-        self.assertEqual(application.location.exercise, 1)
-        self.assertFalse(application.navigate("previous_exercise"))
 
     def test_comment_is_saved_with_finished_item(self) -> None:
         application = StudyApplicationService(storage=MemoryStorage())
