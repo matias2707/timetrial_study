@@ -24,8 +24,14 @@ class AppToolbar(QToolBar):
     request_close_app = Signal()
     request_theme_change = Signal(str)
     request_toggle_sound = Signal()
+    request_toggle_auto_open = Signal(bool)
 
-    def __init__(self, is_dark_mode: bool = False, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        is_dark_mode: bool = False,
+        auto_open_recent: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__("Barra principal", parent)
         self.setObjectName("main_toolbar")
         self.setMovable(False)
@@ -77,7 +83,7 @@ class AppToolbar(QToolBar):
         self.file_button.setStyleSheet("QToolButton#file_toolbar_button::menu-indicator { image: none; }")
         self.addWidget(self.file_button)
 
-        # --- Menú Configuración (Temas y Sonidos) ---
+        # --- Menú Configuración (Temas, Sonidos y Opciones de Inicio) ---
         self.config_menu = QMenu("Configuración", self)
         self.view_menu = self.config_menu  # alias para retrocompatibilidad
 
@@ -112,6 +118,15 @@ class AppToolbar(QToolBar):
         self.sound_action.triggered.connect(self.request_toggle_sound.emit)
         self.config_menu.addAction(self.sound_action)
 
+        self.config_menu.addSeparator()
+
+        # Acción auto-apertura del último archivo al iniciar
+        self.auto_open_action = QAction("Cargar último archivo al iniciar", self)
+        self.auto_open_action.setCheckable(True)
+        self.auto_open_action.setChecked(auto_open_recent)
+        self.auto_open_action.triggered.connect(self.request_toggle_auto_open.emit)
+        self.config_menu.addAction(self.auto_open_action)
+
         self.config_button = QToolButton(self)
         self.view_button = self.config_button  # alias para retrocompatibilidad
         self.config_button.setObjectName("config_toolbar_button")
@@ -134,6 +149,10 @@ class AppToolbar(QToolBar):
         else:
             self.sound_action.setText("Silenciar sonidos")
             self.sound_action.setIcon(qta.icon("fa5s.volume-up", color="#10b981"))
+
+    def update_auto_open_action(self, enabled: bool) -> None:
+        """Actualiza el estado de la acción de auto-apertura."""
+        self.auto_open_action.setChecked(enabled)
 
     def update_theme_icons(self, is_dark: bool) -> None:
         """Actualiza los iconos de la barra de herramientas al alternar tema."""

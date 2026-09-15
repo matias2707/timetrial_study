@@ -736,10 +736,15 @@ def get_dialog_stylesheet(theme: str) -> str:
             QDialog { background: #0f172a; }
             QLabel#title { color: #f8fafc; font-size: 22px; font-weight: 800; }
             QLabel#subtitle { color: #94a3b8; font-size: 13px; }
+            QLabel#recent_header { color: #cbd5e1; font-size: 13px; font-weight: 700; }
             QLabel#version { color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-            QListWidget { background: #090d16; color: #f8fafc; border: 1px solid #1e293b; border-radius: 8px; min-height: 96px; }
+            QListWidget { background: #090d16; color: #f8fafc; border: 1px solid #1e293b; border-radius: 8px; min-height: 120px; font-size: 12px; }
+            QListWidget::item { padding: 6px 8px; border-radius: 6px; }
             QListWidget::item:hover { background: #1e293b; }
-            QListWidget::item:selected { background: #1e293b; color: #bef264; }
+            QListWidget::item:selected { background: #1e293b; color: #bef264; font-weight: 700; }
+            QCheckBox { color: #cbd5e1; font-size: 12px; font-weight: 500; spacing: 8px; }
+            QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #334155; background: #090d16; }
+            QCheckBox::indicator:checked { background: #bef264; border-color: #bef264; }
             QPushButton { min-height: 38px; min-width: 140px; border-radius: 9px; font-size: 12px; font-weight: 700; }
             QPushButton#primary { background: #bef264; color: #090d16; border: 1px solid #bef264; font-weight: 800; }
             QPushButton#primary:hover { background: #d9f99d; }
@@ -752,10 +757,15 @@ def get_dialog_stylesheet(theme: str) -> str:
         QDialog { background: #f8fafc; }
         QLabel#title { color: #0f172a; font-size: 22px; font-weight: 800; }
         QLabel#subtitle { color: #64748b; font-size: 13px; }
+        QLabel#recent_header { color: #334155; font-size: 13px; font-weight: 700; }
         QLabel#version { color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-        QListWidget { background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 8px; min-height: 96px; }
+        QListWidget { background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 8px; min-height: 120px; font-size: 12px; }
+        QListWidget::item { padding: 6px 8px; border-radius: 6px; }
         QListWidget::item:hover { background: #f1f5f9; }
-        QListWidget::item:selected { background: #f1f5f9; color: #0f172a; }
+        QListWidget::item:selected { background: #f1f5f9; color: #0f172a; font-weight: 700; }
+        QCheckBox { color: #334155; font-size: 12px; font-weight: 500; spacing: 8px; }
+        QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #ffffff; }
+        QCheckBox::indicator:checked { background: #0f172a; border-color: #0f172a; }
         QPushButton { min-height: 38px; min-width: 140px; border-radius: 9px; font-size: 12px; font-weight: 700; }
         QPushButton#primary { background: #0f172a; color: #bef264; border: 1px solid #0f172a; font-weight: 800; }
         QPushButton#primary:hover { background: #1e293b; }

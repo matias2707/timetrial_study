@@ -46,6 +46,8 @@ from presentation.theme import (
     get_theme_stylesheet,
 )
 from presentation.weekly_chart_widget import WeeklyChartWidget
+from presentation.welcome_dialog import WelcomeDialog
+from presentation.window_utils import force_activate_window
 
 __all__ = ["MainWindow", "WeeklyChartWidget", "APP_TITLE", "APP_VERSION", "DEFAULT_SECTION_TYPE", "MAX_VALUE"]
 
@@ -61,6 +63,7 @@ class MainWindow(QMainWindow):
         self.current_theme = str(self.settings.value("theme", THEME_LIGHT))
         if self.current_theme not in (THEME_LIGHT, THEME_DARK):
             self.current_theme = THEME_LIGHT
+        self.auto_open_recent = self.settings.value("auto_open_recent", True, type=bool)
 
         self.application = StudyApplicationService()
         self.audio_service = AudioService(self)
@@ -77,7 +80,11 @@ class MainWindow(QMainWindow):
         self._apply_current_stylesheet()
 
         # Barra de herramientas desacoplada
-        self.toolbar = AppToolbar(is_dark_mode=self.is_dark_mode, parent=self)
+        self.toolbar = AppToolbar(
+            is_dark_mode=self.is_dark_mode,
+            auto_open_recent=self.auto_open_recent,
+            parent=self,
+        )
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
         self.toolbar.update_sound_action(self.audio_service.is_muted)
 
@@ -124,11 +131,13 @@ class MainWindow(QMainWindow):
         self.tick.start(50)
 
         self.refresh_recent_files_menu()
-        self.prompt_initial_record_choice()
         self.update_title()
         self.refresh_table()
         self.refresh_statistics()
         self.autosave()
+
+        # Inicio desacoplado tras el renderizado de la ventana
+        QTimer.singleShot(0, self._handle_startup_flow)
 
     def _apply_current_stylesheet(self) -> None:
         stylesheet = get_theme_stylesheet(self.current_theme)
@@ -149,6 +158,7 @@ class MainWindow(QMainWindow):
         self.toolbar.request_close_app.connect(self.close)
         self.toolbar.request_theme_change.connect(self.set_theme)
         self.toolbar.request_toggle_sound.connect(self.toggle_sound_muted)
+        self.toolbar.request_toggle_auto_open.connect(self.set_auto_open_recent)
 
         # Conexiones de vistas
         self.home_view.item_finished.connect(self._on_home_item_finished)
@@ -491,130 +501,76 @@ class MainWindow(QMainWindow):
 
     # --- Gestión de Archivos y Diálogos ---
 
-    def prompt_initial_record_choice(self) -> None:
+    def set_auto_open_recent(self, enabled: bool) -> None:
+        """Configura y persiste si se debe abrir el último archivo automáticamente al iniciar."""
+        self.auto_open_recent = enabled
+        self.settings.setValue("auto_open_recent", enabled)
+        if hasattr(self, "toolbar"):
+            self.toolbar.update_auto_open_action(enabled)
+
+    def _handle_startup_flow(self, force: bool = False) -> None:
+        """Gestiona el flujo inicial de arranque sin bloquear el constructor ni ocultar la app."""
         import os
-        if os.environ.get("QT_QPA_PLATFORM") == "offscreen" or os.environ.get("STUDY_TIMETRIAL_TEST"):
+        if not force and (os.environ.get("QT_QPA_PLATFORM") == "offscreen" or os.environ.get("STUDY_TIMETRIAL_TEST")):
             return
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Study Timetrial")
-        dialog.setModal(True)
-        dialog.setMinimumWidth(560)
-        dialog.setStyleSheet(get_dialog_stylesheet(self.current_theme))
+        force_activate_window(self)
 
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(18)
-        layout.setContentsMargins(24, 22, 24, 20)
-
-        header = QHBoxLayout()
-        title = QLabel("Study Timetrial")
-        title.setObjectName("title")
-        version = QLabel(APP_VERSION)
-        version.setObjectName("version")
-        header.addWidget(title)
-        header.addStretch()
-        header.addWidget(version)
-        layout.addLayout(header)
-
-        subtitle = QLabel("Puede crear un archivo nuevo o abrir un registro reciente.")
-        subtitle.setObjectName("subtitle")
-        subtitle.setWordWrap(True)
-        layout.addWidget(subtitle)
-
-        recent_paths = self.application.storage.recent_files.paths
-        recent_list = QListWidget()
-        if recent_paths:
-            for path in recent_paths[:5]:
-                if path.exists():
-                    recent_list.addItem(f"{path.name} — {path.parent}")
-                    item = recent_list.item(recent_list.count() - 1)
-                    item.setData(Qt.ItemDataRole.UserRole, str(path))
-        else:
-            recent_list.addItem("No hay archivos recientes todavía")
-            recent_list.setEnabled(False)
-        recent_list.itemDoubleClicked.connect(
-            lambda item: self._handle_initial_choice(
-                dialog, "recent", item.data(Qt.ItemDataRole.UserRole)
-            )
-        )
-        layout.addWidget(recent_list)
-
-        buttons = QHBoxLayout()
-        buttons.setSpacing(12)
-
-        new_button = QPushButton("  Nuevo archivo")
-        new_button.setIcon(qta.icon("fa5s.plus", color="#090d16" if self.is_dark_mode else "#bef264"))
-        new_button.setObjectName("primary")
-        new_button.clicked.connect(lambda: self._handle_initial_choice(dialog, "new"))
-
-        open_button = QPushButton("  Abrir archivo")
-        open_button.setIcon(qta.icon("fa5s.folder-open", color="#cbd5e1" if self.is_dark_mode else "#334155"))
-        open_button.setObjectName("secondary")
-        open_button.clicked.connect(
-            lambda: self._handle_initial_choice(
-                dialog,
-                "open",
-                recent_list.currentItem().data(Qt.ItemDataRole.UserRole)
-                if recent_list.currentItem() is not None
-                else None,
-            )
-        )
-
-        cancel_button = QPushButton("Cancelar")
-        cancel_button.setObjectName("ghost")
-        cancel_button.clicked.connect(lambda: self._handle_initial_choice(dialog, "cancel"))
-
-        buttons.addWidget(new_button)
-        buttons.addWidget(open_button)
-        buttons.addStretch()
-        buttons.addWidget(cancel_button)
-        layout.addLayout(buttons)
-
-        dialog.exec()
-
-    def _handle_initial_choice(self, dialog: QDialog, choice: str, recent_path: str | None = None) -> None:
-        default_name = self.application.record.record_name or "StudyTimetrial"
-
-        if choice == "recent":
-            if recent_path is not None:
-                candidate = Path(recent_path)
-                if candidate.exists():
-                    self.application.load(candidate)
+        # Si está activado auto_open_recent, intentar cargar el último archivo reciente
+        if self.auto_open_recent:
+            recent_paths = [p for p in self.application.storage.recent_files.paths if p.exists()]
+            if recent_paths:
+                try:
+                    self.application.load(recent_paths[0])
                     self.update_title()
                     self.refresh_table()
                     self.refresh_recent_files_menu()
-                    dialog.accept()
                     return
-            dialog.reject()
+                except Exception:
+                    pass
+
+        # Si no está activado o no hay archivo válido, mostrar diálogo de bienvenida
+        self.prompt_initial_record_choice(force=force)
+
+    def prompt_initial_record_choice(self, force: bool = False) -> None:
+        """Muestra el diálogo de bienvenida / selección de registro."""
+        import os
+        if not force and (os.environ.get("QT_QPA_PLATFORM") == "offscreen" or os.environ.get("STUDY_TIMETRIAL_TEST")):
             return
 
-        if choice == "new":
-            name, accepted = QInputDialog.getText(
-                self,
-                "Nuevo archivo",
-                "Nombre del archivo:",
-                QLineEdit.EchoMode.Normal,
-                default_name,
-            )
-            if accepted:
-                self.application.new_record(name.strip() or default_name)
-            else:
+        dialog = WelcomeDialog(
+            recent_paths=self.application.storage.recent_files.paths,
+            auto_open_recent=self.auto_open_recent,
+            current_theme=self.current_theme,
+            is_dark_mode=self.is_dark_mode,
+            parent=self,
+        )
+
+        action, path, auto_open = dialog.exec_welcome()
+
+        if auto_open != self.auto_open_recent:
+            self.set_auto_open_recent(auto_open)
+
+        if action == "recent" and path is not None and path.exists():
+            try:
+                self.application.load(path)
+                self.update_title()
+                self.refresh_table()
+                self.refresh_recent_files_menu()
+            except Exception as error:
+                QMessageBox.critical(self, "Error al abrir registro", str(error))
+        elif action == "open":
+            self.open_record()
+        elif action == "new":
+            self.new_record()
+        elif action == "cancel":
+            if not self.application.is_record_open:
+                default_name = self.application.record.record_name or "StudyTimetrial"
                 self.application.new_record(default_name)
-            self.refresh_table()
-            dialog.accept()
-            return
+                self.update_title()
+                self.refresh_table()
 
-        if choice == "open":
-            dialog.reject()
-            if recent_path is not None:
-                self.open_recent_record(recent_path)
-            else:
-                self.open_record()
-            return
-
-        self.application.new_record(default_name)
-        self.refresh_table()
-        dialog.accept()
+        force_activate_window(self)
 
     def new_record(self) -> None:
         if self.application.is_record_open and (self.application.record.items or self.application.mode is not TimerMode.WAITING):
@@ -679,6 +635,7 @@ class MainWindow(QMainWindow):
         initial_dir = str(getattr(self.application.storage, "default_directory", Path.cwd()))
         path, _ = QFileDialog.getOpenFileName(self, "Abrir registro", initial_dir, "JSON (*.json)")
         if not path:
+            force_activate_window(self)
             return
 
         try:
@@ -688,30 +645,37 @@ class MainWindow(QMainWindow):
             self.refresh_recent_files_menu()
         except (OSError, TypeError, ValueError) as error:
             QMessageBox.critical(self, "Archivo inválido", str(error))
+        finally:
+            force_activate_window(self)
 
     def import_records(self) -> None:
         initial_dir = str(getattr(self.application.storage, "default_directory", Path.cwd()))
         path, _ = QFileDialog.getOpenFileName(self, "Importar registros", initial_dir, "JSON (*.json)")
         if not path:
+            force_activate_window(self)
             return
 
         try:
             source_record = self.application.storage.read(Path(path))
         except (OSError, TypeError, ValueError) as error:
             QMessageBox.critical(self, "Archivo inválido", str(error))
+            force_activate_window(self)
             return
 
         if not source_record.items:
             QMessageBox.information(self, "Sin registros", "El archivo seleccionado no contiene registros.")
+            force_activate_window(self)
             return
 
         dialog = ImportRecordsDialog(source_record, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            force_activate_window(self)
             return
 
         selected_indexes = dialog.selected_indexes()
         if not selected_indexes:
             QMessageBox.information(self, "Sin selección", "Selecciona al menos un registro para importar.")
+            force_activate_window(self)
             return
 
         try:
@@ -719,6 +683,8 @@ class MainWindow(QMainWindow):
         except (OSError, TypeError, ValueError, IndexError) as error:
             QMessageBox.critical(self, "No se pudieron importar los registros", str(error))
             return
+        finally:
+            force_activate_window(self)
 
         self.refresh_table()
         self.update_title()
@@ -731,6 +697,7 @@ class MainWindow(QMainWindow):
         if path:
             self.application.save_as(Path(path))
             self.update_title()
+        force_activate_window(self)
 
     def rename_record(self) -> None:
         if self.application.record_path is None:
@@ -738,6 +705,7 @@ class MainWindow(QMainWindow):
 
         path, _ = QFileDialog.getSaveFileName(self, "Renombrar registro", str(self.application.record_path), "JSON (*.json)")
         if not path:
+            force_activate_window(self)
             return
 
         new_path = Path(path)
@@ -746,6 +714,8 @@ class MainWindow(QMainWindow):
         except OSError as error:
             QMessageBox.critical(self, "No se pudo renombrar", str(error))
             return
+        finally:
+            force_activate_window(self)
 
         self.update_title()
 
