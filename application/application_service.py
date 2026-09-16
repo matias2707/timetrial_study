@@ -45,6 +45,23 @@ class StudyApplicationService:
         self.record = self.storage.create_automatic()
         self.location = SessionLocation()
         self.pending_comment = ""
+        self.editing_item_id: str | None = None
+        self.editing_initial_exercise_ms: int = 0
+
+    @property
+    def is_editing(self) -> bool:
+        """Indica si el cronómetro está en modo continuación / edición de un registro."""
+        return self.editing_item_id is not None
+
+    @property
+    def editing_item(self) -> TimerItem | None:
+        """Devuelve la entidad TimerItem que se está editando actualmente, o None."""
+        if not self.editing_item_id:
+            return None
+        for item in self.record.items:
+            if item.id == self.editing_item_id:
+                return item
+        return None
 
     @property
     def is_record_open(self) -> bool:
@@ -76,7 +93,30 @@ class StudyApplicationService:
 
     def stop_session(self) -> None:
         """Descarta el intento en curso sin crear un registro."""
+        self.editing_item_id = None
+        self.editing_initial_exercise_ms = 0
         self.timer.reset()
+        self.pending_comment = ""
+
+    def load_item_into_session(self, item: TimerItem) -> None:
+        """Carga un item previamente guardado para continuar su conteo o actualizarlo."""
+        self.editing_item_id = item.id
+        self.editing_initial_exercise_ms = item.exercise_time_ms
+        self.location = SessionLocation(
+            section_type=item.section_type,
+            section_number=item.section_number,
+            exercise=item.exercise,
+            inciso=item.inciso,
+        )
+        self.pending_comment = item.comment
+        self.timer.load_accumulated_times(item.exercise_time_ms, item.break_time_ms)
+
+    def cancel_editing_session(self) -> None:
+        """Cancela el modo edición y reinicia el cronómetro a un estado limpio."""
+        self.editing_item_id = None
+        self.editing_initial_exercise_ms = 0
+        self.timer.reset()
+        self.pending_comment = ""
 
     def pause_timer(self) -> None:
         """Pausa / congela los cronómetros de la sesión actual."""
@@ -95,27 +135,60 @@ class StudyApplicationService:
         """Define el comentario que se guardará con el intento actual."""
         self.pending_comment = comment.strip()
 
-    def finish_item(self, completed: bool) -> bool:
-        """Guarda el intento activo y reinicia el cronómetro."""
-        if self.mode is TimerMode.WAITING:
+    def finish_item(self, completed: bool, overwrite: bool = True) -> bool:
+        """Guarda el intento activo y reinicia el cronómetro.
+
+        Si overwrite=True y se estaba en modo edición, actualiza los datos del item existente.
+        En caso contrario, inserta un nuevo item en el registro.
+        """
+        if self.mode is TimerMode.WAITING and not self.editing_item_id:
             return False
 
         exercise_ms, break_ms = self.timer.snapshot()
-        self.record.items.append(
-            TimerItem(
-                section_type=self.location.section_type,
-                section_number=self.location.section_number,
-                exercise=self.location.exercise,
-                inciso=self.location.inciso,
-                exercise_time_ms=exercise_ms,
-                break_time_ms=break_ms,
-                completed=completed,
-                comment=self.pending_comment,
+
+        if self.editing_item_id and overwrite:
+            target = self.editing_item
+            if target is not None:
+                target.section_type = self.location.section_type
+                target.section_number = self.location.section_number
+                target.exercise = self.location.exercise
+                target.inciso = self.location.inciso
+                target.exercise_time_ms = exercise_ms
+                target.break_time_ms = break_ms
+                target.completed = completed
+                target.comment = self.pending_comment
+            else:
+                self.record.items.append(
+                    TimerItem(
+                        section_type=self.location.section_type,
+                        section_number=self.location.section_number,
+                        exercise=self.location.exercise,
+                        inciso=self.location.inciso,
+                        exercise_time_ms=exercise_ms,
+                        break_time_ms=break_ms,
+                        completed=completed,
+                        comment=self.pending_comment,
+                    )
+                )
+        else:
+            self.record.items.append(
+                TimerItem(
+                    section_type=self.location.section_type,
+                    section_number=self.location.section_number,
+                    exercise=self.location.exercise,
+                    inciso=self.location.inciso,
+                    exercise_time_ms=exercise_ms,
+                    break_time_ms=break_ms,
+                    completed=completed,
+                    comment=self.pending_comment,
+                )
             )
-        )
+
         self.save()
         self.timer.reset()
         self.pending_comment = ""
+        self.editing_item_id = None
+        self.editing_initial_exercise_ms = 0
         return True
 
 
@@ -178,6 +251,9 @@ class StudyApplicationService:
     def close_record(self) -> None:
         self.storage.path = None
         self.record = Record()
+        self.editing_item_id = None
+        self.editing_initial_exercise_ms = 0
+        self.timer.reset()
 
     def ordered_items(self) -> list[TimerItem]:
         return sorted(self.record.items, key=lambda item: item.created_at, reverse=True)
@@ -247,7 +323,8 @@ class StudyApplicationService:
         total = compute_today_study_time_ms(self.record, reference_date=reference_date)
         if include_current and self.mode is not TimerMode.WAITING:
             exercise_ms, _ = self.timer.snapshot()
-            total += exercise_ms
+            current_delta = max(0, exercise_ms - self.editing_initial_exercise_ms)
+            total += current_delta
         return total
 
     def get_planner_overview(self) -> PlannerOverview:

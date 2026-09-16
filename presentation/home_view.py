@@ -123,6 +123,31 @@ class HomeViewWidget(QWidget):
         top.addWidget(today_card)
         outer.addLayout(top)
 
+        # Banner contextual de modo continuación
+        self.continuation_banner = QFrame()
+        self.continuation_banner.setObjectName("continuationBanner")
+        self.continuation_banner.setVisible(False)
+        banner_layout = QHBoxLayout(self.continuation_banner)
+        banner_layout.setContentsMargins(18, 10, 18, 10)
+        banner_layout.setSpacing(12)
+
+        self.continuation_icon = QLabel()
+        self.continuation_icon.setPixmap(qta.icon("fa5s.history", color="#f59e0b").pixmap(18, 18))
+        banner_layout.addWidget(self.continuation_icon)
+
+        self.continuation_label = QLabel("Modo continuación activo")
+        self.continuation_label.setObjectName("continuation_label")
+        banner_layout.addWidget(self.continuation_label, 1)
+
+        self.continuation_cancel_btn = QPushButton(" Cancelar edición")
+        self.continuation_cancel_btn.setObjectName("continuation_cancel_btn")
+        self.continuation_cancel_btn.setIcon(qta.icon("fa5s.times", color="#ef4444"))
+        self.continuation_cancel_btn.setToolTip("Descarta los cambios y vuelve a un intento nuevo")
+        self.continuation_cancel_btn.clicked.connect(self.cancel_continuation)
+        banner_layout.addWidget(self.continuation_cancel_btn)
+
+        outer.addWidget(self.continuation_banner)
+
         # Hero Card: Ubicación
         hero = QFrame()
         hero.setObjectName("heroCard")
@@ -434,7 +459,66 @@ class HomeViewWidget(QWidget):
         self.session_button.style().unpolish(self.session_button)
         self.session_button.style().polish(self.session_button)
 
+    def load_continuation_item(self, item: TimerItem) -> None:
+        """Carga en pantalla el item a continuar, prellenando ubicación, tiempos y notas."""
+        self.section_input.setText(item.section_type)
+        self.section_number_input.setValue(item.section_number)
+        self.exercise_input.setValue(item.exercise)
+        self.inciso_input.setValue(item.inciso or 0)
+        self.sync_location(force=True)
+        self.set_locked(True)
+
+        if item.comment:
+            clean = item.comment.strip()
+            short = (clean[:25] + "…") if len(clean) > 25 else clean
+            self.comment_button.setText(f'  COMENTARIO: "{short}"')
+        else:
+            self.comment_button.setText("  COMENTARIO")
+
+        inciso_str = f" · Inciso {item.inciso}" if item.inciso else ""
+        time_str = format_hh_mm_ss(item.exercise_time_ms)
+        created_str = item.created_at[:16].replace("T", " ")
+        self.continuation_label.setText(
+            f"✏️ Modo continuación: editando {item.section_type} {item.section_number} · Ejercicio {item.exercise}{inciso_str} "
+            f"(Tiempo previo: {time_str} · Guardado: {created_str})"
+        )
+        self.continuation_banner.setVisible(True)
+
+        self.status_label.setText("Modo continuación listo para reanudar o registrar")
+        self.update_session_button()
+        self.update_timer_visual_state()
+        self.refresh_clock()
+
+    def cancel_continuation(self) -> None:
+        """Solicita confirmación y cancela el modo continuación."""
+        if QMessageBox.question(
+            self.window(),
+            "Cancelar continuación",
+            "¿Desea descartar los cambios y volver a un intento limpio nuevo?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        self.application.cancel_editing_session()
+        self.clear_continuation_mode()
+
+    def clear_continuation_mode(self) -> None:
+        """Limpia los indicadores visuales del modo continuación."""
+        self.continuation_banner.setVisible(False)
+        self.set_locked(False)
+        if hasattr(self, "comment_button"):
+            self.comment_button.setText("  COMENTARIO")
+            self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
+        self.status_label.setText("Listo para comenzar")
+        self.update_session_button()
+        self.update_timer_visual_state()
+        self.refresh_clock()
+
     def stop_timer(self) -> None:
+        if self.application.is_editing:
+            self.cancel_continuation()
+            return
+
         self.application.stop_session()
         self.set_locked(False)
         self.update_session_button()
@@ -528,7 +612,7 @@ class HomeViewWidget(QWidget):
         return True
 
     def finish_item(self, completed: bool, keep_location: bool = False, stop: bool = False) -> None:
-        if self.application.mode is TimerMode.WAITING:
+        if self.application.mode is TimerMode.WAITING and not self.application.is_editing:
             return
 
         if not self._resolve_inciso_gap():
@@ -537,7 +621,8 @@ class HomeViewWidget(QWidget):
         if completed:
             self.audio_service.play_complete()
 
-        self.application.finish_item(completed)
+        self.application.finish_item(completed, overwrite=True)
+        self.clear_continuation_mode()
         self.set_locked(False)
         self.update_session_button()
         self.update_timer_visual_state()

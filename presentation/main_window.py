@@ -168,6 +168,7 @@ class MainWindow(QMainWindow):
         self.records_view.request_save_as.connect(self.save_as)
         self.records_view.request_rename_record.connect(self.rename_record)
         self.records_view.request_close_record.connect(self.close_record)
+        self.records_view.resume_item_requested.connect(self.resume_item_in_timer)
 
         self.planner.request_load_timer.connect(self._on_planner_load_timer)
 
@@ -321,6 +322,10 @@ class MainWindow(QMainWindow):
     @property
     def status_pill(self):
         return self.home_view.status_pill
+
+    @property
+    def continuation_banner(self):
+        return self.home_view.continuation_banner
 
     @property
     def status_label(self):
@@ -497,6 +502,28 @@ class MainWindow(QMainWindow):
         self.exercise_input.setValue(exercise)
         self.inciso_input.setValue(inciso or 0)
         self.sync_location()
+        self.tabs.setCurrentIndex(0)
+
+    def resume_item(self, target: int | TimerItem) -> None:
+        self.records_view.resume_item(target)
+
+    def resume_item_in_timer(self, item: TimerItem) -> None:
+        """Carga un item existente en el cronómetro tras verificar la sesión activa."""
+        if self.application.mode is not TimerMode.WAITING or self.application.timer.has_accumulated_time:
+            confirm = QMessageBox.question(
+                self,
+                "Intento en curso",
+                "Hay una sesión activa o con tiempo en el cronómetro.\n¿Deseas descartarla para continuar el intento seleccionado?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+            self.application.stop_session()
+            self.home_view.clear_continuation_mode()
+
+        self.application.load_item_into_session(item)
+        self.home_view.load_continuation_item(item)
         self.tabs.setCurrentIndex(0)
 
     # --- Gestión de Archivos y Diálogos ---

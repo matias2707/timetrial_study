@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from domain.models import Record, TimerItem
 from presentation.presentation_formatters import format_milliseconds, parse_milliseconds
+import qtawesome as qta
 
 DEFAULT_SECTION_TYPE = "Guía"
 MAX_VALUE = 999_999
@@ -39,6 +40,7 @@ class ItemDialog(QDialog):
         super().__init__(parent)
         self.existing = item
         self.validated_item: TimerItem | None = None
+        self.load_in_timer_requested = False
         self.setWindowTitle("Editar item" if item else "Agregar item")
 
         form = QFormLayout(self)
@@ -72,6 +74,14 @@ class ItemDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+
+        if self.existing is not None:
+            self.load_timer_btn = QPushButton(" Cargar en cronómetro")
+            self.load_timer_btn.setIcon(qta.icon("fa5s.play-circle", color="#10b981"))
+            self.load_timer_btn.setToolTip("Cargar este registro en el cronómetro para continuar")
+            self.load_timer_btn.clicked.connect(self._on_load_in_timer)
+            buttons.addButton(self.load_timer_btn, QDialogButtonBox.ButtonRole.ActionRole)
+
         form.addRow(buttons)
 
     def item(self, existing: TimerItem | None = None) -> TimerItem:
@@ -107,6 +117,18 @@ class ItemDialog(QDialog):
             QMessageBox.warning(self, "Valor inválido", str(error))
             return
         super().accept()
+
+    def _on_load_in_timer(self) -> None:
+        """Valida el formulario, marca la solicitud de carga al cronómetro y cierra."""
+        try:
+            self.validated_item = self.item(self.existing)
+        except (TypeError, ValueError) as error:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(self, "Valor inválido", str(error))
+            return
+        self.load_in_timer_requested = True
+        self.done(2)
 
 
 class ImportRecordsDialog(QDialog):

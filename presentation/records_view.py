@@ -50,6 +50,7 @@ class RecordsViewWidget(QWidget):
     """Vista interactiva para consultar, filtrar y gestionar los registros guardados."""
 
     data_modified = Signal()
+    resume_item_requested = Signal(object)
     request_open_record = Signal()
     request_import_records = Signal()
     request_save_as = Signal()
@@ -190,6 +191,8 @@ class RecordsViewWidget(QWidget):
 
         # Table (12 columnas)
         self.table = QTableWidget(0, 12)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_table_context_menu)
         header = self.table.horizontalHeader()
 
         header.setSectionsMovable(True)
@@ -435,12 +438,12 @@ class RecordsViewWidget(QWidget):
             edit_btn.clicked.connect(lambda _, it=item: self.edit_item(it))
             self.table.setCellWidget(index, 9, edit_btn)
 
-            reset_btn = QPushButton()
-            reset_btn.setIcon(qta.icon("fa5s.redo-alt", color="#f59e0b"))
-            reset_btn.setObjectName("table_action_icon")
-            reset_btn.setToolTip("Reiniciar tiempo")
-            reset_btn.clicked.connect(lambda _, it=item: self.reset_item(it))
-            self.table.setCellWidget(index, 10, reset_btn)
+            resume_btn = QPushButton()
+            resume_btn.setIcon(qta.icon("fa5s.play-circle", color="#10b981"))
+            resume_btn.setObjectName("table_action_icon")
+            resume_btn.setToolTip("Continuar en cronómetro")
+            resume_btn.clicked.connect(lambda _, it=item: self.resume_item(it))
+            self.table.setCellWidget(index, 10, resume_btn)
 
             del_btn = QPushButton()
             del_btn.setIcon(qta.icon("fa5s.trash-alt", color="#ef4444"))
@@ -519,10 +522,18 @@ class RecordsViewWidget(QWidget):
             else self.application.ordered_items()[target]
         )
         dialog = ItemDialog(self.window(), item)
-        if dialog.exec() == ItemDialog.DialogCode.Accepted:
+        code = dialog.exec()
+        if code == ItemDialog.DialogCode.Accepted:
             if dialog.validated_item is not None:
                 self.application.replace_item(item, dialog.validated_item)
             self.refresh_table()
+        elif getattr(dialog, "load_in_timer_requested", False):
+            if dialog.validated_item is not None:
+                self.application.replace_item(item, dialog.validated_item)
+                self.refresh_table()
+                self.resume_item(dialog.validated_item)
+            else:
+                self.resume_item(item)
 
     def reset_item(self, target: int | TimerItem) -> None:
         item = target if isinstance(target, TimerItem) else (
@@ -549,3 +560,40 @@ class RecordsViewWidget(QWidget):
         ) == QMessageBox.StandardButton.Yes:
             self.application.delete_item(item)
             self.refresh_table()
+
+    def resume_item(self, target: int | TimerItem) -> None:
+        """Emite la señal para reanudar / continuar el item en el cronómetro."""
+        item = target if isinstance(target, TimerItem) else (
+            self._current_displayed_items[target] if target < len(self._current_displayed_items)
+            else self.application.ordered_items()[target]
+        )
+        self.resume_item_requested.emit(item)
+
+    def _on_table_context_menu(self, pos) -> None:
+        row = self.table.rowAt(pos.y())
+        if not (0 <= row < len(self._current_displayed_items)):
+            return
+
+        target_item = self._current_displayed_items[row]
+        menu = QMenu(self)
+
+        resume_action = menu.addAction(qta.icon("fa5s.play-circle", color="#10b981"), "Continuar intento en el cronómetro")
+        menu.addSeparator()
+        comment_action = menu.addAction(qta.icon("fa5s.comment-dots", color="#3b82f6"), "Comentario...")
+        edit_action = menu.addAction(qta.icon("fa5s.edit", color="#6366f1"), "Editar registro...")
+        reset_action = menu.addAction(qta.icon("fa5s.redo-alt", color="#f59e0b"), "Reiniciar tiempo...")
+        menu.addSeparator()
+        del_action = menu.addAction(qta.icon("fa5s.trash-alt", color="#ef4444"), "Eliminar registro")
+
+        action = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if action == resume_action:
+            self.resume_item(target_item)
+        elif action == comment_action:
+            self.comment_item(target_item)
+        elif action == edit_action:
+            self.edit_item(target_item)
+        elif action == reset_action:
+            self.reset_item(target_item)
+        elif action == del_action:
+            self.delete_item(target_item)
+

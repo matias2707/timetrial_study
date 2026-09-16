@@ -221,6 +221,31 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             font-weight: 700;
         }}
 
+        /* Continuation Banner */
+        QFrame#continuationBanner {{
+            background: {t.bg_card};
+            border: 1px solid #f59e0b;
+            border-left: 5px solid #f59e0b;
+            border-radius: 10px;
+        }}
+        QLabel#continuation_label {{
+            color: {t.text_primary};
+            font-size: 13px;
+            font-weight: 600;
+        }}
+        QPushButton#continuation_cancel_btn {{
+            background: transparent;
+            color: #ef4444;
+            border: 1px solid #ef4444;
+            border-radius: 6px;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 700;
+        }}
+        QPushButton#continuation_cancel_btn:hover {{
+            background: rgba(239, 68, 68, 0.12);
+        }}
+
         /* Header today card */
         QFrame#todayCard {{
             background: {t.bg_card};

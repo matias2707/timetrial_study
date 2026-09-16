@@ -212,6 +212,148 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(ordered[0].exercise, 2)
         self.assertEqual(ordered[1].exercise, 1)
 
+    def test_load_item_into_session_and_overwrite(self) -> None:
+        from domain.models import TimerItem
+
+        storage = MemoryStorage()
+        application = StudyApplicationService(storage=storage)
+        original_item = TimerItem(
+            section_type="Guía",
+            section_number=1,
+            exercise=3,
+            inciso=1,
+            exercise_time_ms=60000,
+            break_time_ms=5000,
+            completed=False,
+            comment="Original",
+        )
+        application.record.items.append(original_item)
+
+        # Cargar el item en sesión
+        application.load_item_into_session(original_item)
+        self.assertTrue(application.is_editing)
+        self.assertEqual(application.editing_item_id, original_item.id)
+        self.assertEqual(application.location.exercise, 3)
+        self.assertEqual(application.location.inciso, 1)
+        self.assertEqual(application.pending_comment, "Original")
+        self.assertEqual(application.timer.exercise_time_ms, 60000)
+        self.assertEqual(application.timer.break_time_ms, 5000)
+
+        # Modificar comentario y simular tiempo acumulado extra
+        application.set_comment("Actualizado con éxito")
+        application.timer.exercise_time_ms = 75000
+        application.timer.break_time_ms = 8000
+
+        # Finalizar con sobrescritura (overwrite=True por defecto)
+        result = application.finish_item(completed=True, overwrite=True)
+        self.assertTrue(result)
+        self.assertFalse(application.is_editing)
+        self.assertIsNone(application.editing_item_id)
+        self.assertEqual(len(application.record.items), 1)
+
+        saved = application.record.items[0]
+        self.assertEqual(saved.id, original_item.id)
+        self.assertEqual(saved.exercise_time_ms, 75000)
+        self.assertEqual(saved.break_time_ms, 8000)
+        self.assertTrue(saved.completed)
+        self.assertEqual(saved.comment, "Actualizado con éxito")
+
+    def test_load_item_into_session_and_save_as_new(self) -> None:
+        from domain.models import TimerItem
+
+        storage = MemoryStorage()
+        application = StudyApplicationService(storage=storage)
+        original_item = TimerItem(
+            section_type="Guía",
+            section_number=2,
+            exercise=5,
+            inciso=None,
+            exercise_time_ms=30000,
+            break_time_ms=2000,
+            completed=False,
+            comment="Intento 1",
+        )
+        application.record.items.append(original_item)
+
+        application.load_item_into_session(original_item)
+        application.set_comment("Intento 2 bifurcado")
+        application.timer.exercise_time_ms = 45000
+
+        # Finalizar bifurcando / guardando como nuevo (overwrite=False)
+        result = application.finish_item(completed=True, overwrite=False)
+        self.assertTrue(result)
+        self.assertFalse(application.is_editing)
+        self.assertEqual(len(application.record.items), 2)
+
+        # El original no se tocó
+        self.assertEqual(application.record.items[0].id, original_item.id)
+        self.assertEqual(application.record.items[0].exercise_time_ms, 30000)
+        self.assertEqual(application.record.items[0].comment, "Intento 1")
+
+        # El nuevo item tiene id diferente y nuevos valores
+        new_item = application.record.items[1]
+        self.assertNotEqual(new_item.id, original_item.id)
+        self.assertEqual(new_item.exercise_time_ms, 45000)
+        self.assertEqual(new_item.comment, "Intento 2 bifurcado")
+        self.assertTrue(new_item.completed)
+
+    def test_cancel_editing_session_resets_cleanly(self) -> None:
+        from domain.models import TimerItem
+
+        application = StudyApplicationService(storage=MemoryStorage())
+        item = TimerItem(
+            section_type="Guía",
+            section_number=1,
+            exercise=1,
+            inciso=None,
+            exercise_time_ms=50000,
+            break_time_ms=5000,
+            completed=True,
+            comment="Nota",
+        )
+        application.load_item_into_session(item)
+        self.assertTrue(application.is_editing)
+
+        application.cancel_editing_session()
+        self.assertFalse(application.is_editing)
+        self.assertIsNone(application.editing_item_id)
+        self.assertEqual(application.timer.exercise_time_ms, 0)
+        self.assertEqual(application.timer.break_time_ms, 0)
+        self.assertEqual(application.pending_comment, "")
+
+    def test_get_today_study_time_ms_during_continuation_does_not_double_count(self) -> None:
+        from datetime import date
+        from domain.models import TimerItem
+
+        storage = MemoryStorage()
+        application = StudyApplicationService(storage=storage)
+        today_iso = f"{date.today().isoformat()}T10:00:00"
+        item = TimerItem(
+            section_type="Guía",
+            section_number=1,
+            exercise=1,
+            inciso=None,
+            exercise_time_ms=60000,
+            break_time_ms=5000,
+            completed=True,
+            created_at=today_iso,
+        )
+        application.record.items.append(item)
+
+        # Sin correr cronómetro, hoy tiene 60_000
+        self.assertEqual(application.get_today_study_time_ms(), 60000)
+
+        # Cargar en cronómetro
+        application.load_item_into_session(item)
+        self.assertEqual(application.get_today_study_time_ms(), 60000)
+
+        # Iniciar sesión y correr 10 segundos adicionales (70_000 total acumulado)
+        application.toggle_session()  # pasa a PLAY
+        application.timer.exercise_time_ms = 70000
+
+        # Debe reportar 70_000, NO 130_000 (evitando doble conteo del tiempo original)
+        self.assertEqual(application.get_today_study_time_ms(include_current=True), 70000)
+
 
 if __name__ == "__main__":
     unittest.main()

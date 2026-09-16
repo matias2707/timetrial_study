@@ -68,6 +68,19 @@ class TimerService:
         self.mode = TimerMode.PLAY if self.mode is TimerMode.BREAK else TimerMode.BREAK
         self._last_tick = time.perf_counter()
 
+    @property
+    def has_accumulated_time(self) -> bool:
+        """Indica si existe tiempo acumulado en ejercicio o en descanso."""
+        return self.exercise_time_ms > 0 or self.break_time_ms > 0
+
+    def load_accumulated_times(self, exercise_ms: int, break_ms: int) -> None:
+        """Carga tiempos acumulados previos de manera determinista."""
+        self.mode = TimerMode.WAITING
+        self.exercise_time_ms = max(0, exercise_ms)
+        self.break_time_ms = max(0, break_ms)
+        self._last_tick = 0.0
+        self.is_paused = False
+
     def reset(self) -> None:
         """Reinicia todos los contadores y deja el temporizador en espera."""
         self.mode = TimerMode.WAITING

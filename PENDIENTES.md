@@ -1,7 +1,7 @@
 # Control de Pendientes y Hoja de Ruta — Study Timetrial
 
 **Fecha de creación:** 2026-09-13  
-**Última actualización:** 2026-09-13  
+**Última actualización:** 2026-09-15  
 **Estado general:** En desarrollo activo  
 
 ---
@@ -34,7 +34,7 @@ Para mantener la claridad del ciclo de vida de cada tarea y asegurar la consiste
 
 | ID | Tarea | Prioridad | Capas | Estado |
 | :--- | :--- | :---: | :--- | :---: |
-| [TASK-001](#task-001) | Continuación desde registros (recarga al cronómetro para actualización/sobrescritura) | 🔴 Alta | `presentation`, `application`, `domain`, `tests` | `[ ]` |
+| [TASK-001](#task-001) | Continuación desde registros (recarga al cronómetro para actualización/sobrescritura) | 🔴 Alta | `presentation`, `application`, `domain`, `tests` | `[x]` |
 
 ---
 
@@ -44,7 +44,7 @@ Para mantener la claridad del ciclo de vida de cada tarea y asegurar la consiste
 #### Implementar continuación desde registros (volver a cargar los tiempos de un registro al cronómetro, para actualizarlo/sobrescribirlo)
 
 - **Prioridad:** 🔴 Alta  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Capas afectadas:** `presentation/`, `application/`, `domain/`, `tests/`  
 
 ##### Descripción funcional
@@ -88,13 +88,13 @@ Permitir que el usuario retome un intento previamente guardado desde la pestaña
   - Pruebas unitarias en `test_application_service.py` y `test_timer_service.py` comprobando la recarga de tiempos, no regresión de cronometraje y sobrescritura de items.
 
 ##### Criterios de aceptación
-- [ ] La acción está disponible en el menú contextual de la tabla de registros.
-- [ ] Al seleccionar la acción, la interfaz cambia al cronómetro con la ubicación, tiempos y notas correctamente precargados.
-- [ ] Si hay una sesión con tiempo en curso, se solicita confirmación antes de descartarla.
-- [ ] El cronómetro puede reanudar la marcha a partir de los tiempos cargados sumando nuevos lapsos con precisión.
-- [ ] Se puede guardar el intento sobrescribiendo el registro existente en el archivo JSON sin duplicarlo.
-- [ ] Se puede cancelar el modo edición para regresar a un intento nuevo limpio.
-- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+- [x] La acción está disponible en el menú contextual de la tabla de registros.
+- [x] Al seleccionar la acción, la interfaz cambia al cronómetro con la ubicación, tiempos y notas correctamente precargados.
+- [x] Si hay una sesión con tiempo en curso, se solicita confirmación antes de descartarla.
+- [x] El cronómetro puede reanudar la marcha a partir de los tiempos cargados sumando nuevos lapsos con precisión.
+- [x] Se puede guardar el intento sobrescribiendo el registro existente en el archivo JSON sin duplicarlo.
+- [x] Se puede cancelar el modo edición para regresar a un intento nuevo limpio.
+- [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 
