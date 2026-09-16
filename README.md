@@ -68,7 +68,7 @@ Consulta el [índice documental completo](docs/README.md):
 - [Especificación funcional y modelo de datos](docs/Study%20Timetrial%20%E2%80%94%20Especificaci%C3%B3n%20funcional%20y%20estructura%20de%20datos.md)
 - [Contrato de persistencia JSON](docs/CONTRATO_JSON.md)
 - [Guía de operación y validación](docs/OPERACION_Y_VALIDACION.md)
-- [Control de pendientes y hoja de ruta](PENDIENTES.md)
+- [Product Backlog y Hoja de Ruta](BACKLOG.md)
 
 ## Pruebas automatizadas
 
