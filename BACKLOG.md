@@ -53,6 +53,7 @@
 | [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación (rediseño de comentarios) | 🟡 Media | `presentation`, `application`, `domain`, `docs`, `tests` | `TASK-002` (sugerida) | `[ ]` |
 | [TASK-004](#task-004) | ✨ Feature | Pestaña de Ambientación: Mezclador de audio multicanal adaptativo al cronómetro | 🟡 Media | `presentation`, `application`, `infrastructure`, `domain`, `tests` | Ninguna | `[ ]` |
 | [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[ ]` |
+| [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[ ]` |
 
 ---
 
@@ -387,17 +388,106 @@ Resolver las inconsistencias de estado y excepciones no controladas (`ValueError
 
 ---
 
+### TASK-006
+#### Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h
+
+- **Tipo:** ✨ Feature  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[ ] Pendiente`  
+- **Capas afectadas:** `domain/`, `application/`, `presentation/`, `docs/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Enriquecer la pestaña de Estadísticas y el Planificador con un conjunto de herramientas analíticas y de seguimiento temporal orientadas a la realidad académica del estudiante. Se incorpora la configuración del período de cursada e hitos de examen (parciales, recuperatorios, finales) dentro de la planificación (`Record.planner_schedule`). Las estadísticas consumen esta planificación para generar un mapa de calor adaptativo de constancia (*Course Heatmap*) con visualización del camino (*snake*) y cuenta regresiva al examen. Además, se agrega un ranking interactivo de ejercicios de mayor esfuerzo basado estrictamente en tiempo neto (`exercise_time_ms`) y un histograma de 24 horas para identificar patrones de rendimiento a lo largo del día.
+
+##### Casos de uso y flujo de interacción
+1. **Configuración de Cronograma de Cursada en el Planificador:**
+   - En `PlannerWidget`, añadir un botón de acción **"📅 Cronograma de Cursada"**.
+   - Diálogo modal para definir el tipo de cursada (Bimestral, Cuatrimestral, Semestral, Personalizado), fechas de inicio y fin, e hitos evaluativos (Parciales, Recuperatorios, Finales).
+   - Los datos se persisten en el bloque de planificación del archivo JSON de la materia (`planner_schedule`).
+2. **Calendario de Constancia Adaptativo y Camino al Examen (`CourseHeatmapWidget`):**
+   - En `StatisticsViewWidget`, se sustituye o complementa el gráfico semanal por una cuadrícula tipo mapa de calor adaptada exactamente a las semanas de la cursada (sin meses vacíos innecesarios).
+   - Días pasados: celdas coloreadas en tonos de verde/lima según horas netas dedicadas ese día.
+   - Día actual: destacado con borde/anillo visual de foco.
+   - Días futuros hasta el examen: siluetas tenues formando el sendero o *snake* hacia el hito.
+   - Celdas de examen marcadas con ícono o badge distintivo (🎯 Parcial, 🔄 Recuperatorio, 🏁 Final).
+   - Banner de motivación superior: *"🔥 Racha actual: X días consecutivos · 🎯 Faltan Y días para [Próximo Examen]"*.
+3. **Ranking de Ejercicios de Mayor Esfuerzo (Tiempo Neto Puro):**
+   - Tarjeta interactiva en Estadísticas que lista el Top 5 o Top 10 de ejercicios más demandantes de la materia.
+   - Ordenado estrictamente por **`exercise_time_ms`** acumulado (tiempo neto), omitiendo tiempos de descanso.
+   - Muestra posición (`#1` a `#10`), identificador completo (ej: *"Guía 2 · Ej. 3.1"*), badge de tiempo neto formateado y estado.
+   - **Interactividad unificada:** Al hacer clic en un ítem del ranking, se abre el diálogo estándar `ExerciseDetailPopup` (con notas, etiquetas, detalles de incisos y botón directo de "Cargar en Cronómetro").
+4. **Distribución Horaria 24 Horas:**
+   - Gráfico de barras de 24 columnas (de 00:00 a 23:00 hs) analizando las marcas temporales `created_at` de los intentos.
+   - Permite visualizar de un vistazo los picos de concentración y hábitos horarios (mañana, tarde, noche).
+   - Tooltip informativo al pasar el cursor sobre cada columna de hora.
+
+##### Cambios técnicos proyectados por capa
+- **`domain/models.py`**:
+  - Modelos dataclass:
+    - `Milestone(name: str, date: str, type: str)` (`parcial`, `recuperatorio`, `final`)
+    - `PlannerSchedule(period_type: str, start_date: str, end_date: str, milestones: list[Milestone])`
+  - Añadir campo `planner_schedule: PlannerSchedule | None` en `Record` con serialización retrocompatible segura.
+- **`docs/CONTRATO_JSON.md`**:
+  - Documentar especificación de `planner_schedule` dentro de `Record`.
+- **`application/statistics_service.py`**:
+  - `get_course_heatmap_data(record: Record) -> dict`: matriz de días, horas por día, racha actual y días hasta el próximo examen.
+  - `get_top_effort_exercises(record: Record, limit: int = 5) -> list[dict]`: cálculo y ordenamiento estricto por `exercise_time_ms`.
+  - `get_24h_hourly_distribution(record: Record) -> dict[int, int]`: agregación de milisegundos netos por hora (0..23).
+- **`presentation/statistics_view.py`**:
+  - Integrar widget de Heatmap de cursada con camino de examen (`CourseHeatmapWidget`).
+  - Panel de ranking de mayor esfuerzo con conexiones a `ExerciseDetailPopup`.
+  - Gráfico de histograma de 24 horas.
+- **`presentation/planner_widget.py` & `presentation/planner_dialogs.py`**:
+  - Botón y diálogo `ScheduleConfigDialog` para configurar fechas de inicio, fin y lista de hitos de la cursada.
+- **`tests/`**:
+  - Pruebas unitarias de cálculo de ranking por tiempo neto en `test_statistics_service.py`.
+  - Pruebas de serialización de `planner_schedule` en `test_planner_models.py`.
+  - Pruebas de agregación de distribución horaria de 24 horas.
+
+##### Criterios de aceptación
+- [ ] La configuración del cronograma de cursada se guarda en `Record.planner_schedule` y persiste en el archivo JSON.
+- [ ] El mapa de calor refleja la cantidad exacta de semanas del período configurado.
+- [ ] Los hitos de parciales y finales aparecen señalizados en sus celdas correspondientes con cuenta regresiva visible.
+- [ ] El ranking de ejercicios ordena estrictamente por tiempo neto descartando el descanso.
+- [ ] Al hacer clic en un ejercicio del ranking, se abre `ExerciseDetailPopup` permitiendo cargarlo al cronómetro.
+- [ ] El histograma de 24 horas muestra con precisión la distribución de horas estudiadas del registro activo.
+- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
 ## 4. Backlog de Futuras Mejoras (Ideas en Evaluación)
 
-### 📊 Registros y Estadísticas
+### 🎯 Metas, Ritmo y Estimaciones
+- [ ] Estimador dinámico de tiempo restante por sección/guía según velocidad promedio histórica.
+- [ ] Metas diarias y semanales de estudio con indicador visual de progreso y felicitación de cumplimiento.
+- [ ] Modo Simulacro / Examen (*Time Attack*): selección de ejercicios del planificador con cuenta regresiva.
+
+### 🪟 Usabilidad en Escritorio (Desktop Experience)
+- [ ] Mini-Reproductor Flotante (*Picture-in-Picture / Always on Top*): ventana compacta flotante con controles básicos mientras se usan otras aplicaciones (PDFs, IDEs).
+- [ ] Buscador Rápido Global (*Spotlight / Ctrl + K*): búsqueda instantánea por título de guía, ejercicio o nota desde cualquier pestaña.
+
+### 📋 Planificador y Trabajo con Guías
+- [ ] Importador de guías desde texto plano o Markdown para generación rápida de universos de estudio.
+- [ ] Exportar y compartir plantillas de planificación (estructura de guías sin tiempos privados).
+
+### 🛡️ Seguridad y Respaldo de Datos
+- [ ] Copias de seguridad automáticas rotativas (*Auto-backup*) en `data/backups/`.
+- [ ] Detección preventiva de modificaciones externas del archivo JSON (sincronización con nubes tipo Google Drive/OneDrive).
+
+### 🎧 Ambientación Avanzada
+- [ ] Generador de ruido procedural matemático (blanco, rosa, marrón) sin dependencia de archivos locales.
+- [ ] Temporizador de apagado progresivo (*Sleep/Fade-out Timer*) ante inactividad prolongada en pausa.
+
+### 📊 Registros y Reportes
+- [ ] Heatmap global de constancia multidisciplinar (escaneo agregado de todas las materias en `data/records/`).
 - [ ] Exportación de registros y estadísticas a formatos externos (CSV, Excel `.xlsx`, PDF).
-- [ ] Comparativa de rendimiento entre diferentes guías o secciones.
-- [ ] Detección de patrones de cansancio según evolución del ratio tiempo neto / tiempo de descanso.
+- [ ] Comparativa de rendimiento histórico entre diferentes guías o materias.
 
 ### ⏱️ Cronómetro y Sesión
 - [ ] Atajos de teclado globales configurables para iniciar/pausar/descanso desde cualquier vista o ventana secundaria.
-- [ ] Temporizador tipo Pomodoro o metas de tiempo por ejercicio con avisos audibles y visuales.
+- [ ] Temporizador tipo Pomodoro configurable con avisos sonoros y visuales.
 
 ### 🎨 UI / UX y Configuración
 - [ ] Personalización avanzada de paleta de colores y selección de fuentes.
-- [ ] Opción para configurar el volumen del audio o seleccionar sonidos alternativos de notificación.
+- [ ] Configuración individual de volumen o selección de sonidos alternativos de notificación.
