@@ -52,8 +52,9 @@
 | [TASK-002](#task-002) | ✨ Feature | Sistema de marcadores y etiquetas para ejercicios en la planificación | 🔴 Alta | `presentation`, `application`, `domain`, `docs`, `tests` | Ninguna | `[ ]` |
 | [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación (rediseño de comentarios) | 🟡 Media | `presentation`, `application`, `domain`, `docs`, `tests` | `TASK-002` (sugerida) | `[ ]` |
 | [TASK-004](#task-004) | ✨ Feature | Pestaña de Ambientación: Mezclador de audio multicanal adaptativo al cronómetro | 🟡 Media | `presentation`, `application`, `infrastructure`, `domain`, `tests` | Ninguna | `[ ]` |
-| [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[ ]` |
+| [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[x]` |
 | [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[ ]` |
+| [TASK-007](#task-007) | 🔨 Enhancement | Visualización de registro en conflicto en diálogo de corrección de incisos | 🟡 Media | `presentation`, `tests` | Ninguna | `[ ]` |
 
 ---
 
@@ -339,7 +340,7 @@ Incorporar una quinta pestaña a la aplicación denominada **"Ambientación"**, 
 
 - **Tipo:** 🐛 Bugfix  
 - **Prioridad:** 🔴 Alta  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Capas afectadas:** `presentation/`, `application/`, `infrastructure/`, `tests/`  
 - **Dependencias:** Ninguna  
 
@@ -378,13 +379,13 @@ Resolver las inconsistencias de estado y excepciones no controladas (`ValueError
   - Pruebas simulando intentos de inicio/guardado sin archivo abierto garantizando que no se producen fallos no controlados.
 
 ##### Criterios de aceptación
-- [ ] Al cerrar un archivo, se despliega automáticamente el diálogo de bienvenida con las opciones de selección.
-- [ ] Si se cancela el diálogo de bienvenida, la aplicación pasa a un estado vacío protegido sin errores en consola ni cierres inesperados.
-- [ ] La barra de título indica explícitamente `[Sin proyecto activo]`.
-- [ ] Las opciones de menú y herramientas que requieren un archivo quedan deshabilitadas visual y funcionalmente.
-- [ ] Ninguna interacción puede disparar `ValueError: No hay un archivo activo`.
-- [ ] Es posible crear o abrir un registro directamente desde los botones del estado vacío y reanudar el uso normal.
-- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+- [x] Al cerrar un archivo, se despliega automáticamente el diálogo de bienvenida con las opciones de selección.
+- [x] Si se cancela el diálogo de bienvenida, la aplicación pasa a un estado vacío protegido sin errores en consola ni cierres inesperados.
+- [x] La barra de título indica explícitamente `[Sin proyecto activo]`.
+- [x] Las opciones de menú y herramientas que requieren un archivo quedan deshabilitadas visual y funcionalmente.
+- [x] Ninguna interacción puede disparar `ValueError: No hay un archivo activo`.
+- [x] Es posible crear o abrir un registro directamente desde los botones del estado vacío y reanudar el uso normal.
+- [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 
@@ -453,6 +454,54 @@ Enriquecer la pestaña de Estadísticas y el Planificador con un conjunto de her
 - [ ] Al hacer clic en un ejercicio del ranking, se abre `ExerciseDetailPopup` permitiendo cargarlo al cronómetro.
 - [ ] El histograma de 24 horas muestra con precisión la distribución de horas estudiadas del registro activo.
 - [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+### TASK-007
+#### Visualización contextual del registro previo en conflicto en el diálogo de corrección de incisos
+
+- **Tipo:** 🔨 Enhancement  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[ ] Pendiente`  
+- **Capas afectadas:** `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Actualmente, cuando el usuario registra un intento con inciso (por ejemplo, `Guía 3 · Ejercicio 6 · Inciso 1`) y el sistema detecta que ya existían registros previos guardados como "Sin inciso" (`3-6-null`), se abre el diálogo modal `IncisoCorrectionDialog`. Sin embargo, dicho diálogo solo muestra un aviso genérico de texto indicando que *"Se detectó N registro previo guardado como Sin inciso"*. Esto resulta ambiguo y desconcertante cuando el intento previo fue realizado semanas o meses atrás, o cuando el usuario venía concentrado en otro ejercicio (por ejemplo, `3-5-1`).
+
+La mejora consiste en integrar dentro del diálogo una vista previa limpia y compacta del o los registros en conflicto, mostrando únicamente las columnas y datos esenciales para que el usuario identifique al instante de qué intento histórico se trata y tome una decisión informada sin fricción cognitiva.
+
+##### Casos de uso y flujo de interacción
+1. **Detección y propagación del contexto de ítems en conflicto:**
+   - En `HomeViewWidget._prompt_inciso_gap_dialog`, pasar la lista completa `gap_items: list[TimerItem]` al instanciar `IncisoCorrectionDialog`.
+2. **Presentación visual compacta (Preview de conflicto):**
+   - En lugar de solo el texto plano de advertencia, presentar un panel o tarjeta visual destacada con los datos del intento previo (excluyendo comentarios y datos técnicos irrelevantes para mantener la vista limpia y concisa):
+     - **Fecha y Hora:** Formato legible `YYYY-MM-DD HH:MM`.
+     - **Identificador del intento:** `Guía X · Ejercicio Y · (Sin inciso)`.
+     - **Tiempo neto de ejercicio:** Formato `hh:mm:ss` (tiempo de trabajo neto acumulado).
+     - **Estado:** Indicador visual de `Completado` o `Incompleto`.
+   - Si existe un único registro en conflicto (caso habitual): Renderizar una tarjeta compacta con tipografía cuidada y tokens de tema (dark/light).
+   - Si existen múltiples registros en conflicto: Renderizar una lista o mini-tabla estilizada con scroll compacto con las columnas esenciales (`Fecha`, `Identificador`, `Tiempo`, `Estado`).
+3. **Claridad en las opciones de acción:**
+   - Mantener las tres opciones existentes (`Solo guardar y corregir manualmente`, `Guardar y actualizar incisos`, `Personalizar valor actual`), con textos explicativos coherentes con la información visualizada.
+
+##### Cambios técnicos proyectados por capa
+- **`presentation/home_view.py`**:
+   - En `_prompt_inciso_gap_dialog`, suministrar el parámetro `gap_items=gap_items` al constructor de `IncisoCorrectionDialog`.
+- **`presentation/inciso_dialog.py`**:
+   - Actualizar `IncisoCorrectionDialog.__init__` para recibir `gap_items: list[TimerItem] | None = None` (manteniendo retrocompatibilidad con valor por defecto).
+   - Implementar widget/subcomponente visual `_build_conflict_preview(gap_items)`:
+     - Formatear tiempos utilizando `format_hh_mm_ss` o `format_milliseconds` de `presentation_formatters`.
+     - Formatear fechas desde `created_at`.
+     - Respetar los tokens de color y estilos (`self.is_dark`).
+- **`tests/test_inciso_correction.py`**:
+   - Agregar pruebas unitarias que verifiquen que `IncisoCorrectionDialog` acepte `gap_items`, renderice correctamente la información del registro (fecha, tiempo, estado) y mantenga la compatibilidad cuando `gap_items` sea `None` o vacío.
+
+##### Criterios de aceptación
+- [ ] `IncisoCorrectionDialog` recibe y acepta la lista `gap_items: list[TimerItem]`.
+- [ ] El diálogo muestra visualmente en una tarjeta o tabla resumida la fecha, tiempo neto y estado de los registros en conflicto (omitiendo comentarios).
+- [ ] No se muestran columnas técnicas irrelevantes (como UUID `id` o timestamps crudos) ni campos de comentarios.
+- [ ] El diseño responde adecuadamente tanto al modo oscuro (`dark`) como al modo claro (`light`).
+- [ ] Si `gap_items` está vacío o no se proporciona, el diálogo degrada con elegancia manteniendo su comportamiento previo.
+- [ ] Todas las pruebas automatizadas existentes y nuevas pasan al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 

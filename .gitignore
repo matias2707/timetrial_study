@@ -2,4 +2,4 @@ __pycache__/
 *.py[cod]
 .venv/
 .venv-*/
-StudyTimetrial_*.json
+desactivar_telemetria.bat

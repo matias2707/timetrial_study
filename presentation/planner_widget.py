@@ -603,10 +603,30 @@ class PlannerWidget(QWidget):
             """
         )
         self.global_progress_bar.set_dark_mode(is_dark)
-        self.refresh_view()
+    def set_empty_state(self, is_empty: bool) -> None:
+        """Habilita o deshabilita acciones de planificación según si hay proyecto activo."""
+        self.btn_sync.setEnabled(not is_empty)
+        self.btn_add_section.setEnabled(not is_empty)
+        if is_empty:
+            self._update_stat_badge("total_planificado", "-")
+            self._update_stat_badge("hechos", "-")
+            self._update_stat_badge("en_dificultad", "-")
+            self._update_stat_badge("pendientes", "-")
+            self.global_progress_bar.set_segmented_values(0, 0, 100)
+            self.lbl_global_breakdown.setText("Sin proyecto activo")
+            while self.cards_layout.count() > 0:
+                child = self.cards_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        else:
+            self.refresh_view()
 
     def refresh_view(self) -> None:
         """Calcula el estado del planificador y redibuja todas las secciones y tarjetas."""
+        if not self.app_service.is_record_open:
+            self.set_empty_state(True)
+            return
+
         overview: PlannerOverview = self.app_service.get_planner_overview()
 
         # Actualizar chips globales
@@ -739,18 +759,24 @@ class PlannerWidget(QWidget):
                 )
 
     def _on_add_section(self) -> None:
+        if not self.app_service.is_record_open:
+            return
         dlg = PlannedSectionDialog(self, is_dark=self.is_dark)
         if dlg.exec() == PlannedSectionDialog.DialogCode.Accepted and dlg.section_data:
             self.app_service.add_or_update_planned_section(dlg.section_data)
             self.refresh_view()
 
     def _on_edit_section(self, section: PlannedSection) -> None:
+        if not self.app_service.is_record_open:
+            return
         dlg = PlannedSectionDialog(self, section=section, is_dark=self.is_dark)
         if dlg.exec() == PlannedSectionDialog.DialogCode.Accepted and dlg.section_data:
             self.app_service.add_or_update_planned_section(dlg.section_data)
             self.refresh_view()
 
     def _on_delete_section(self, section: PlannedSection) -> None:
+        if not self.app_service.is_record_open:
+            return
         confirm = QMessageBox.question(
             self,
             "Eliminar Sección de la Planificación",
@@ -764,6 +790,8 @@ class PlannerWidget(QWidget):
             self.refresh_view()
 
     def _on_sync_records(self) -> None:
+        if not self.app_service.is_record_open:
+            return
         modified = self.app_service.sync_planner_with_records()
         if modified:
             QMessageBox.information(

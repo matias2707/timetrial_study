@@ -141,6 +141,9 @@ class StudyApplicationService:
         Si overwrite=True y se estaba en modo edición, actualiza los datos del item existente.
         En caso contrario, inserta un nuevo item en el registro.
         """
+        if not self.is_record_open:
+            return False
+
         if self.mode is TimerMode.WAITING and not self.editing_item_id:
             return False
 
@@ -193,6 +196,8 @@ class StudyApplicationService:
 
 
     def save(self) -> None:
+        if not self.is_record_open:
+            return
         self.storage.save(self.record)
 
     def new_record(self, record_name: str | None = None, directory: Path | None = None) -> Path:
@@ -229,6 +234,8 @@ class StudyApplicationService:
 
     def import_items(self, path: Path, item_indexes: list[int]) -> int:
         """Añade copias de los items seleccionados sin cambiar el archivo activo."""
+        if not self.is_record_open:
+            return 0
         imported_record = self.storage.read(path)
         selected_items = [imported_record.items[index] for index in item_indexes]
         for item in selected_items:
@@ -250,33 +257,44 @@ class StudyApplicationService:
 
     def close_record(self) -> None:
         self.storage.path = None
-        self.record = Record()
+        self.record = Record(record_name="")
         self.editing_item_id = None
         self.editing_initial_exercise_ms = 0
         self.timer.reset()
+        self.pending_comment = ""
 
     def ordered_items(self) -> list[TimerItem]:
         return sorted(self.record.items, key=lambda item: item.created_at, reverse=True)
 
     def add_item(self, item: TimerItem) -> None:
+        if not self.is_record_open:
+            return
         self.record.items.append(item)
         self.save()
 
     def replace_item(self, current: TimerItem, replacement: TimerItem) -> None:
+        if not self.is_record_open:
+            return
         self.record.items[self.record.items.index(current)] = replacement
         self.save()
 
     def reset_item(self, item: TimerItem) -> None:
+        if not self.is_record_open:
+            return
         item.exercise_time_ms = 0
         item.break_time_ms = 0
         self.save()
 
     def update_comment(self, item: TimerItem, comment: str) -> None:
         """Actualiza el comentario de un item ya guardado."""
+        if not self.is_record_open:
+            return
         item.comment = comment.strip()
         self.save()
 
     def delete_item(self, item: TimerItem) -> None:
+        if not self.is_record_open:
+            return
         self.record.items.remove(item)
         self.save()
 
@@ -308,7 +326,7 @@ class StudyApplicationService:
 
     def promote_gap_items(self, items: list[TimerItem], target_inciso: int = 1) -> None:
         """Actualiza el inciso de los items indicados (generalmente de None a 1) y persiste."""
-        if not items:
+        if not self.is_record_open or not items:
             return
         for item in items:
             item.inciso = target_inciso
@@ -333,6 +351,8 @@ class StudyApplicationService:
 
     def sync_planner_with_records(self) -> bool:
         """Sincroniza la planificación agregando ejercicios no planificados que existan en registros."""
+        if not self.is_record_open:
+            return False
         changed = PlannerService.sync_planner_with_records(self.record)
         if changed:
             self.save()
@@ -340,11 +360,15 @@ class StudyApplicationService:
 
     def add_or_update_planned_section(self, section: PlannedSection) -> None:
         """Añade o edita una sección en la planificación y guarda el registro."""
+        if not self.is_record_open:
+            return
         PlannerService.add_or_update_section(self.record, section)
         self.save()
 
     def delete_planned_section(self, section_type: str, section_number: int) -> bool:
         """Elimina una sección de la planificación y guarda el registro."""
+        if not self.is_record_open:
+            return False
         deleted = PlannerService.delete_section(self.record, section_type, section_number)
         if deleted:
             self.save()

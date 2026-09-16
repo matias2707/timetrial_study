@@ -162,6 +162,8 @@ class MainWindow(QMainWindow):
 
         # Conexiones de vistas
         self.home_view.item_finished.connect(self._on_home_item_finished)
+        self.home_view.empty_state_widget.request_new.connect(self.new_record)
+        self.home_view.empty_state_widget.request_open.connect(self.open_record)
         self.records_view.data_modified.connect(self._on_records_data_modified)
         self.records_view.request_open_record.connect(self.open_record)
         self.records_view.request_import_records.connect(self.import_records)
@@ -581,6 +583,7 @@ class MainWindow(QMainWindow):
         if action == "recent" and path is not None and path.exists():
             try:
                 self.application.load(path)
+                self.set_empty_project_state(False)
                 self.update_title()
                 self.refresh_table()
                 self.refresh_recent_files_menu()
@@ -592,12 +595,17 @@ class MainWindow(QMainWindow):
             self.new_record()
         elif action == "cancel":
             if not self.application.is_record_open:
-                default_name = self.application.record.record_name or "StudyTimetrial"
-                self.application.new_record(default_name)
-                self.update_title()
-                self.refresh_table()
+                self.set_empty_project_state(True)
 
         force_activate_window(self)
+
+    def set_empty_project_state(self, is_empty: bool) -> None:
+        """Centraliza la habilitación y aspecto de estado vacío en la aplicación."""
+        self.toolbar.set_record_actions_enabled(not is_empty)
+        self.home_view.set_empty_state(is_empty)
+        self.records_view.set_empty_state(is_empty)
+        self.planner.set_empty_state(is_empty)
+        self.update_title()
 
     def new_record(self) -> None:
         if self.application.is_record_open and (self.application.record.items or self.application.mode is not TimerMode.WAITING):
@@ -620,14 +628,20 @@ class MainWindow(QMainWindow):
             return
 
         self.application.new_record(name.strip() or "StudyTimetrial")
+        self.set_empty_project_state(False)
         self.update_title()
         self.refresh_table()
 
     def update_title(self) -> None:
-        record_name = self.application.record_path.name if self.application.record_path else (self.application.record.record_name or "Sin guardar")
-        self.setWindowTitle(f"{APP_TITLE} — {record_name}")
-        if hasattr(self, "home_view") and hasattr(self.home_view, "home_title"):
-            self.home_view.home_title.setText(self.application.record_path.stem if self.application.record_path else record_name)
+        if not self.application.is_record_open:
+            self.setWindowTitle(f"{APP_TITLE} — [Sin proyecto activo]")
+            if hasattr(self, "home_view") and hasattr(self.home_view, "home_title"):
+                self.home_view.home_title.setText("[Sin proyecto activo]")
+        else:
+            record_name = self.application.record_path.name if self.application.record_path else (self.application.record.record_name or "Sin guardar")
+            self.setWindowTitle(f"{APP_TITLE} — {record_name}")
+            if hasattr(self, "home_view") and hasattr(self.home_view, "home_title"):
+                self.home_view.home_title.setText(self.application.record_path.stem if self.application.record_path else record_name)
 
     def refresh_recent_files_menu(self) -> None:
         recent_paths = self.application.storage.recent_files.paths
@@ -644,6 +658,7 @@ class MainWindow(QMainWindow):
             return
         try:
             self.application.load(target)
+            self.set_empty_project_state(False)
             self.update_title()
             self.refresh_table()
             self.refresh_recent_files_menu()
@@ -667,6 +682,7 @@ class MainWindow(QMainWindow):
 
         try:
             self.application.load(Path(path))
+            self.set_empty_project_state(False)
             self.update_title()
             self.refresh_table()
             self.refresh_recent_files_menu()
@@ -751,8 +767,14 @@ class MainWindow(QMainWindow):
             return
 
         self.application.close_record()
-        self.update_title()
         self.refresh_table()
+        self.refresh_statistics()
+        self.planner.refresh_view()
+        self.prompt_initial_record_choice(force=True)
+        if not self.application.is_record_open:
+            self.set_empty_project_state(True)
+        else:
+            self.set_empty_project_state(False)
 
     def autosave(self) -> None:
         """Autoguarda cambios si existe un fichero vinculado."""
@@ -763,7 +785,7 @@ class MainWindow(QMainWindow):
                 pass
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self.application.mode is TimerMode.WAITING:
+        if not self.application.is_record_open or self.application.mode is TimerMode.WAITING:
             event.accept()
             return
 

@@ -27,6 +27,7 @@ from application.application_service import SessionLocation, StudyApplicationSer
 from domain.models import TimerItem
 from domain.timer_service import TimerMode
 from presentation.audio_service import AudioService
+from presentation.empty_state_widget import EmptyStateWidget
 from presentation.presentation_formatters import format_hh_mm_ss, timer_markup
 from presentation.theme import get_status_pill_style, get_timer_cards_style
 
@@ -66,6 +67,8 @@ class HomeViewWidget(QWidget):
     @is_dark_mode.setter
     def is_dark_mode(self, value: bool) -> None:
         self._is_dark_mode = bool(value)
+        if hasattr(self, "empty_state_widget"):
+            self.empty_state_widget.set_dark_mode(self._is_dark_mode)
         self.update_timer_visual_state()
 
     def _build_ui(self) -> None:
@@ -149,7 +152,8 @@ class HomeViewWidget(QWidget):
         outer.addWidget(self.continuation_banner)
 
         # Hero Card: Ubicación
-        hero = QFrame()
+        self.hero_card = QFrame()
+        hero = self.hero_card
         hero.setObjectName("heroCard")
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(24, 20, 24, 20)
@@ -267,7 +271,8 @@ class HomeViewWidget(QWidget):
         outer.addLayout(metrics)
 
         # Controls Card
-        controls_card = QFrame()
+        self.controls_card = QFrame()
+        controls_card = self.controls_card
         controls_card.setObjectName("sectionCard")
         controls_layout = QVBoxLayout(controls_card)
         controls_layout.setContentsMargins(22, 18, 22, 20)
@@ -334,6 +339,12 @@ class HomeViewWidget(QWidget):
         controls_layout.addWidget(self.status_label)
 
         outer.addWidget(controls_card)
+
+        # Panel de estado vacío
+        self.empty_state_widget = EmptyStateWidget(is_dark_mode=self.is_dark_mode, parent=self)
+        self.empty_state_widget.setVisible(False)
+        outer.addWidget(self.empty_state_widget)
+
         outer.addStretch()
 
         scroll.setWidget(container)
@@ -342,6 +353,32 @@ class HomeViewWidget(QWidget):
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.addWidget(scroll)
+
+    def set_empty_state(self, is_empty: bool) -> None:
+        """Alterna la visualización del estado vacío protegiendo los controles de sesión."""
+        self.empty_state_widget.setVisible(is_empty)
+        if hasattr(self, "hero_card"):
+            self.hero_card.setVisible(not is_empty)
+        if hasattr(self, "controls_card"):
+            self.controls_card.setVisible(not is_empty)
+        if hasattr(self, "exercise_card"):
+            self.exercise_card.setVisible(not is_empty)
+        if hasattr(self, "break_card"):
+            self.break_card.setVisible(not is_empty)
+
+        self.set_locked(is_empty)
+        self.session_button.setEnabled(not is_empty)
+        self.comment_button.setEnabled(not is_empty)
+        self.stop_button.setEnabled(not is_empty)
+        self.complete_button.setEnabled(not is_empty)
+        self.incomplete_button.setEnabled(not is_empty)
+
+        if is_empty:
+            self.status_pill.setText(" ●  SIN PROYECTO ACTIVO")
+            self.status_label.setText("Ningún proyecto abierto")
+        else:
+            self.update_timer_visual_state()
+            self.status_label.setText("Listo para comenzar")
 
     def _create_stepper(self, spinbox: QSpinBox, tooltip_prefix: str) -> QWidget:
         container = QWidget()
@@ -433,6 +470,14 @@ class HomeViewWidget(QWidget):
             btn.setEnabled(not locked)
 
     def toggle_session(self) -> None:
+        if not self.application.is_record_open:
+            QMessageBox.information(
+                self.window(),
+                "Sin proyecto activo",
+                "No hay un proyecto activo.\nCrea o abre un registro para iniciar una sesión de estudio.",
+            )
+            return
+
         if self.application.mode is TimerMode.WAITING:
             self.sync_location()
             self.audio_service.play_start()
@@ -612,6 +657,9 @@ class HomeViewWidget(QWidget):
         return True
 
     def finish_item(self, completed: bool, keep_location: bool = False, stop: bool = False) -> None:
+        if not self.application.is_record_open:
+            return
+
         if self.application.mode is TimerMode.WAITING and not self.application.is_editing:
             return
 
@@ -639,6 +687,9 @@ class HomeViewWidget(QWidget):
         self.item_finished.emit(completed)
 
     def add_home_comment(self) -> None:
+        if not self.application.is_record_open:
+            return
+
         from PySide6.QtWidgets import QInputDialog
 
         comment, accepted = QInputDialog.getMultiLineText(

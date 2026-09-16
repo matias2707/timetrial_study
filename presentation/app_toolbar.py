@@ -150,6 +150,11 @@ class AppToolbar(QToolBar):
             self.sound_action.setText("Silenciar sonidos")
             self.sound_action.setIcon(qta.icon("fa5s.volume-up", color="#10b981"))
 
+    def set_record_actions_enabled(self, enabled: bool) -> None:
+        """Habilita o deshabilita acciones que requieren un archivo abierto."""
+        self.save_file_action.setEnabled(enabled)
+        self.close_file_action.setEnabled(enabled)
+
     def update_auto_open_action(self, enabled: bool) -> None:
         """Actualiza el estado de la acción de auto-apertura."""
         self.auto_open_action.setChecked(enabled)

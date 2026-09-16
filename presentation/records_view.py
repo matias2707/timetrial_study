@@ -149,17 +149,29 @@ class RecordsViewWidget(QWidget):
         self.open_button.clicked.connect(self.request_open_record.emit)
         toolbar.addWidget(self.open_button)
 
-        for text, callback_signal, icon_name, icon_color in (
-            ("Importar", self.request_import_records, "fa5s.file-import", "#334155"),
-            ("Guardar como", self.request_save_as, "fa5s.save", "#334155"),
-            ("Renombrar", self.request_rename_record, "fa5s.pen", "#334155"),
-            ("Cerrar", self.request_close_record, "fa5s.times", "#ef4444"),
-        ):
-            button = QPushButton(f" {text}")
-            button.setObjectName("secondary_action")
-            button.setIcon(qta.icon(icon_name, color=icon_color))
-            button.clicked.connect(callback_signal.emit)
-            toolbar.addWidget(button)
+        self.import_button = QPushButton(" Importar")
+        self.import_button.setObjectName("secondary_action")
+        self.import_button.setIcon(qta.icon("fa5s.file-import", color="#334155"))
+        self.import_button.clicked.connect(self.request_import_records.emit)
+        toolbar.addWidget(self.import_button)
+
+        self.save_as_button = QPushButton(" Guardar como")
+        self.save_as_button.setObjectName("secondary_action")
+        self.save_as_button.setIcon(qta.icon("fa5s.save", color="#334155"))
+        self.save_as_button.clicked.connect(self.request_save_as.emit)
+        toolbar.addWidget(self.save_as_button)
+
+        self.rename_button = QPushButton(" Renombrar")
+        self.rename_button.setObjectName("secondary_action")
+        self.rename_button.setIcon(qta.icon("fa5s.pen", color="#334155"))
+        self.rename_button.clicked.connect(self.request_rename_record.emit)
+        toolbar.addWidget(self.rename_button)
+
+        self.close_button = QPushButton(" Cerrar")
+        self.close_button.setObjectName("secondary_action")
+        self.close_button.setIcon(qta.icon("fa5s.times", color="#ef4444"))
+        self.close_button.clicked.connect(self.request_close_record.emit)
+        toolbar.addWidget(self.close_button)
 
         toolbar.addStretch()
 
@@ -172,11 +184,11 @@ class RecordsViewWidget(QWidget):
         self.record_search_input.textChanged.connect(self.filter_records_table)
         toolbar.addWidget(self.record_search_input)
 
-        add_btn = QPushButton(" Agregar intento")
-        add_btn.setObjectName("toolbar_primary")
-        add_btn.setIcon(qta.icon("fa5s.plus", color="#bef264"))
-        add_btn.clicked.connect(self.add_item)
-        toolbar.addWidget(add_btn)
+        self.add_item_button = QPushButton(" Agregar intento")
+        self.add_item_button.setObjectName("toolbar_primary")
+        self.add_item_button.setIcon(qta.icon("fa5s.plus", color="#bef264"))
+        self.add_item_button.clicked.connect(self.add_item)
+        toolbar.addWidget(self.add_item_button)
 
         # Botón para limpiar todos los filtros activos
         self.clear_all_filters_btn = QPushButton(" Limpiar filtros")
@@ -330,6 +342,30 @@ class RecordsViewWidget(QWidget):
             self.record_search_input.clear()
         self.update_header_labels()
         self.refresh_table()
+
+    def set_empty_state(self, is_empty: bool) -> None:
+        """Habilita o deshabilita acciones de la vista según si hay proyecto activo."""
+        for btn in (
+            getattr(self, "import_button", None),
+            getattr(self, "save_as_button", None),
+            getattr(self, "rename_button", None),
+            getattr(self, "close_button", None),
+            getattr(self, "add_item_button", None),
+            getattr(self, "clear_all_filters_btn", None),
+            getattr(self, "record_search_input", None),
+        ):
+            if btn is not None:
+                btn.setEnabled(not is_empty)
+
+        if is_empty:
+            self.records_summary.setText("Sin proyecto activo")
+            self.rec_stat_attempts.setText("-")
+            self.rec_stat_exercise_time.setText("-")
+            self.rec_stat_break_time.setText("-")
+            self.rec_stat_effectiveness.setText("-")
+            self.table.setRowCount(0)
+        else:
+            self.refresh_table()
 
     def filter_records_table(self, _query: str = "") -> None:
         self.refresh_table()
