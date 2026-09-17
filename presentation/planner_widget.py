@@ -40,6 +40,7 @@ from presentation.flow_layout import FlowLayout
 from presentation.planner_dialogs import (
     ExerciseDetailPopup,
     PlannedSectionDialog,
+    ScheduleConfigDialog,
     TagManagerDialog,
 )
 from presentation.presentation_formatters import format_milliseconds
@@ -592,6 +593,12 @@ class PlannerWidget(QWidget):
         self.btn_manage_tags.clicked.connect(self._on_manage_tags)
         top_bar.addWidget(self.btn_manage_tags)
 
+        self.btn_schedule = QPushButton("Cronograma...")
+        self.btn_schedule.setIcon(qta.icon("fa5s.calendar-alt", color="#38bdf8"))
+        self.btn_schedule.setToolTip("Configurar período de cursada y fechas de examen")
+        self.btn_schedule.clicked.connect(self._on_manage_schedule)
+        top_bar.addWidget(self.btn_schedule)
+
         # Botones de acción globales
         self.btn_sync = QPushButton("Sincronizar con Registros")
         self.btn_sync.setIcon(qta.icon("fa5s.sync-alt", color="#38bdf8"))
@@ -720,6 +727,8 @@ class PlannerWidget(QWidget):
             self.combo_tag_filter.setEnabled(not is_empty)
         if hasattr(self, "btn_manage_tags"):
             self.btn_manage_tags.setEnabled(not is_empty)
+        if hasattr(self, "btn_schedule"):
+            self.btn_schedule.setEnabled(not is_empty)
         if is_empty:
             self._update_stat_badge("total_planificado", "-")
             self._update_stat_badge("hechos", "-")
@@ -851,6 +860,18 @@ class PlannerWidget(QWidget):
         dlg = TagManagerDialog(self, self.app_service, is_dark=self.is_dark)
         dlg.exec()
         self.refresh_view()
+
+    def _on_manage_schedule(self) -> None:
+        if not self.app_service.is_record_open:
+            return
+        dlg = ScheduleConfigDialog(
+            parent=self.window(),
+            schedule=self.app_service.get_schedule(),
+            is_dark=self.is_dark,
+        )
+        if dlg.exec() == ScheduleConfigDialog.DialogCode.Accepted:
+            self.app_service.set_schedule(dlg.schedule)
+            self.refresh_view()
 
     def _update_stat_badge(self, key: str, val: str) -> None:
         w = self.summary_frame.findChild(QLabel, f"stat_val_{key}")

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import qtawesome as qta
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
+    QDateEdit,
     QDialog,
     QFrame,
     QGridLayout,
@@ -35,7 +36,7 @@ from application.planner_service import (
     STATUS_PENDING,
     ExerciseNodeStatus,
 )
-from domain.models import PlannedSection, TagDefinition
+from domain.models import Milestone, PlannedSection, PlannerSchedule, TagDefinition
 from presentation.presentation_formatters import format_milliseconds
 
 ACTION_CANCEL = "cancel"
@@ -920,6 +921,346 @@ class ExerciseNoteDialog(QDialog):
                 self.section_type, self.section_number, self.exercise, self.inciso, note_text
             )
         self.accept()
+
+
+class ScheduleConfigDialog(QDialog):
+    """Diálogo modal para configurar el período de cursada y los hitos evaluativos."""
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        schedule: PlannerSchedule | None = None,
+        is_dark: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self.is_dark = is_dark
+        self.schedule = schedule or PlannerSchedule()
+        self.milestones: list[Milestone] = [
+            Milestone(m.name, m.date, m.type, m.color, m.icon) for m in self.schedule.milestones
+        ]
+
+        self.setWindowTitle("Cronograma de Cursada")
+        self.resize(680, 540)
+        self.setModal(True)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        # 1. Cabecera
+        header = QHBoxLayout()
+        header.setSpacing(12)
+
+        icon_lbl = QLabel()
+        icon_color = "#38bdf8" if self.is_dark else "#0284c7"
+        icon_lbl.setPixmap(qta.icon("fa5s.calendar-alt", color=icon_color).pixmap(32, 32))
+        header.addWidget(icon_lbl, alignment=Qt.AlignmentFlag.AlignTop)
+
+        v_head = QVBoxLayout()
+        v_head.setSpacing(2)
+        title_lbl = QLabel("Cronograma y Período de Cursada")
+        title_lbl.setStyleSheet("font-size: 16px; font-weight: 700;")
+        v_head.addWidget(title_lbl)
+
+        sub_lbl = QLabel(
+            "Configura el período de cursada y tus fechas de examen para activar el mapa de calor adaptativo y la cuenta regresiva."
+        )
+        sub_lbl.setWordWrap(True)
+        sub_lbl.setStyleSheet("font-size: 12px; color: #94a3b8;")
+        v_head.addWidget(sub_lbl)
+        header.addLayout(v_head)
+        layout.addLayout(header)
+
+        # 2. Grupo: Período Académico
+        period_group = QGroupBox("Período Académico")
+        period_grid = QGridLayout(period_group)
+        period_grid.setHorizontalSpacing(16)
+        period_grid.setVerticalSpacing(10)
+
+        period_grid.addWidget(QLabel("Modalidad:"), 0, 0)
+        self.combo_period = QComboBox()
+        self.combo_period.addItems(["Cuatrimestral", "Bimestral", "Semestral", "Personalizado"])
+        self.combo_period.setCurrentText(self.schedule.period_type or "Cuatrimestral")
+        self.combo_period.currentTextChanged.connect(self._on_period_type_changed)
+        period_grid.addWidget(self.combo_period, 0, 1)
+
+        period_grid.addWidget(QLabel("Fecha de inicio:"), 1, 0)
+        self.date_start = QDateEdit()
+        self.date_start.setCalendarPopup(True)
+        self.date_start.setDisplayFormat("yyyy-MM-dd")
+        if self.schedule.start_date:
+            self.date_start.setDate(QDate.fromString(self.schedule.start_date, "yyyy-MM-dd"))
+        else:
+            self.date_start.setDate(QDate.currentDate())
+        self.date_start.dateChanged.connect(self._on_start_date_changed)
+        period_grid.addWidget(self.date_start, 1, 1)
+
+        period_grid.addWidget(QLabel("Fecha de finalización:"), 1, 2)
+        self.date_end = QDateEdit()
+        self.date_end.setCalendarPopup(True)
+        self.date_end.setDisplayFormat("yyyy-MM-dd")
+        if self.schedule.end_date:
+            self.date_end.setDate(QDate.fromString(self.schedule.end_date, "yyyy-MM-dd"))
+        else:
+            self.date_end.setDate(self.date_start.date().addDays(112))  # 16 semanas por defecto
+        period_grid.addWidget(self.date_end, 1, 3)
+
+        layout.addWidget(period_group)
+
+        # 3. Grupo: Hitos Evaluativos y Exámenes
+        milestones_group = QGroupBox("Hitos Evaluativos y Exámenes (Parciales, Recuperatorios, Finales, TPs)")
+        m_layout = QVBoxLayout(milestones_group)
+        m_layout.setSpacing(8)
+
+        # Toolbar para hitos
+        m_toolbar = QHBoxLayout()
+        m_toolbar.setSpacing(8)
+
+        self.btn_add_milestone = QPushButton(" Agregar Hito...")
+        self.btn_add_milestone.setIcon(qta.icon("fa5s.plus", color="#bef264"))
+        self.btn_add_milestone.clicked.connect(self._on_add_milestone)
+        m_toolbar.addWidget(self.btn_add_milestone)
+
+        self.btn_remove_milestone = QPushButton(" Eliminar")
+        self.btn_remove_milestone.setIcon(qta.icon("fa5s.trash-alt", color="#ef4444"))
+        self.btn_remove_milestone.clicked.connect(self._on_remove_milestone)
+        m_toolbar.addWidget(self.btn_remove_milestone)
+
+        m_toolbar.addStretch()
+        m_layout.addLayout(m_toolbar)
+
+        # Tabla de hitos (5 columnas: Nombre, Fecha, Ícono, Color, Tipo)
+        self.table_milestones = QTableWidget(0, 5)
+        self.table_milestones.setHorizontalHeaderLabels(["Nombre del Hito", "Fecha", "Ícono", "Color", "Tipo"])
+        self.table_milestones.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table_milestones.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_milestones.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_milestones.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_milestones.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_milestones.verticalHeader().setVisible(False)
+        self.table_milestones.setMinimumHeight(140)
+        m_layout.addWidget(self.table_milestones)
+
+        layout.addWidget(milestones_group)
+
+        self._populate_milestones_table()
+
+        # 4. Botones de acción inferiores
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        self.btn_clear = QPushButton("Desactivar Cronograma")
+        self.btn_clear.setToolTip("Elimina la configuración de cursada de este registro")
+        self.btn_clear.clicked.connect(self._on_clear_schedule)
+        btn_layout.addWidget(self.btn_clear)
+
+        btn_layout.addStretch()
+
+        self.btn_cancel = QPushButton("Cancelar")
+        self.btn_cancel.clicked.connect(self.reject)
+        btn_layout.addWidget(self.btn_cancel)
+
+        self.btn_save = QPushButton("Guardar Cronograma")
+        primary_color = "#bef264" if self.is_dark else "#65a30d"
+        text_color = "#090d16" if self.is_dark else "#ffffff"
+        self.btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {primary_color};
+                color: {text_color};
+                font-weight: 700;
+                padding: 6px 18px;
+                border-radius: 6px;
+            }}
+        """)
+        self.btn_save.clicked.connect(self._on_save)
+        btn_layout.addWidget(self.btn_save)
+
+        layout.addLayout(btn_layout)
+
+    def _on_period_type_changed(self, period_type: str) -> None:
+        start = self.date_start.date()
+        if period_type == "Bimestral":
+            self.date_end.setDate(start.addDays(56))  # 8 semanas
+        elif period_type == "Cuatrimestral":
+            self.date_end.setDate(start.addDays(112))  # 16 semanas
+        elif period_type == "Semestral":
+            self.date_end.setDate(start.addDays(168))  # 24 semanas
+
+    def _on_start_date_changed(self, start: QDate) -> None:
+        period_type = self.combo_period.currentText()
+        if period_type != "Personalizado":
+            self._on_period_type_changed(period_type)
+
+    def _populate_milestones_table(self) -> None:
+        icons_list = [
+            ("🎯", "🎯 Parcial / Objetivo"),
+            ("📝", "📝 Examen / Evaluación"),
+            ("🔄", "🔄 Recuperatorio"),
+            ("🏁", "🏁 Examen Final"),
+            ("💻", "💻 Entrega / TP"),
+            ("🔬", "🔬 Laboratorio"),
+            ("🗣️", "🗣️ Oral / Coloquio"),
+            ("⭐", "⭐ Hito Clave"),
+            ("⚠️", "⚠️ Fecha Límite"),
+            ("📚", "📚 Cierre de Cursada"),
+        ]
+
+        self.table_milestones.setRowCount(0)
+        for row, m in enumerate(self.milestones):
+            self.table_milestones.insertRow(row)
+
+            # Col 0: Nombre
+            item_name = QTableWidgetItem(m.name)
+            self.table_milestones.setItem(row, 0, item_name)
+
+            # Col 1: Fecha (QDateEdit)
+            date_edit = QDateEdit()
+            date_edit.setCalendarPopup(True)
+            date_edit.setDisplayFormat("yyyy-MM-dd")
+            if m.date:
+                date_edit.setDate(QDate.fromString(m.date, "yyyy-MM-dd"))
+            else:
+                date_edit.setDate(self.date_start.date().addDays(30))
+            self.table_milestones.setCellWidget(row, 1, date_edit)
+
+            # Col 2: Ícono (QComboBox)
+            combo_icon = QComboBox()
+            matched_icon_idx = 0
+            for i, (ic, label) in enumerate(icons_list):
+                combo_icon.addItem(label, ic)
+                if ic == m.icon:
+                    matched_icon_idx = i
+            combo_icon.setCurrentIndex(matched_icon_idx)
+            self.table_milestones.setCellWidget(row, 2, combo_icon)
+
+            # Col 3: Color (QPushButton con selector QColorDialog)
+            btn_color = QPushButton("  Color  ")
+            color_hex = m.color or "#ef4444"
+            btn_color.setProperty("color_hex", color_hex)
+            btn_color.setStyleSheet(
+                f"background-color: {color_hex}; color: #ffffff; font-weight: 700; "
+                "border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; padding: 3px 8px;"
+            )
+            btn_color.setToolTip(f"Color: {color_hex} (clic para cambiar)")
+
+            def make_color_picker(btn=btn_color):
+                def pick():
+                    current = btn.property("color_hex") or "#ef4444"
+                    c = QColorDialog.getColor(QColor(current), self, "Seleccionar Color del Hito")
+                    if c.isValid():
+                        new_hex = c.name()
+                        btn.setProperty("color_hex", new_hex)
+                        btn.setStyleSheet(
+                            f"background-color: {new_hex}; color: #ffffff; font-weight: 700; "
+                            "border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; padding: 3px 8px;"
+                        )
+                        btn.setToolTip(f"Color: {new_hex} (clic para cambiar)")
+                return pick
+
+            btn_color.clicked.connect(make_color_picker())
+            self.table_milestones.setCellWidget(row, 3, btn_color)
+
+            # Col 4: Tipo (QComboBox editable)
+            combo_type = QComboBox()
+            combo_type.setEditable(True)
+            combo_type.addItems(["Parcial", "Recuperatorio", "Final", "Entrega", "Coloquio", "Otro"])
+            combo_type.setCurrentText(m.type.capitalize())
+            self.table_milestones.setCellWidget(row, 4, combo_type)
+
+            self.table_milestones.setRowHeight(row, 30)
+
+    def _collect_milestones_from_table(self) -> list[Milestone]:
+        result: list[Milestone] = []
+        for row in range(self.table_milestones.rowCount()):
+            name_item = self.table_milestones.item(row, 0)
+            name = name_item.text().strip() if name_item else "Examen"
+            if not name:
+                name = f"Hito {row + 1}"
+
+            date_widget = self.table_milestones.cellWidget(row, 1)
+            m_date = date_widget.date().toString("yyyy-MM-dd") if isinstance(date_widget, QDateEdit) else ""
+
+            icon_widget = self.table_milestones.cellWidget(row, 2)
+            if isinstance(icon_widget, QComboBox):
+                m_icon = icon_widget.currentData() or icon_widget.currentText()[:2].strip() or "🎯"
+            else:
+                m_icon = "🎯"
+
+            color_widget = self.table_milestones.cellWidget(row, 3)
+            m_color = color_widget.property("color_hex") if color_widget else "#ef4444"
+
+            type_widget = self.table_milestones.cellWidget(row, 4)
+            m_type = type_widget.currentText().strip() if isinstance(type_widget, QComboBox) else "Parcial"
+            if not m_type:
+                m_type = "Parcial"
+
+            result.append(Milestone(name=name, date=m_date, type=m_type, color=m_color, icon=m_icon))
+        return result
+
+    def _on_add_milestone(self) -> None:
+        self.milestones = self._collect_milestones_from_table()
+        default_configs = [
+            ("Primer Parcial", "parcial", "🎯", "#ef4444"),
+            ("Segundo Parcial", "parcial", "🎯", "#ef4444"),
+            ("Recuperatorio", "recuperatorio", "🔄", "#f59e0b"),
+            ("Examen Final", "final", "🏁", "#a855f7"),
+        ]
+        idx = min(len(self.milestones), len(default_configs) - 1)
+        name, m_type, m_icon, m_color = default_configs[idx]
+        if len(self.milestones) >= len(default_configs):
+            name = f"Hito {len(self.milestones) + 1}"
+            m_type = "personalizado"
+            m_icon = "⭐"
+            m_color = "#3b82f6"
+
+        default_date = self.date_start.date().addDays(30 * (len(self.milestones) + 1)).toString("yyyy-MM-dd")
+        self.milestones.append(Milestone(name=name, date=default_date, type=m_type, color=m_color, icon=m_icon))
+        self._populate_milestones_table()
+        self.table_milestones.selectRow(len(self.milestones) - 1)
+
+    def _on_remove_milestone(self) -> None:
+        row = self.table_milestones.currentRow()
+        if row >= 0:
+            self.table_milestones.removeRow(row)
+
+
+    def _on_clear_schedule(self) -> None:
+        ans = QMessageBox.question(
+            self,
+            "Desactivar Cronograma",
+            "¿Deseas quitar la configuración del cronograma para esta materia?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if ans == QMessageBox.StandardButton.Yes:
+            self.schedule = None
+            self.accept()
+
+    def _on_save(self) -> None:
+        start_qdate = self.date_start.date()
+        end_qdate = self.date_end.date()
+
+        if end_qdate < start_qdate:
+            QMessageBox.warning(
+                self,
+                "Fecha inválida",
+                "La fecha de finalización debe ser posterior o igual a la fecha de inicio.",
+            )
+            return
+
+        milestones = self._collect_milestones_from_table()
+        self.schedule = PlannerSchedule(
+            period_type=self.combo_period.currentText(),
+            start_date=start_qdate.toString("yyyy-MM-dd"),
+            end_date=end_qdate.toString("yyyy-MM-dd"),
+            milestones=milestones,
+        )
+        self.accept()
+
 
 
 

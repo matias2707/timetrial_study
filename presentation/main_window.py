@@ -173,6 +173,8 @@ class MainWindow(QMainWindow):
         self.records_view.resume_item_requested.connect(self.resume_item_in_timer)
 
         self.planner.request_load_timer.connect(self._on_planner_load_timer)
+        self.statistics_view.request_load_timer.connect(self._on_planner_load_timer)
+        self.statistics_view.request_configure_schedule.connect(self._on_request_configure_schedule)
 
     def _on_tab_changed(self, index: int) -> None:
         icons = [
@@ -505,6 +507,10 @@ class MainWindow(QMainWindow):
         self.inciso_input.setValue(inciso or 0)
         self.sync_location()
         self.tabs.setCurrentIndex(0)
+
+    def _on_request_configure_schedule(self) -> None:
+        self.tabs.setCurrentIndex(3)
+        self.planner._on_manage_schedule()
 
     def resume_item(self, target: int | TimerItem) -> None:
         self.records_view.resume_item(target)

@@ -81,6 +81,7 @@ Un registro es un objeto JSON autosuficiente que contiene tanto el historial de 
 | `items` | lista | Contiene cero o más objetos `TimerItem`. Es obligatorio. |
 | `planner_sections` | lista | Contiene cero o más objetos `PlannedSection`. Si falta (archivos legados), se inicializa como lista vacía `[]`. |
 | `tags` | lista | Contiene la lista de objetos `TagDefinition` que definen el catálogo de marcadores para la materia. Si falta en el archivo, se inicializa con el catálogo por defecto. |
+| `planner_schedule` | objeto o `null` | Configuración del período de cursada e hitos evaluativos (`PlannerSchedule`). Si falta (archivos previos), se inicializa como `null`. |
 
 ### Campos de `TimerItem`
 
@@ -116,6 +117,25 @@ Un registro es un objeto JSON autosuficiente que contiene tanto el historial de 
 | `id` | texto | Identificador único de la etiqueta (ej. `"tag-redo"` o UUID corto). |
 | `name` | texto | Nombre o texto descriptivo de la etiqueta (ej. `"Rehacer"`, `"Duda para clase"`). |
 | `color` | texto | Código hexadecimal de color para renderizar el marcador (ej. `"#ef4444"`). |
+
+### Campos de `PlannerSchedule`
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `period_type` | texto | Modalidad académica (ej. `"Cuatrimestral"`, `"Bimestral"`, `"Semestral"`, `"Personalizado"`). |
+| `start_date` | texto | Fecha de inicio de cursada en formato ISO `YYYY-MM-DD`. |
+| `end_date` | texto | Fecha de finalización de cursada en formato ISO `YYYY-MM-DD`. |
+| `milestones` | lista | Lista de objetos evaluativos `Milestone`. Si falta, se inicializa como `[]`. |
+
+### Campos de `Milestone`
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `name` | texto | Nombre descriptivo del examen o entrega (ej. `"Primer Parcial"`). |
+| `date` | texto | Fecha del hito en formato ISO `YYYY-MM-DD`. |
+| `type` | texto | Tipo o categoría de instancia (`"parcial"`, `"recuperatorio"`, `"final"`, `"entrega"`, o personalizada). |
+| `color` | texto | Código hexadecimal de color para renderizar el hito en el calendario (ej. `"#ef4444"`). Si falta, se infiere según el tipo. |
+| `icon` | texto | Emoji o ícono representativo elegido por el usuario (ej. `"🎯"`, `"📝"`, `"🔄"`, `"🏁"`, `"💻"`, `"⭐"`). Si falta, se infiere según el tipo. |
 
 ## Archivos auxiliares
 

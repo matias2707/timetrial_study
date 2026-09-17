@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from typing import Any
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -11,7 +13,9 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QProgressBar,
+    QPushButton,
     QScrollArea,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -19,12 +23,20 @@ from PySide6.QtWidgets import (
 )
 
 from application.application_service import StudyApplicationService
+from application.planner_service import ExerciseNodeStatus
+from application.statistics_service import TopEffortExercise
+from presentation.course_heatmap_widget import CourseHeatmapWidget
+from presentation.hourly_chart_widget import Hourly24hChartWidget
+from presentation.planner_dialogs import ExerciseDetailPopup
 from presentation.presentation_formatters import format_hh_mm
 from presentation.weekly_chart_widget import WeeklyChartWidget
 
 
 class StatisticsViewWidget(QWidget):
-    """Vista con indicadores cuantitativos, proporciones y gráfico semanal."""
+    """Vista con indicadores cuantitativos, proporciones, mapa de cursada y gráficos avanzados."""
+
+    request_load_timer = Signal(str, int, int, object)  # (section_type, section_number, exercise, inciso)
+    request_configure_schedule = Signal()
 
     def __init__(
         self,
@@ -35,12 +47,15 @@ class StatisticsViewWidget(QWidget):
         super().__init__(parent)
         self.application = application
         self._is_dark_mode = is_dark_mode
+        self._top_effort_data: list[TopEffortExercise] = []
 
         self._build_ui()
 
     def set_dark_mode(self, is_dark: bool) -> None:
         self._is_dark_mode = is_dark
         self.weekly_chart.set_dark_mode(is_dark)
+        self.course_heatmap.set_dark_mode(is_dark)
+        self.hourly_chart.set_dark_mode(is_dark)
 
     def _build_ui(self) -> None:
         page_layout = QVBoxLayout(self)
@@ -57,6 +72,7 @@ class StatisticsViewWidget(QWidget):
         layout.setContentsMargins(42, 28, 42, 36)
         layout.setSpacing(18)
 
+        # Encabezado general
         heading = QHBoxLayout()
         title = QLabel("Estadísticas")
         title.setObjectName("brand")
@@ -67,27 +83,78 @@ class StatisticsViewWidget(QWidget):
         heading.addWidget(self.stats_source_label)
         layout.addLayout(heading)
 
+        # -------------------------------------------------------------
+        # Hero Card: Alternador entre Cronograma de Cursada y 7 Días
+        # -------------------------------------------------------------
         hero = QFrame()
         hero.setObjectName("heroCard")
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(24, 20, 24, 20)
-        hero_layout.setSpacing(12)
+        hero_layout.setSpacing(14)
 
         hero_top = QHBoxLayout()
-        hero_title = QLabel("HORAS AL DÍA · FORMATO SEMANAL")
+        hero_title = QLabel("CALENDARIO Y HÁBITOS DE ESTUDIO")
         hero_title.setObjectName("eyebrow")
         hero_top.addWidget(hero_title)
         hero_top.addStretch()
-        hero_hint = QLabel("Últimos 7 días · Un día nuevo pisa el último")
-        hero_hint.setObjectName("status")
-        hero_top.addWidget(hero_hint)
+
+        # Botones de alternancia de vista
+        toggle_style = """
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #334155;
+                border-radius: 6px;
+                color: #94a3b8;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.05);
+                color: #f8fafc;
+            }
+            QPushButton:checked {
+                background-color: #3b82f6;
+                border-color: #3b82f6;
+                color: #ffffff;
+                font-weight: 700;
+            }
+        """
+
+        self.btn_view_heatmap = QPushButton("📅 Cronograma de Cursada")
+        self.btn_view_heatmap.setCheckable(True)
+        self.btn_view_heatmap.setChecked(True)
+        self.btn_view_heatmap.setStyleSheet(toggle_style)
+        self.btn_view_heatmap.clicked.connect(self._show_heatmap_view)
+        hero_top.addWidget(self.btn_view_heatmap)
+
+        self.btn_view_weekly = QPushButton("📊 Últimos 7 Días")
+        self.btn_view_weekly.setCheckable(True)
+        self.btn_view_weekly.setChecked(False)
+        self.btn_view_weekly.setStyleSheet(toggle_style)
+        self.btn_view_weekly.clicked.connect(self._show_weekly_view)
+        hero_top.addWidget(self.btn_view_weekly)
+
         hero_layout.addLayout(hero_top)
 
+        self.hero_stack = QStackedWidget()
+
+        # Página 0: Mapa de calor del cronograma de cursada
+        self.course_heatmap = CourseHeatmapWidget(is_dark_mode=self._is_dark_mode)
+        self.course_heatmap.request_configure_schedule.connect(self.request_configure_schedule.emit)
+        self.hero_stack.addWidget(self.course_heatmap)
+
+        # Página 1: Gráfico semanal clásico de 7 días
         self.weekly_chart = WeeklyChartWidget()
         self.weekly_chart.set_dark_mode(self._is_dark_mode)
-        hero_layout.addWidget(self.weekly_chart)
+        self.hero_stack.addWidget(self.weekly_chart)
+
+        hero_layout.addWidget(self.hero_stack)
         layout.addWidget(hero)
 
+        # -------------------------------------------------------------
+        # Cuadrícula Bento de Métricas Principales
+        # -------------------------------------------------------------
         metrics_grid = QGridLayout()
         metrics_grid.setHorizontalSpacing(14)
         metrics_grid.setVerticalSpacing(14)
@@ -173,8 +240,11 @@ class StatisticsViewWidget(QWidget):
 
         layout.addLayout(metrics_grid)
 
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(14)
+        # -------------------------------------------------------------
+        # Fila Intermedia: Desglose por Sección y Proporción / Actividad
+        # -------------------------------------------------------------
+        mid_row = QHBoxLayout()
+        mid_row.setSpacing(14)
 
         sec_card = QFrame()
         sec_card.setObjectName("sectionCard")
@@ -200,7 +270,7 @@ class StatisticsViewWidget(QWidget):
         self.stats_section_table.verticalHeader().setVisible(False)
         self.stats_section_table.setMinimumHeight(140)
         sec_layout.addWidget(self.stats_section_table)
-        bottom_row.addWidget(sec_card, 3)
+        mid_row.addWidget(sec_card, 3)
 
         dist_card = QFrame()
         dist_card.setObjectName("sectionCard")
@@ -231,11 +301,90 @@ class StatisticsViewWidget(QWidget):
         dist_layout.addWidget(self.stat_activity_label)
         dist_layout.addStretch()
 
-        bottom_row.addWidget(dist_card, 2)
-        layout.addLayout(bottom_row)
+        mid_row.addWidget(dist_card, 2)
+        layout.addLayout(mid_row)
+
+        # -------------------------------------------------------------
+        # Fila Avanzada: Ranking Top 5 Esfuerzo + Histograma 24 Horas
+        # -------------------------------------------------------------
+        adv_row = QHBoxLayout()
+        adv_row.setSpacing(14)
+
+        # Card de Ranking Top 5
+        effort_card = QFrame()
+        effort_card.setObjectName("sectionCard")
+        effort_layout = QVBoxLayout(effort_card)
+        effort_layout.setContentsMargins(20, 16, 20, 16)
+        effort_layout.setSpacing(8)
+
+        effort_top = QHBoxLayout()
+        effort_title = QLabel("TOP 5 EJERCICIOS DE MAYOR ESFUERZO")
+        effort_title.setObjectName("eyebrow")
+        effort_top.addWidget(effort_title)
+        effort_top.addStretch()
+        effort_hint = QLabel("Por tiempo neto acumulado")
+        effort_hint.setObjectName("status")
+        effort_top.addWidget(effort_hint)
+        effort_layout.addLayout(effort_top)
+
+        self.stats_effort_table = QTableWidget(0, 5)
+        self.stats_effort_table.setHorizontalHeaderLabels([
+            "#",
+            "Ejercicio",
+            "Tiempo Neto",
+            "Intentos",
+            "Acción",
+        ])
+        self.stats_effort_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.stats_effort_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.stats_effort_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.stats_effort_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.stats_effort_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.stats_effort_table.setAlternatingRowColors(True)
+        self.stats_effort_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.stats_effort_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.stats_effort_table.verticalHeader().setVisible(False)
+        self.stats_effort_table.setMinimumHeight(150)
+        self.stats_effort_table.cellDoubleClicked.connect(self._on_effort_cell_double_clicked)
+        effort_layout.addWidget(self.stats_effort_table)
+
+        adv_row.addWidget(effort_card, 3)
+
+        # Card de Distribución 24 Horas
+        hourly_card = QFrame()
+        hourly_card.setObjectName("sectionCard")
+        hourly_layout = QVBoxLayout(hourly_card)
+        hourly_layout.setContentsMargins(20, 16, 20, 16)
+        hourly_layout.setSpacing(8)
+
+        hourly_top = QHBoxLayout()
+        hourly_title = QLabel("DISTRIBUCIÓN DE ACTIVIDAD 24 HORAS")
+        hourly_title.setObjectName("eyebrow")
+        hourly_top.addWidget(hourly_title)
+        hourly_top.addStretch()
+        hourly_hint = QLabel("Franja horaria (00h a 23h)")
+        hourly_hint.setObjectName("status")
+        hourly_top.addWidget(hourly_hint)
+        hourly_layout.addLayout(hourly_top)
+
+        self.hourly_chart = Hourly24hChartWidget(is_dark_mode=self._is_dark_mode)
+        hourly_layout.addWidget(self.hourly_chart)
+
+        adv_row.addWidget(hourly_card, 2)
+        layout.addLayout(adv_row)
 
         scroll.setWidget(container)
         page_layout.addWidget(scroll)
+
+    def _show_heatmap_view(self) -> None:
+        self.hero_stack.setCurrentIndex(0)
+        self.btn_view_heatmap.setChecked(True)
+        self.btn_view_weekly.setChecked(False)
+
+    def _show_weekly_view(self) -> None:
+        self.hero_stack.setCurrentIndex(1)
+        self.btn_view_heatmap.setChecked(False)
+        self.btn_view_weekly.setChecked(True)
 
     def refresh_statistics(self) -> None:
         stats = self.application.get_statistics()
@@ -244,6 +393,10 @@ class StatisticsViewWidget(QWidget):
         self.stats_source_label.setText(f"FUENTE: {file_name.upper()}  ·  {stats.total_attempts} INTENTOS")
 
         self.weekly_chart.set_stats(stats.daily_stats)
+
+        # Mapa de cursada
+        heatmap_data = self.application.get_course_heatmap_data()
+        self.course_heatmap.set_data(heatmap_data)
 
         self.stat_total_exercise.setText(format_hh_mm(stats.total_exercise_time_ms))
         self.stat_total_break.setText(format_hh_mm(stats.total_break_time_ms))
@@ -280,6 +433,7 @@ class StatisticsViewWidget(QWidget):
             f"{stats.total_attempts} intentos totales ({stats.completed_attempts} completos · {success_pct}% efectividad)"
         )
 
+        # Tabla de secciones
         self.stats_section_table.setRowCount(0)
         for row, sec in enumerate(stats.section_summaries):
             self.stats_section_table.insertRow(row)
@@ -292,3 +446,117 @@ class StatisticsViewWidget(QWidget):
                 comp_display = f"{sec.completed_unique} / {sec.total_unique}"
             self.stats_section_table.setItem(row, 3, QTableWidgetItem(comp_display))
             self.stats_section_table.setItem(row, 4, QTableWidgetItem(str(sec.attempts)))
+
+        # Tabla Top 5 Esfuerzo
+        top_effort = self.application.get_top_effort_exercises(5)
+        self._top_effort_data = top_effort
+        self._render_top_effort_table(top_effort)
+
+        # Histograma 24 horas
+        hourly_dist = self.application.get_24h_hourly_distribution()
+        self.hourly_chart.set_data(hourly_dist)
+
+    def _render_top_effort_table(self, top_effort: list[TopEffortExercise]) -> None:
+        self.stats_effort_table.setRowCount(0)
+        if not top_effort:
+            self.stats_effort_table.setRowCount(1)
+            empty_item = QTableWidgetItem("Aún no hay ejercicios con tiempo registrado")
+            empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.stats_effort_table.setItem(0, 1, empty_item)
+            return
+
+        medals = ["🥇 1", "🥈 2", "🥉 3", "4", "5"]
+
+        for row, item in enumerate(top_effort):
+            self.stats_effort_table.insertRow(row)
+
+            # Col 0: Ranking
+            rank_str = medals[row] if row < len(medals) else str(row + 1)
+            rank_item = QTableWidgetItem(rank_str)
+            rank_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.stats_effort_table.setItem(row, 0, rank_item)
+
+            # Col 1: Ejercicio con estado
+            state_icon = "✓ " if item.status == "completed" else ("⚠️ " if item.status == "failed" else "⏳ ")
+            name_item = QTableWidgetItem(f"{state_icon}{item.display_label}")
+            self.stats_effort_table.setItem(row, 1, name_item)
+
+            # Col 2: Tiempo neto
+            time_item = QTableWidgetItem(format_hh_mm(item.exercise_time_ms))
+            time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.stats_effort_table.setItem(row, 2, time_item)
+
+            # Col 3: Intentos
+            att_str = f"{item.attempts} int."
+            att_item = QTableWidgetItem(att_str)
+            att_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.stats_effort_table.setItem(row, 3, att_item)
+
+            # Col 4: Botón Detalle
+            btn = QPushButton("Detalle")
+            btn.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: #0284c7;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 3px 8px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #0369a1;
+                }
+                """
+            )
+            btn.clicked.connect(lambda _, it=item: self._on_effort_detail_clicked(it))
+            self.stats_effort_table.setCellWidget(row, 4, btn)
+
+    def _on_effort_cell_double_clicked(self, row: int, _col: int) -> None:
+        if 0 <= row < len(self._top_effort_data):
+            self._on_effort_detail_clicked(self._top_effort_data[row])
+
+    def _on_effort_detail_clicked(self, item: TopEffortExercise) -> None:
+        node = self._find_or_create_node(item)
+        popup = ExerciseDetailPopup(self, node, app_service=self.application, is_dark=self._is_dark_mode)
+        if popup.exec() == ExerciseDetailPopup.DialogCode.Accepted:
+            if popup.chosen_action == "load_timer":
+                self.request_load_timer.emit(
+                    node.section_type,
+                    node.section_number,
+                    node.exercise,
+                    node.inciso,
+                )
+        self.refresh_statistics()
+
+    def _find_or_create_node(self, item: TopEffortExercise) -> ExerciseNodeStatus:
+        """Busca el ExerciseNodeStatus en el árbol planificado si existe, o construye uno consistente."""
+        if self.application.record.planned_sections:
+            overview = self.application.planner_service.build_overview(self.application.record)
+            for sec_status in overview.sections:
+                if (
+                    sec_status.section.section_type.strip().lower() == item.section_type.strip().lower()
+                    and sec_status.section.section_number == item.section_number
+                ):
+                    for n in sec_status.exercise_nodes:
+                        if n.exercise == item.exercise:
+                            if item.inciso is not None:
+                                for sub in n.incisos:
+                                    if sub.inciso == item.inciso:
+                                        return sub
+                            else:
+                                return n
+
+        # Si no está planificado formalmente o es un ejercicio libre
+        return ExerciseNodeStatus(
+            section_type=item.section_type,
+            section_number=item.section_number,
+            exercise=item.exercise,
+            inciso=item.inciso,
+            status=item.status,
+            attempts=item.attempts,
+            exercise_time_ms=item.exercise_time_ms,
+            break_time_ms=item.break_time_ms,
+        )

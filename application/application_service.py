@@ -15,8 +15,11 @@ from application.statistics_service import (
     RecordStatistics,
     compute_statistics,
     compute_today_study_time_ms,
+    get_24h_hourly_distribution,
+    get_course_heatmap_data,
+    get_top_effort_exercises,
 )
-from domain.models import PlannedSection, Record, TagDefinition, TimerItem
+from domain.models import Milestone, PlannedSection, PlannerSchedule, Record, TagDefinition, TimerItem
 from domain.timer_service import TimerMode, TimerService
 from infrastructure.storage_service import StorageService
 
@@ -487,3 +490,44 @@ class StudyApplicationService:
         ):
             self.pending_comment = note.strip()
         self.save()
+
+    def get_schedule(self) -> PlannerSchedule | None:
+        """Devuelve la configuración del cronograma de cursada del registro activo."""
+        if not self.is_record_open:
+            return None
+        return self.record.planner_schedule
+
+    def set_schedule(self, schedule: PlannerSchedule | None) -> None:
+        """Configura o actualiza el cronograma de cursada y persiste los cambios."""
+        if not self.is_record_open:
+            return
+        self.record.planner_schedule = schedule
+        self.save()
+
+    def get_course_heatmap_data(self, reference_date: date | None = None) -> dict[str, Any]:
+        """Calcula los datos del mapa de calor de cursada para el registro activo."""
+        if not self.is_record_open:
+            return {
+                "has_schedule": False,
+                "streak_days": 0,
+                "next_milestone": None,
+                "days_until_next_milestone": None,
+                "weeks": [],
+                "start_date": None,
+                "end_date": None,
+                "total_weeks": 0,
+                "max_day_ms": 0,
+            }
+        return get_course_heatmap_data(self.record, reference_date=reference_date)
+
+    def get_top_effort_exercises(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Devuelve el ranking de ejercicios de mayor tiempo neto de estudio."""
+        if not self.is_record_open:
+            return []
+        return get_top_effort_exercises(self.record, limit=limit)
+
+    def get_24h_hourly_distribution(self) -> dict[int, int]:
+        """Devuelve la distribución horaria de estudio acumulado (0..23 hs)."""
+        if not self.is_record_open:
+            return {h: 0 for h in range(24)}
+        return get_24h_hourly_distribution(self.record)

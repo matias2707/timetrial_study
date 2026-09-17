@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Sequence
 
-from domain.models import Record, TimerItem
+from domain.models import Milestone, Record, TimerItem
 
 SPANISH_WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
@@ -372,4 +372,337 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
         planned_completed_units=planned_completed_units,
         planned_completed_weight=planned_completed_weight,
         planned_completion_percentage=planned_completion_percentage,
+    )
+
+
+class CourseHeatmapData(dict):
+    """Estructura de datos para el mapa de calor con compatibilidad de diccionario y atributos."""
+
+    @property
+    def has_schedule(self) -> bool:
+        return bool(self.get("has_schedule", False))
+
+    @property
+    def current_streak(self) -> int:
+        return int(self.get("streak_days", 0))
+
+    @property
+    def total_study_days(self) -> int:
+        return int(self.get("total_study_days", 0))
+
+    @property
+    def days_until_next_exam(self) -> int | None:
+        return self.get("days_until_next_milestone")
+
+    @property
+    def next_exam_title(self) -> str | None:
+        nm = self.get("next_milestone")
+        if nm:
+            return nm.get("title") or nm.get("name")
+        return None
+
+    @property
+    def day_cells(self) -> list[dict[str, Any]]:
+        cells: list[dict[str, Any]] = []
+        for w in self.get("weeks", []):
+            cells.extend(w)
+        return cells
+
+
+@dataclass
+class TopEffortExercise:
+    """Representa un ejercicio destacado en el ranking de mayor esfuerzo neto."""
+
+    section_type: str
+    section_number: int
+    exercise: int
+    inciso: int | None = None
+    exercise_time_ms: int = 0
+    break_time_ms: int = 0
+    attempts: int = 0
+    completed: bool = False
+    rank: int = 1
+
+    @property
+    def total_time_ms(self) -> int:
+        return self.exercise_time_ms + self.break_time_ms
+
+    @property
+    def status(self) -> str:
+        return "completed" if self.completed else "pending"
+
+    @property
+    def display_label(self) -> str:
+        suffix = f".{self.inciso}" if self.inciso is not None else ""
+        return f"{self.section_type} {self.section_number} · Ej. {self.exercise}{suffix}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rank": self.rank,
+            "section_type": self.section_type,
+            "section_number": self.section_number,
+            "exercise": self.exercise,
+            "inciso": self.inciso,
+            "identifier": self.display_label,
+            "exercise_time_ms": self.exercise_time_ms,
+            "break_time_ms": self.break_time_ms,
+            "attempts": self.attempts,
+            "completed": self.completed,
+            "status": self.status,
+        }
+
+    def __getitem__(self, key: str) -> Any:
+        return self.to_dict()[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
+
+@dataclass
+class HourlySlot:
+    """Franja de una hora específica (0 a 23 hs)."""
+
+    hour: int
+    count: int = 0
+    exercise_time_ms: int = 0
+    percentage: float = 0.0
+
+
+class HourlyDistribution(dict):
+    """Distribución horaria de 24 horas con acceso por índice de hora o atributos."""
+
+    def __init__(
+        self,
+        hourly_map: dict[int, int],
+        slots: list[HourlySlot],
+        total_sessions: int,
+        peak_hour: int,
+        peak_count: int,
+    ) -> None:
+        super().__init__(hourly_map)
+        self.slots = slots
+        self.total_sessions = total_sessions
+        self.peak_hour = peak_hour
+        self.peak_count = peak_count
+
+
+def get_course_heatmap_data(record: Record, reference_date: date | None = None) -> CourseHeatmapData:
+    """Calcula la matriz de semanas, días, hitos evaluativos y rachas para el mapa de calor de cursada."""
+    today = reference_date or date.today()
+    schedule = record.planner_schedule
+
+    # Fechas de inicio y fin
+    start_d: date | None = None
+    end_d: date | None = None
+    has_schedule = False
+
+    if schedule and schedule.start_date and schedule.end_date:
+        try:
+            start_d = date.fromisoformat(schedule.start_date)
+            end_d = date.fromisoformat(schedule.end_date)
+            if end_d >= start_d:
+                has_schedule = True
+        except Exception:
+            has_schedule = False
+
+    # Agrupar tiempos por fecha de los items
+    daily_exercise_map: dict[date, int] = {}
+    for item in record.items:
+        d = _parse_item_date(item.created_at)
+        if d:
+            daily_exercise_map[d] = daily_exercise_map.get(d, 0) + item.exercise_time_ms
+
+    # Total de días con estudio registrado
+    total_study_days = sum(1 for ms in daily_exercise_map.values() if ms > 0)
+
+    # Calcular racha (streak) actual
+    studied_dates = {d for d, ms in daily_exercise_map.items() if ms > 0}
+    streak_days = 0
+    check_date = today
+    if check_date in studied_dates:
+        while check_date in studied_dates:
+            streak_days += 1
+            check_date -= timedelta(days=1)
+    elif (check_date - timedelta(days=1)) in studied_dates:
+        check_date -= timedelta(days=1)
+        while check_date in studied_dates:
+            streak_days += 1
+            check_date -= timedelta(days=1)
+
+    # Próximo examen / hito
+    milestones_list = schedule.milestones if schedule else []
+    parsed_milestones: list[tuple[date, Milestone]] = []
+    for m in milestones_list:
+        try:
+            m_d = date.fromisoformat(m.date)
+            parsed_milestones.append((m_d, m))
+        except Exception:
+            continue
+    parsed_milestones.sort(key=lambda x: x[0])
+
+    next_milestone_obj: Milestone | None = None
+    days_until_next: int | None = None
+    for m_d, m in parsed_milestones:
+        if m_d >= today:
+            next_milestone_obj = m
+            days_until_next = (m_d - today).days
+            break
+
+    if not has_schedule or not start_d or not end_d:
+        return CourseHeatmapData({
+            "has_schedule": False,
+            "streak_days": streak_days,
+            "total_study_days": total_study_days,
+            "next_milestone": next_milestone_obj.to_dict() if next_milestone_obj else None,
+            "days_until_next_milestone": days_until_next,
+            "weeks": [],
+            "start_date": None,
+            "end_date": None,
+            "total_weeks": 0,
+            "max_day_ms": 0,
+        })
+
+    # Alinear al lunes de la primera semana
+    first_monday = start_d - timedelta(days=start_d.weekday())
+    # Alinear al domingo de la última semana
+    last_sunday = end_d + timedelta(days=(6 - end_d.weekday()))
+
+    # Mapa de hitos por fecha
+    milestone_by_date: dict[date, Milestone] = {m_d: m for m_d, m in parsed_milestones}
+
+    weeks: list[list[dict[str, Any]]] = []
+    curr_monday = first_monday
+    period_ms_list = [ms for d, ms in daily_exercise_map.items() if start_d <= d <= end_d]
+    max_day_ms = max(period_ms_list + [3_600_000])
+
+    while curr_monday <= last_sunday:
+        week_days: list[dict[str, Any]] = []
+        for day_offset in range(7):
+            day_d = curr_monday + timedelta(days=day_offset)
+            ex_ms = daily_exercise_map.get(day_d, 0)
+            is_within = start_d <= day_d <= end_d
+            m_found = milestone_by_date.get(day_d)
+
+            week_days.append({
+                "date": day_d.isoformat(),
+                "day_of_week": day_offset,
+                "exercise_time_ms": ex_ms,
+                "is_today": day_d == today,
+                "is_past": day_d < today,
+                "is_future": day_d > today,
+                "is_within_period": is_within,
+                "milestone": m_found.to_dict() if m_found else None,
+            })
+        weeks.append(week_days)
+        curr_monday += timedelta(days=7)
+
+    return CourseHeatmapData({
+        "has_schedule": True,
+        "streak_days": streak_days,
+        "total_study_days": total_study_days,
+        "next_milestone": next_milestone_obj.to_dict() if next_milestone_obj else None,
+        "days_until_next_milestone": days_until_next,
+        "weeks": weeks,
+        "start_date": start_d.isoformat(),
+        "end_date": end_d.isoformat(),
+        "total_weeks": len(weeks),
+        "max_day_ms": max_day_ms,
+    })
+
+
+def get_top_effort_exercises(record: Record, limit: int = 5) -> list[TopEffortExercise]:
+    """Calcula el ranking de ejercicios que mayor esfuerzo (tiempo neto de ejercicio) han requerido."""
+    exercises_map: dict[tuple[str, int, int, int | None], dict[str, Any]] = {}
+
+    for item in record.items:
+        key = (item.section_type, item.section_number, item.exercise, item.inciso)
+        if key not in exercises_map:
+            exercises_map[key] = {
+                "section_type": item.section_type,
+                "section_number": item.section_number,
+                "exercise": item.exercise,
+                "inciso": item.inciso,
+                "exercise_time_ms": 0,
+                "break_time_ms": 0,
+                "attempts": 0,
+                "completed": False,
+            }
+        data = exercises_map[key]
+        data["exercise_time_ms"] += item.exercise_time_ms
+        data["break_time_ms"] += item.break_time_ms
+        data["attempts"] += 1
+        if item.completed:
+            data["completed"] = True
+
+    sorted_exercises = sorted(
+        exercises_map.values(),
+        key=lambda x: x["exercise_time_ms"],
+        reverse=True,
+    )
+
+    result: list[TopEffortExercise] = []
+    for i, ex in enumerate(sorted_exercises[:limit]):
+        result.append(
+            TopEffortExercise(
+                rank=i + 1,
+                section_type=ex["section_type"],
+                section_number=ex["section_number"],
+                exercise=ex["exercise"],
+                inciso=ex["inciso"],
+                exercise_time_ms=ex["exercise_time_ms"],
+                break_time_ms=ex["break_time_ms"],
+                attempts=ex["attempts"],
+                completed=ex["completed"],
+            )
+        )
+    return result
+
+
+def get_24h_hourly_distribution(record: Record) -> HourlyDistribution:
+    """Agrega los intentos y milisegundos netos dedicados al estudio según la hora del día (0 a 23 hs)."""
+    hourly_time: dict[int, int] = {h: 0 for h in range(24)}
+    hourly_counts: dict[int, int] = {h: 0 for h in range(24)}
+    total_sessions = 0
+
+    for item in record.items:
+        if not item.created_at:
+            continue
+        try:
+            dt = datetime.fromisoformat(item.created_at)
+            hour = dt.hour
+            if 0 <= hour <= 23:
+                hourly_time[hour] += item.exercise_time_ms
+                hourly_counts[hour] += 1
+                total_sessions += 1
+        except (ValueError, TypeError):
+            continue
+
+    slots: list[HourlySlot] = []
+    peak_hour = 0
+    peak_count = 0
+    peak_time_ms = 0
+
+    for h in range(24):
+        c = hourly_counts[h]
+        t = hourly_time[h]
+        pct = (c / total_sessions * 100.0) if total_sessions > 0 else 0.0
+        slots.append(
+            HourlySlot(
+                hour=h,
+                count=c,
+                exercise_time_ms=t,
+                percentage=pct,
+            )
+        )
+        if c > peak_count or (c == peak_count and t > peak_time_ms):
+            peak_hour = h
+            peak_count = c
+            peak_time_ms = t
+
+    return HourlyDistribution(
+        hourly_map=hourly_time,
+        slots=slots,
+        total_sessions=total_sessions,
+        peak_hour=peak_hour,
+        peak_count=peak_count,
     )

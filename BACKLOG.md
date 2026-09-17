@@ -53,7 +53,7 @@
 | [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación (rediseño de comentarios) | 🟡 Media | `presentation`, `application`, `domain`, `docs`, `tests` | `TASK-002` (sugerida) | `[x]` |
 | [TASK-004](#task-004) | ✨ Feature | Pestaña de Ambientación: Mezclador de audio multicanal adaptativo al cronómetro | 🟡 Media | `presentation`, `application`, `infrastructure`, `domain`, `tests` | Ninguna | `[ ]` |
 | [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[x]` |
-| [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[ ]` |
+| [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[x]` |
 | [TASK-007](#task-007) | 🔨 Enhancement | Visualización de registro en conflicto en diálogo de corrección de incisos | 🟡 Media | `presentation`, `tests` | Ninguna | `[x]` |
 
 ---
@@ -394,7 +394,7 @@ Resolver las inconsistencias de estado y excepciones no controladas (`ValueError
 
 - **Tipo:** ✨ Feature  
 - **Prioridad:** 🟡 Media  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Capas afectadas:** `domain/`, `application/`, `presentation/`, `docs/`, `tests/`  
 - **Dependencias:** Ninguna  
 
@@ -447,13 +447,13 @@ Enriquecer la pestaña de Estadísticas y el Planificador con un conjunto de her
   - Pruebas de agregación de distribución horaria de 24 horas.
 
 ##### Criterios de aceptación
-- [ ] La configuración del cronograma de cursada se guarda en `Record.planner_schedule` y persiste en el archivo JSON.
-- [ ] El mapa de calor refleja la cantidad exacta de semanas del período configurado.
-- [ ] Los hitos de parciales y finales aparecen señalizados en sus celdas correspondientes con cuenta regresiva visible.
-- [ ] El ranking de ejercicios ordena estrictamente por tiempo neto descartando el descanso.
-- [ ] Al hacer clic en un ejercicio del ranking, se abre `ExerciseDetailPopup` permitiendo cargarlo al cronómetro.
-- [ ] El histograma de 24 horas muestra con precisión la distribución de horas estudiadas del registro activo.
-- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+- [x] La configuración del cronograma de cursada se guarda en `Record.planner_schedule` y persiste en el archivo JSON.
+- [x] El mapa de calor refleja la cantidad exacta de semanas del período configurado.
+- [x] Los hitos de parciales y finales aparecen señalizados en sus celdas correspondientes con cuenta regresiva visible.
+- [x] El ranking de ejercicios ordena estrictamente por tiempo neto descartando el descanso.
+- [x] Al hacer clic en un ejercicio del ranking, se abre `ExerciseDetailPopup` permitiendo cargarlo al cronómetro.
+- [x] El histograma de 24 horas muestra con precisión la distribución de horas estudiadas del registro activo.
+- [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ### TASK-007
 #### Visualización contextual del registro previo en conflicto en el diálogo de corrección de incisos

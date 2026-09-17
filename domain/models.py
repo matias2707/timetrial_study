@@ -203,6 +203,77 @@ class PlannedSection:
 
 
 @dataclass
+class Milestone:
+    """Representa un hito evaluativo dentro del período de cursada."""
+
+    name: str
+    date: str  # Formato ISO YYYY-MM-DD
+    type: str = "parcial"  # "parcial", "recuperatorio", "final", "entrega", o personalizado
+    color: str = "#ef4444"  # Color HEX para el mapa de calor
+    icon: str = "🎯"  # Emoji o ícono representativo
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Milestone":
+        m_type = str(data.get("type") or "parcial")
+        default_color = (
+            "#ef4444" if "parcial" in m_type.lower()
+            else ("#f59e0b" if "recup" in m_type.lower()
+            else ("#a855f7" if "final" in m_type.lower()
+            else ("#3b82f6" if "entrega" in m_type.lower() else "#10b981")))
+        )
+        default_icon = (
+            "🎯" if "parcial" in m_type.lower()
+            else ("🔄" if "recup" in m_type.lower()
+            else ("🏁" if "final" in m_type.lower()
+            else ("💻" if "entrega" in m_type.lower() else "📝")))
+        )
+        return cls(
+            name=str(data.get("name") or "Examen"),
+            date=str(data.get("date") or ""),
+            type=m_type,
+            color=str(data.get("color") or default_color),
+            icon=str(data.get("icon") or default_icon),
+        )
+
+
+@dataclass
+class PlannerSchedule:
+    """Configuración del período de cursada e hitos evaluativos."""
+
+    period_type: str = "Cuatrimestral"  # "Bimestral", "Cuatrimestral", "Semestral", "Personalizado"
+    start_date: str = ""  # Formato YYYY-MM-DD
+    end_date: str = ""  # Formato YYYY-MM-DD
+    milestones: list[Milestone] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "period_type": self.period_type,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "milestones": [m.to_dict() for m in self.milestones],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PlannerSchedule":
+        raw_milestones = data.get("milestones", [])
+        milestones = [
+            Milestone.from_dict(m)
+            for m in raw_milestones
+            if isinstance(m, dict)
+        ] if isinstance(raw_milestones, list) else []
+
+        return cls(
+            period_type=str(data.get("period_type") or "Cuatrimestral"),
+            start_date=str(data.get("start_date") or ""),
+            end_date=str(data.get("end_date") or ""),
+            milestones=milestones,
+        )
+
+
+@dataclass
 class Record:
     """Agrupa todos los items y la planificación de un fichero de registro de la aplicación."""
 
@@ -210,6 +281,7 @@ class Record:
     items: list[TimerItem] = field(default_factory=list)
     planner_sections: list[PlannedSection] = field(default_factory=list)
     tags: list[TagDefinition] = field(default_factory=default_tags)
+    planner_schedule: PlannerSchedule | None = None
     schema_version: int = 1
     application: str = "Study Timetrial"
     created_at: str = field(default_factory=now_iso)
@@ -227,6 +299,7 @@ class Record:
             "items": [item.to_dict() for item in self.items],
             "planner_sections": [sec.to_dict() for sec in self.planner_sections],
             "tags": [tag.to_dict() for tag in self.tags],
+            "planner_schedule": self.planner_schedule.to_dict() if self.planner_schedule else None,
         }
 
     @classmethod
@@ -252,11 +325,19 @@ class Record:
                 if isinstance(t, dict)
             ]
 
+        raw_schedule = data.get("planner_schedule")
+        planner_schedule = (
+            PlannerSchedule.from_dict(raw_schedule)
+            if isinstance(raw_schedule, dict)
+            else None
+        )
+
         return cls(
             record_name=str(data.get("record_name") or "StudyTimetrial"),
             items=[TimerItem.from_dict(item) for item in data["items"]],
             planner_sections=planner_sections,
             tags=tags,
+            planner_schedule=planner_schedule,
             created_at=str(data.get("created_at") or now_iso()),
             updated_at=str(data.get("updated_at") or now_iso()),
         )
