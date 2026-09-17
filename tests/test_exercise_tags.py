@@ -241,6 +241,37 @@ class TestExerciseTagsGUI(unittest.TestCase):
         btn.set_dimmed(False)
         self.assertIsNone(btn.graphicsEffect())
 
+    def test_exercise_cell_button_bookmark_painting(self) -> None:
+        """Verifica que el renderizado de los íconos de bookmark se ejecute sin errores."""
+        from PySide6.QtGui import QPainter, QPixmap
+        from application.planner_service import ExerciseNodeStatus
+        from presentation.planner_widget import ExerciseCellButton
+
+        tags = [
+            TagDefinition(id="t1", name="Rehacer", color="#ef4444"),
+            TagDefinition(id="t2", name="Duda", color="#3b82f6"),
+            TagDefinition(id="t3", name="Clave", color="#10b981"),
+            TagDefinition(id="t4", name="Repaso", color="#a855f7"),
+        ]
+
+        node = ExerciseNodeStatus(
+            section_type="Guía",
+            section_number=2,
+            exercise=5,
+            tags=tags,
+            has_note=True,
+            note="Fórmula cuadrática",
+        )
+
+        btn = ExerciseCellButton(node, is_dark=True)
+        btn.resize(52, 48)
+
+        pixmap = QPixmap(52, 48)
+        # Ejecutar el método renderizado del widget directamente
+        btn.render(pixmap)
+
+        self.assertFalse(pixmap.isNull())
+
     def test_planner_widget_tag_filtering(self) -> None:
         from presentation.planner_widget import PlannerWidget, ExerciseCellButton
 

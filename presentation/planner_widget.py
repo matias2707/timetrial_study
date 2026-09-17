@@ -204,27 +204,21 @@ class ExerciseCellButton(QPushButton):
         if self.node.tags:
             tags = self.node.tags
             k = len(tags)
-            d = min(22, 14 + (k - 1) * 3)
+            gap = 2
+            # Ajustar dinámicamente el ancho si hay muchas etiquetas para que no desborden
+            max_avail_w = max(10, w - 8)
+            bw = min(10, max(6, (max_avail_w - (k - 1) * gap) // k)) if k > 0 else 10
+            bh = 13
+            total_w = k * bw + (k - 1) * gap
+            start_x = w - 4 - total_w
 
             for i, tag in enumerate(tags):
-                s_start = i / k
-                s_end = (i + 1) / k
-                color = QColor(tag.color)
-
-                poly = QPainterPath()
-                if i == 0:
-                    poly.moveTo(w, 0)
-                    poly.lineTo(w - s_end * d, 0)
-                    poly.lineTo(w, s_end * d)
-                    poly.closeSubpath()
-                else:
-                    poly.moveTo(w - s_start * d, 0)
-                    poly.lineTo(w - s_end * d, 0)
-                    poly.lineTo(w, s_end * d)
-                    poly.lineTo(w, s_start * d)
-                    poly.closeSubpath()
-
-                painter.fillPath(poly, color)
+                x_pos = start_x + i * (bw + gap)
+                y_pos = 2
+                color = tag.color or "#a855f7"
+                qta.icon("fa5s.bookmark", color=color).paint(
+                    painter, QRect(int(x_pos), int(y_pos), int(bw), int(bh))
+                )
 
         if self.node.has_note:
             note_color = "#38bdf8" if self.is_dark else "#0284c7"
