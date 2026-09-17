@@ -188,7 +188,7 @@ class MainWindow(QMainWindow):
             self.tabs.setTabIcon(i, qta.icon(icon_name, color=color))
 
         if index == 1:
-            self.refresh_table()
+            self.records_view.refresh_table(force=False)
         elif index == 2:
             self.refresh_statistics()
         elif index == 3:
@@ -197,7 +197,8 @@ class MainWindow(QMainWindow):
     def _on_home_item_finished(self, _completed: bool) -> None:
         self.application.sync_planner_with_records()
         self.planner.refresh_view()
-        self.refresh_table()
+        self.records_view.mark_dirty()
+        self.refresh_table(force=True)
         self.refresh_statistics()
 
     def _on_records_data_modified(self) -> None:
@@ -430,8 +431,8 @@ class MainWindow(QMainWindow):
     def add_home_comment(self) -> None:
         self.home_view.add_home_comment()
 
-    def refresh_table(self) -> None:
-        self.records_view.refresh_table()
+    def refresh_table(self, force: bool = True) -> None:
+        self.records_view.refresh_table(force=force)
 
     def refresh_statistics(self) -> None:
         self.statistics_view.refresh_statistics()

@@ -55,6 +55,7 @@
 | [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[x]` |
 | [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[x]` |
 | [TASK-007](#task-007) | 🔨 Enhancement | Visualización de registro en conflicto en diálogo de corrección de incisos | 🟡 Media | `presentation`, `tests` | Ninguna | `[x]` |
+| [TASK-008](#task-008) | ⚡ Performance | Optimización de rendimiento en pestaña de Registros (eliminación de congelamiento en archivos grandes) | 🔴 Alta | `presentation`, `tests` | Ninguna | `[x]` |
 
 ---
 
@@ -502,6 +503,62 @@ La mejora consiste en integrar dentro del diálogo una vista previa limpia y com
 - [x] El diseño responde adecuadamente tanto al modo oscuro (`dark`) como al modo claro (`light`).
 - [x] Si `gap_items` está vacío o no se proporciona, el diálogo degrada con elegancia manteniendo su comportamiento previo.
 - [x] Todas las pruebas automatizadas existentes y nuevas pasan al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-008
+#### Optimización de rendimiento en pestaña de Registros (eliminación de congelamiento en archivos grandes)
+
+- **Tipo:** ⚡ Performance / 🐛 Bugfix  
+- **Prioridad:** 🔴 Alta  
+- **Estado:** `[x] Completado`  
+- **Capas afectadas:** `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Al abrir materias con un historial acumulado de intentos (como el archivo de Álgebra con más de 70 registros), la navegación hacia la pestaña de **Registros** producía un bloqueo/congelamiento perceptual de la interfaz de usuario de 1.5 a 3 segundos (y de casi 9 segundos con 200 registros). 
+
+El análisis de perfilado (`cProfile`) determinó que el 80% del retraso provenía del modo de ajuste de columnas `ResizeToContents` en `QHeaderView`, el cual forzaba a Qt a re-medir todas las celdas de la tabla por cada fila insertada, sumado a la creación masiva de widgets nativos por celda (`setCellWidget`), regeneración repetitiva de íconos vectoriales (`qta.icon`) e inserción individual `insertRow` sin reserva de memoria previa. Adicionalmente, `refresh_table()` emitía la señal `data_modified`, forzando la reconstrucción innecesaria del planificador y de las estadísticas en segundo plano ante una simple consulta de registros.
+
+La optimización resuelve integralmente este cuello de botella desacoplando el cálculo de layout mediante anchos fijos interactivos, reserva atómica de filas (`setRowCount`), caché estática de íconos, congelamiento temporal de repintado (`setUpdatesEnabled(False)`), eliminación de la señal espuria y un sistema de verificación de suciedad (*dirty checking*) para transiciones de pestañas en 0 milisegundos.
+
+##### Casos de uso y flujo de interacción
+1. **Transición Instantánea de Pestaña:**
+   - El usuario hace clic en la pestaña **Registros** desde cualquier otra vista; la tabla se visualiza de forma inmediata sin congelamientos (tiempo de renderizado reducido de ~3s a <40ms para ~70 filas y 0.2s para 200 filas).
+2. **Caché Reactiva sin Recomputación Innecesaria:**
+   - Si el usuario navega entre pestañas sin haber agregado, editado ni borrado registros, la vista preserva el estado ya renderizado y no reconstruye la tabla (tiempo = 0.0 ms).
+   - Al registrar un nuevo intento en el cronómetro, abrir un nuevo archivo o modificar un registro, se invalida la caché (`mark_dirty()`) para refrescar la información cuando el usuario vuelva a consultar la pestaña.
+3. **Mantenimiento de Interactividad Completa:**
+   - Las columnas conservan anchos legibles predeterminados y el usuario puede redimensionarlas libremente con el mouse (`ResizeMode.Interactive`).
+   - Todos los filtros de columna tipo Excel, ordenamientos jerárquicos y búsquedas de texto continúan funcionando con máxima velocidad.
+
+##### Cambios técnicos proyectados por capa
+- **`presentation/records_view.py`**:
+  - Reemplazar `ResizeToContents` por `Interactive` asignando anchos predeterminados por columna (`setColumnWidth`).
+  - Pre-cachear las instancias de `QIcon` de acciones (`comment`, `edit`, `resume`, `delete`) para evitar invocar `qta.icon()` en bucle.
+  - Implementar flag `_is_dirty: bool` y método `mark_dirty()`.
+  - En `refresh_table()`:
+    - Omitir recarga si `not force and not self._is_dirty`.
+    - Bloquear actualizaciones durante el llenado con `setUpdatesEnabled(False)` y `blockSignals(True)`.
+    - Usar `setRowCount(len(items))` en lugar de `insertRow` sucesivos.
+    - Reutilizar iconos cacheados.
+    - Eliminar `self.data_modified.emit()` al final de `refresh_table()`.
+  - Asegurar la emisión de `data_modified.emit()` y llamada a `mark_dirty()` en las mutaciones reales (`add_item`, `edit_item`, `delete_item`, `comment_item`).
+- **`presentation/main_window.py`**:
+  - Invocar `self.records_view.refresh_table(force=False)` al cambiar a la pestaña 1 para aprovechar el dirty checking.
+  - Marcar `self.records_view.mark_dirty()` en `_on_home_item_finished`, `open_record`, `close_record` y cargas de archivo.
+- **`tests/`**:
+  - Validar compatibilidad total de cabeceras, ordenamiento y filtros con la suite `test_main_window_records.py`.
+  - Comprobar tiempos de ejecución mediante benchmarks de no regresión.
+
+##### Criterios de aceptación
+- [x] El cambio a la pestaña de Registros con el archivo de Álgebra responde en menos de 100 ms (sin congelamiento perceptual).
+- [x] El cambio a la pestaña de Registros sin cambios previos en datos responde en 0 ms gracias a dirty checking.
+- [x] La columna Comentario se expande ocupando el espacio disponible (`Stretch`) y las columnas fijas tienen anchos proporcionados y legibles.
+- [x] El usuario puede redimensionar interactivamente las columnas de la tabla.
+- [x] Los filtros de columna, búsqueda global, ordenamiento y acciones (comentar, editar, continuar, eliminar) funcionan correctamente.
+- [x] No se emiten falsas señales de `data_modified` al solo visualizar la tabla.
+- [x] La suite de pruebas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 

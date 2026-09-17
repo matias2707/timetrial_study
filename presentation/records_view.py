@@ -79,7 +79,20 @@ class RecordsViewWidget(QWidget):
             7: COL_COMMENT,
         }
 
+        self._is_dirty: bool = True
+        self._cache_action_icons()
         self._build_ui()
+
+    def _cache_action_icons(self) -> None:
+        """Pre-cachea los iconos de las acciones para evitar llamadas repetitivas a qta.icon."""
+        self._icon_comment = qta.icon("fa5s.comment-dots", color="#3b82f6")
+        self._icon_edit = qta.icon("fa5s.edit", color="#6366f1")
+        self._icon_resume = qta.icon("fa5s.play-circle", color="#10b981")
+        self._icon_delete = qta.icon("fa5s.trash-alt", color="#ef4444")
+
+    def mark_dirty(self) -> None:
+        """Marca que los datos de la tabla requieren recarga."""
+        self._is_dirty = True
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -219,13 +232,18 @@ class RecordsViewWidget(QWidget):
 
         self.update_header_labels()
 
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        for col, width in (
+            (0, 110),  # Sección
+            (1, 75),   # Ejercicio
+            (2, 65),   # Inciso
+            (3, 135),  # Fecha
+            (4, 90),   # Receso
+            (5, 90),   # Tiempo
+            (6, 125),  # Estado
+        ):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            self.table.setColumnWidth(col, width)
+
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         for col in (8, 9, 10, 11):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
@@ -287,11 +305,13 @@ class RecordsViewWidget(QWidget):
             self.column_sort_states.pop(col_key, None)
 
         self.update_header_labels()
-        self.refresh_table()
+        self.mark_dirty()
+        self.refresh_table(force=True)
 
     def _on_column_moved(self, logical_index: int, old_visual_index: int, new_visual_index: int) -> None:
         if self.column_sort_states:
-            self.refresh_table()
+            self.mark_dirty()
+            self.refresh_table(force=True)
 
     def _on_header_context_menu(self, pos) -> None:
         logical_index = self.table.horizontalHeader().logicalIndexAt(pos)
@@ -325,7 +345,8 @@ class RecordsViewWidget(QWidget):
         else:
             self.column_filter_rules.pop(col_key, None)
         self.update_header_labels()
-        self.refresh_table()
+        self.mark_dirty()
+        self.refresh_table(force=True)
 
     def _on_popup_sort_requested(self, col_key: str, direction: str) -> None:
         if direction in ("asc", "desc"):
@@ -333,7 +354,8 @@ class RecordsViewWidget(QWidget):
         else:
             self.column_sort_states.pop(col_key, None)
         self.update_header_labels()
-        self.refresh_table()
+        self.mark_dirty()
+        self.refresh_table(force=True)
 
     def reset_all_filters(self) -> None:
         self.column_filter_rules.clear()
@@ -341,7 +363,8 @@ class RecordsViewWidget(QWidget):
         if hasattr(self, "record_search_input"):
             self.record_search_input.clear()
         self.update_header_labels()
-        self.refresh_table()
+        self.mark_dirty()
+        self.refresh_table(force=True)
 
     def set_empty_state(self, is_empty: bool) -> None:
         """Habilita o deshabilita acciones de la vista según si hay proyecto activo."""
@@ -364,13 +387,19 @@ class RecordsViewWidget(QWidget):
             self.rec_stat_break_time.setText("-")
             self.rec_stat_effectiveness.setText("-")
             self.table.setRowCount(0)
+            self.mark_dirty()
         else:
-            self.refresh_table()
+            self.mark_dirty()
+            self.refresh_table(force=True)
 
     def filter_records_table(self, _query: str = "") -> None:
-        self.refresh_table()
+        self.mark_dirty()
+        self.refresh_table(force=True)
 
-    def refresh_table(self) -> None:
+    def refresh_table(self, force: bool = True) -> None:
+        if not force and not self._is_dirty:
+            return
+
         all_items = self.application.record.items
         active_sorts = self.get_active_sorts_by_hierarchy()
         search_text = self.record_search_input.text() if hasattr(self, "record_search_input") else ""
@@ -387,7 +416,6 @@ class RecordsViewWidget(QWidget):
             all_column_values_map=all_col_values,
         )
 
-        self.table.setRowCount(0)
         total_items = len(all_items)
         displayed_count = len(self._current_displayed_items)
 
@@ -413,82 +441,89 @@ class RecordsViewWidget(QWidget):
             eff_pct = int(round((stats.completed_attempts / stats.total_attempts * 100.0))) if stats.total_attempts else 0
             self.rec_stat_effectiveness.setText(f"{eff_pct}%")
 
-        for index, item in enumerate(self._current_displayed_items):
-            self.table.insertRow(index)
-            self.table.setRowHeight(index, 38)
+        self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
+        try:
+            self.table.clearContents()
+            self.table.setRowCount(displayed_count)
 
-            location_text = f"{item.section_type} {item.section_number}"
-            loc_item = QTableWidgetItem(location_text)
-            loc_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-            self.table.setItem(index, 0, loc_item)
+            for index, item in enumerate(self._current_displayed_items):
+                self.table.setRowHeight(index, 38)
 
-            ex_item = QTableWidgetItem(str(item.exercise))
-            ex_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(index, 1, ex_item)
+                location_text = f"{item.section_type} {item.section_number}"
+                loc_item = QTableWidgetItem(location_text)
+                loc_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                self.table.setItem(index, 0, loc_item)
 
-            inc_item = QTableWidgetItem(str(item.inciso or "-"))
-            inc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(index, 2, inc_item)
+                ex_item = QTableWidgetItem(str(item.exercise))
+                ex_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(index, 1, ex_item)
 
-            # Columna 3: Fecha
-            try:
-                dt_obj = datetime.fromisoformat(item.created_at)
-                date_str = dt_obj.strftime("%Y-%m-%d %H:%M")
-            except (ValueError, TypeError):
-                date_str = item.created_at[:16] if len(item.created_at) >= 16 else item.created_at
-            date_item = QTableWidgetItem(date_str)
-            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(index, 3, date_item)
+                inc_item = QTableWidgetItem(str(item.inciso or "-"))
+                inc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(index, 2, inc_item)
 
-            br_item = QTableWidgetItem(format_milliseconds(item.break_time_ms))
-            br_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(index, 4, br_item)
+                # Columna 3: Fecha
+                try:
+                    dt_obj = datetime.fromisoformat(item.created_at)
+                    date_str = dt_obj.strftime("%Y-%m-%d %H:%M")
+                except (ValueError, TypeError):
+                    date_str = item.created_at[:16] if len(item.created_at) >= 16 else item.created_at
+                date_item = QTableWidgetItem(date_str)
+                date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(index, 3, date_item)
 
-            t_item = QTableWidgetItem(format_milliseconds(item.exercise_time_ms))
-            t_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(index, 5, t_item)
+                br_item = QTableWidgetItem(format_milliseconds(item.break_time_ms))
+                br_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(index, 4, br_item)
 
-            # Columna 6: Estado badge
-            status_badge = QLabel("✓ Completado" if item.completed else "✕ Incompleto")
-            status_badge.setObjectName("table_badge_completed" if item.completed else "table_badge_incomplete")
-            status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setCellWidget(index, 6, status_badge)
+                t_item = QTableWidgetItem(format_milliseconds(item.exercise_time_ms))
+                t_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setItem(index, 5, t_item)
 
-            # Columna 7: Comentario
-            comm_item = QTableWidgetItem(item.comment)
-            comm_item.setToolTip(item.comment or "Sin comentario")
-            self.table.setItem(index, 7, comm_item)
+                # Columna 6: Estado badge
+                status_badge = QLabel("✓ Completado" if item.completed else "✕ Incompleto")
+                status_badge.setObjectName("table_badge_completed" if item.completed else "table_badge_incomplete")
+                status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table.setCellWidget(index, 6, status_badge)
 
-            # Botones de acción compactos
-            comm_btn = QPushButton()
-            comm_btn.setIcon(qta.icon("fa5s.comment-dots", color="#3b82f6"))
-            comm_btn.setObjectName("table_action_icon")
-            comm_btn.setToolTip("Comentar registro")
-            comm_btn.clicked.connect(lambda _, it=item: self.comment_item(it))
-            self.table.setCellWidget(index, 8, comm_btn)
+                # Columna 7: Comentario
+                comm_item = QTableWidgetItem(item.comment)
+                comm_item.setToolTip(item.comment or "Sin comentario")
+                self.table.setItem(index, 7, comm_item)
 
-            edit_btn = QPushButton()
-            edit_btn.setIcon(qta.icon("fa5s.edit", color="#6366f1"))
-            edit_btn.setObjectName("table_action_icon")
-            edit_btn.setToolTip("Editar registro")
-            edit_btn.clicked.connect(lambda _, it=item: self.edit_item(it))
-            self.table.setCellWidget(index, 9, edit_btn)
+                # Botones de acción compactos
+                comm_btn = QPushButton()
+                comm_btn.setIcon(self._icon_comment)
+                comm_btn.setObjectName("table_action_icon")
+                comm_btn.setToolTip("Comentar registro")
+                comm_btn.clicked.connect(lambda _, it=item: self.comment_item(it))
+                self.table.setCellWidget(index, 8, comm_btn)
 
-            resume_btn = QPushButton()
-            resume_btn.setIcon(qta.icon("fa5s.play-circle", color="#10b981"))
-            resume_btn.setObjectName("table_action_icon")
-            resume_btn.setToolTip("Continuar en cronómetro")
-            resume_btn.clicked.connect(lambda _, it=item: self.resume_item(it))
-            self.table.setCellWidget(index, 10, resume_btn)
+                edit_btn = QPushButton()
+                edit_btn.setIcon(self._icon_edit)
+                edit_btn.setObjectName("table_action_icon")
+                edit_btn.setToolTip("Editar registro")
+                edit_btn.clicked.connect(lambda _, it=item: self.edit_item(it))
+                self.table.setCellWidget(index, 9, edit_btn)
 
-            del_btn = QPushButton()
-            del_btn.setIcon(qta.icon("fa5s.trash-alt", color="#ef4444"))
-            del_btn.setObjectName("table_delete_icon")
-            del_btn.setToolTip("Eliminar registro")
-            del_btn.clicked.connect(lambda _, it=item: self.delete_item(it))
-            self.table.setCellWidget(index, 11, del_btn)
+                resume_btn = QPushButton()
+                resume_btn.setIcon(self._icon_resume)
+                resume_btn.setObjectName("table_action_icon")
+                resume_btn.setToolTip("Continuar en cronómetro")
+                resume_btn.clicked.connect(lambda _, it=item: self.resume_item(it))
+                self.table.setCellWidget(index, 10, resume_btn)
 
-        self.data_modified.emit()
+                del_btn = QPushButton()
+                del_btn.setIcon(self._icon_delete)
+                del_btn.setObjectName("table_delete_icon")
+                del_btn.setToolTip("Eliminar registro")
+                del_btn.clicked.connect(lambda _, it=item: self.delete_item(it))
+                self.table.setCellWidget(index, 11, del_btn)
+        finally:
+            self.table.blockSignals(False)
+            self.table.setUpdatesEnabled(True)
+            self._is_dirty = False
 
     def show_comment_alert(self, row: int, column: int) -> None:
         if column != 7:
@@ -514,7 +549,9 @@ class RecordsViewWidget(QWidget):
         )
         if accepted:
             self.application.update_comment(item, comment)
-            self.refresh_table()
+            self.mark_dirty()
+            self.refresh_table(force=True)
+            self.data_modified.emit()
 
     def add_item(self) -> None:
         dialog = ItemDialog(self.window())
@@ -550,7 +587,9 @@ class RecordsViewWidget(QWidget):
 
                 self.application.add_item(item)
                 self.application.sync_planner_with_records()
-            self.refresh_table()
+                self.mark_dirty()
+                self.refresh_table(force=True)
+                self.data_modified.emit()
 
     def edit_item(self, target: int | TimerItem) -> None:
         item = target if isinstance(target, TimerItem) else (
@@ -562,11 +601,15 @@ class RecordsViewWidget(QWidget):
         if code == ItemDialog.DialogCode.Accepted:
             if dialog.validated_item is not None:
                 self.application.replace_item(item, dialog.validated_item)
-            self.refresh_table()
+                self.mark_dirty()
+                self.refresh_table(force=True)
+                self.data_modified.emit()
         elif getattr(dialog, "load_in_timer_requested", False):
             if dialog.validated_item is not None:
                 self.application.replace_item(item, dialog.validated_item)
-                self.refresh_table()
+                self.mark_dirty()
+                self.refresh_table(force=True)
+                self.data_modified.emit()
                 self.resume_item(dialog.validated_item)
             else:
                 self.resume_item(item)
@@ -582,7 +625,9 @@ class RecordsViewWidget(QWidget):
             "¿Está seguro de reiniciar este registro?",
         ) == QMessageBox.StandardButton.Yes:
             self.application.reset_item(item)
-            self.refresh_table()
+            self.mark_dirty()
+            self.refresh_table(force=True)
+            self.data_modified.emit()
 
     def delete_item(self, target: int | TimerItem) -> None:
         item = target if isinstance(target, TimerItem) else (
@@ -595,7 +640,9 @@ class RecordsViewWidget(QWidget):
             "¿Está seguro de eliminar este registro?\nEsta acción no se puede deshacer.",
         ) == QMessageBox.StandardButton.Yes:
             self.application.delete_item(item)
-            self.refresh_table()
+            self.mark_dirty()
+            self.refresh_table(force=True)
+            self.data_modified.emit()
 
     def resume_item(self, target: int | TimerItem) -> None:
         """Emite la señal para reanudar / continuar el item en el cronómetro."""
