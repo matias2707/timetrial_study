@@ -316,10 +316,12 @@ class HomeViewWidget(QWidget):
         self.incomplete_button.setIcon(qta.icon("fa5s.times-circle", color="#ffffff"))
         self.incomplete_button.clicked.connect(lambda: self.finish_item(False, keep_location=True))
 
-        self.comment_button = QPushButton("  COMENTARIO")
+        self.comment_button = QPushButton("  APUNTES")
         self.comment_button.setObjectName("comment_action")
-        self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
+        self.comment_button.setIcon(qta.icon("fa5s.sticky-note", color="#475569"))
+        self.comment_button.setToolTip("Ver o editar apuntes / notas para este ejercicio")
         self.comment_button.clicked.connect(self.add_home_comment)
+        self.notes_button = self.comment_button
 
         self.tags_button = QPushButton("  MARCADORES")
         self.tags_button.setObjectName("tags_action")
@@ -475,6 +477,7 @@ class HomeViewWidget(QWidget):
         text = f"{location.section_type} {location.section_number} · Ejercicio {location.exercise}{suffix}"
         self.location_label.setText(text)
         self.update_tags_visual_state()
+        self.update_notes_visual_state()
 
     def set_locked(self, locked: bool) -> None:
         for widget in (self.section_input, self.section_number_input, self.exercise_input, self.inciso_input):
@@ -564,9 +567,7 @@ class HomeViewWidget(QWidget):
         """Limpia los indicadores visuales del modo continuación."""
         self.continuation_banner.setVisible(False)
         self.set_locked(False)
-        if hasattr(self, "comment_button"):
-            self.comment_button.setText("  COMENTARIO")
-            self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
+        self.update_notes_visual_state()
         self.status_label.setText("Listo para comenzar")
         self.update_session_button()
         self.update_timer_visual_state()
@@ -581,9 +582,7 @@ class HomeViewWidget(QWidget):
         self.set_locked(False)
         self.update_session_button()
         self.update_timer_visual_state()
-        if hasattr(self, "comment_button"):
-            self.comment_button.setText("  COMENTARIO")
-            self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
+        self.update_notes_visual_state()
         self.status_label.setText("Listo para comenzar")
 
     def _prompt_inciso_gap_dialog(
@@ -689,9 +688,7 @@ class HomeViewWidget(QWidget):
         self.update_timer_visual_state()
         result = "completo" if completed else "incompleto"
         self.status_label.setText(f"Intento {result}. Listo para comenzar")
-        if hasattr(self, "comment_button"):
-            self.comment_button.setText("  COMENTARIO")
-            self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
+        self.update_notes_visual_state()
 
         if not keep_location and not stop:
             self.sync_location()
@@ -703,25 +700,25 @@ class HomeViewWidget(QWidget):
         if not self.application.is_record_open:
             return
 
-        from PySide6.QtWidgets import QInputDialog
+        sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
+        sec_num = self.section_number_input.value()
+        ex = self.exercise_input.value()
+        inc = self.inciso_input.value() or None
 
-        comment, accepted = QInputDialog.getMultiLineText(
-            self.window(),
-            "Comentario del intento",
-            "Comentario:",
-            self.application.pending_comment,
+        from presentation.planner_dialogs import ExerciseNoteDialog
+
+        dlg = ExerciseNoteDialog(
+            parent=self.window(),
+            app_service=self.application,
+            section_type=sec_type,
+            section_number=sec_num,
+            exercise=ex,
+            inciso=inc,
+            is_dark=self.is_dark_mode,
         )
-        if accepted:
-            self.application.set_comment(comment)
-            clean = comment.strip()
-            if clean:
-                short = (clean[:25] + "…") if len(clean) > 25 else clean
-                self.comment_button.setText(f"  COMENTARIO: \"{short}\"")
-                self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#10b981"))
-            else:
-                self.comment_button.setText("  COMENTARIO")
-                self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
-            self.status_label.setText("Comentario preparado para el próximo registro")
+        if dlg.exec() == ExerciseNoteDialog.DialogCode.Accepted:
+            self.update_notes_visual_state()
+            self.status_label.setText("Apuntes actualizados para el ejercicio actual")
 
     def manage_home_tags(self) -> None:
         if not self.application.is_record_open:
@@ -760,6 +757,40 @@ class HomeViewWidget(QWidget):
         else:
             self.tags_button.setText("  MARCADORES")
             self.tags_button.setIcon(qta.icon("fa5s.tags", color="#475569" if self.is_dark_mode else "#64748b"))
+
+    def update_notes_visual_state(self) -> None:
+        """Actualiza el aspecto del botón de notas según si el ejercicio actual tiene apuntes."""
+        if not hasattr(self, "comment_button") or not self.application.is_record_open:
+            return
+        sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
+        sec_num = self.section_number_input.value()
+        ex = self.exercise_input.value()
+        inc = self.inciso_input.value() or None
+
+        note = self.application.get_exercise_note(sec_type, sec_num, ex, inc)
+        loc = self.application.location
+        if (
+            not note
+            and self.application.pending_comment
+            and loc.section_type.strip().lower() == sec_type.strip().lower()
+            and loc.section_number == sec_num
+            and loc.exercise == ex
+            and loc.inciso == inc
+        ):
+            note = self.application.pending_comment
+
+        if note and note.strip():
+            clean = note.strip()
+            short = (clean[:18] + "…") if len(clean) > 18 else clean
+            self.comment_button.setText(f'  APUNTES: "{short}"')
+            self.comment_button.setIcon(qta.icon("fa5s.sticky-note", color="#38bdf8"))
+            self.comment_button.setToolTip(f"Apuntes para {sec_type} {sec_num} · Ej. {ex}:\n{clean}")
+        else:
+            self.comment_button.setText("  APUNTES")
+            self.comment_button.setIcon(
+                qta.icon("fa5s.sticky-note", color="#475569" if self.is_dark_mode else "#64748b")
+            )
+            self.comment_button.setToolTip("Ver o editar apuntes / notas para este ejercicio")
 
     def refresh_clock(self) -> None:
         exercise_ms, break_ms = self.application.timer.snapshot()

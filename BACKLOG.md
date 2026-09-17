@@ -50,7 +50,7 @@
 | :--- | :---: | :--- | :---: | :--- | :---: | :---: |
 | [TASK-001](#task-001) | 🔨 Enhancement | Continuación desde registros (recarga al cronómetro para sobrescritura) | 🔴 Alta | `presentation`, `application`, `domain`, `tests` | Ninguna | `[x]` |
 | [TASK-002](#task-002) | ✨ Feature | Sistema de marcadores y etiquetas para ejercicios en la planificación | 🔴 Alta | `presentation`, `application`, `domain`, `docs`, `tests` | Ninguna | `[x]` |
-| [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación (rediseño de comentarios) | 🟡 Media | `presentation`, `application`, `domain`, `docs`, `tests` | `TASK-002` (sugerida) | `[ ]` |
+| [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación (rediseño de comentarios) | 🟡 Media | `presentation`, `application`, `domain`, `docs`, `tests` | `TASK-002` (sugerida) | `[x]` |
 | [TASK-004](#task-004) | ✨ Feature | Pestaña de Ambientación: Mezclador de audio multicanal adaptativo al cronómetro | 🟡 Media | `presentation`, `application`, `infrastructure`, `domain`, `tests` | Ninguna | `[ ]` |
 | [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[x]` |
 | [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[ ]` |
@@ -199,7 +199,7 @@ Permitir categorizar, marcar y rastrear ejercicios del universo de estudio media
 
 - **Tipo:** 🔨 Enhancement  
 - **Prioridad:** 🟡 Media  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Capas afectadas:** `domain/`, `application/`, `presentation/`, `infrastructure/`, `docs/`, `tests/`  
 - **Dependencias:** `TASK-002` (sugerida)  
 
@@ -245,12 +245,12 @@ Reemplazar el esquema de comentarios fragmentados por intento (`TimerItem.commen
   - Pruebas de actualización y sincronización de notas en `test_application_service.py`.
 
 ##### Criterios de aceptación
-- [ ] Los comentarios existentes en registros previos no se borran ni modifican en `items`.
-- [ ] Al abrir un archivo antiguo, las notas previas de los ejercicios se precargan automáticamente en el planificador.
-- [ ] Los ejercicios con notas muestran un indicador gráfico sutil en su casilla del planificador.
-- [ ] Es posible leer la nota completa en el tooltip y editarla directamente en el popup de detalle del ejercicio.
-- [ ] El cronómetro muestra si el ejercicio activo ya tiene notas y permite editarlas o consultarlas en tiempo real.
-- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+- [x] Los comentarios existentes en registros previos no se borran ni modifican en `items`.
+- [x] Al abrir un archivo antiguo, las notas previas de los ejercicios se precargan automáticamente en el planificador.
+- [x] Los ejercicios con notas muestran un indicador gráfico sutil en su casilla del planificador.
+- [x] Es posible leer la nota completa en el tooltip y editarla directamente en el popup de detalle del ejercicio.
+- [x] El cronómetro muestra si el ejercicio activo ya tiene notas y permite editarlas o consultarlas en tiempo real.
+- [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 

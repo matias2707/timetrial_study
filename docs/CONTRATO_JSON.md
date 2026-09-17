@@ -107,6 +107,7 @@ Un registro es un objeto JSON autosuficiente que contiene tanto el historial de 
 | `total_exercises` | entero | Cantidad total de ejercicios planificados en la sección (mínimo `1`). |
 | `exercise_configs` | objeto | Diccionario clave-valor serializado con claves de texto `"<ejercicio>": <cantidad_incisos>`. Mapea cada ejercicio con su número de incisos correspondientes (0 si no tiene). |
 | `exercise_tags` | objeto | Diccionario clave-valor serializado `"<ejercicio>"` o `"<ejercicio>.<inciso>"` mapeado a una lista de identificadores de etiquetas asociadas (ej: `{"1.1": ["tag-redo"]}`). Si falta, se inicializa como `{}`. |
+| `exercise_notes` | objeto | Diccionario clave-valor serializado `"<ejercicio>"` o `"<ejercicio>.<inciso>"` mapeado a una cadena de texto con los apuntes o notas del ejercicio (ej: `{"1": "Cuidado con signo en derivada"}`). Si falta (archivos previos), se inicializa como `{}`. |
 
 ### Campos de `TagDefinition`
 
@@ -123,7 +124,7 @@ Un registro es un objeto JSON autosuficiente que contiene tanto el historial de 
 ## Reglas de evolución y compatibilidad hacia atrás
 
 1. **Invarianza del esquema:** No renombrar ni eliminar campos de `schema_version: 1` sin una migración explícita.
-2. **Tolerancia a campos opcionales:** Si un archivo previo no incluye `planner_sections`, `exercise_tags` o `tags`, el método `Record.from_dict` y `PlannedSection.from_dict` los inicializan de forma segura con valores predeterminados sin generar excepciones.
+2. **Tolerancia a campos opcionales:** Si un archivo previo no incluye `planner_sections`, `exercise_tags`, `exercise_notes` o `tags`, el método `Record.from_dict` y `PlannedSection.from_dict` los inicializan de forma segura con valores predeterminados sin generar excepciones.
 3. **Normalización de incisos:** Los valores legados donde `inciso == 0` o campos ausentes se mapean automáticamente a `None`.
 4. **Sincronización no destructiva:** Si un registro contiene intentos de ejercicios que exceden o no están presentes en `planner_sections`, el servicio de aplicación los respeta y los incorpora a la vista del planificador mediante `sync_planner_with_records()`.
 5. **Serialización centralizada:** La implementación de lectura, escritura y parseo reside en `domain/models.py` (`to_dict` / `from_dict`) y es coordinada por `infrastructure/storage_service.py`.

@@ -110,6 +110,7 @@ class PlannedSection:
     total_exercises: int = 1
     exercise_configs: dict[int, int] = field(default_factory=dict)
     exercise_tags: dict[str, list[str]] = field(default_factory=dict)
+    exercise_notes: dict[str, str] = field(default_factory=dict)
 
     @staticmethod
     def _make_exercise_key(exercise: int, inciso: int | None = None) -> str:
@@ -148,6 +149,20 @@ class PlannedSection:
                     cleaned.append(t)
             self.exercise_tags[key] = cleaned
 
+    def get_note(self, exercise: int, inciso: int | None = None) -> str:
+        """Devuelve el texto del apunte/nota asociado al ejercicio o inciso (o cadena vacía)."""
+        key = self._make_exercise_key(exercise, inciso)
+        return self.exercise_notes.get(key, "")
+
+    def set_note(self, exercise: int, inciso: int | None = None, note: str = "") -> None:
+        """Asigna o elimina el apunte/nota de un ejercicio o inciso específico."""
+        key = self._make_exercise_key(exercise, inciso)
+        cleaned = note.strip()
+        if not cleaned:
+            self.exercise_notes.pop(key, None)
+        else:
+            self.exercise_notes[key] = cleaned
+
     def to_dict(self) -> dict[str, Any]:
         """Serializa la sección planificada a un diccionario."""
         return {
@@ -157,6 +172,7 @@ class PlannedSection:
             "total_exercises": self.total_exercises,
             "exercise_configs": {str(k): v for k, v in self.exercise_configs.items()},
             "exercise_tags": self.exercise_tags,
+            "exercise_notes": self.exercise_notes,
         }
 
     @classmethod
@@ -169,6 +185,12 @@ class PlannedSection:
             str(k): [str(tid) for tid in v] if isinstance(v, list) else []
             for k, v in raw_exercise_tags.items()
         }
+        raw_exercise_notes = data.get("exercise_notes") or {}
+        exercise_notes = {
+            str(k): str(v)
+            for k, v in raw_exercise_notes.items()
+            if isinstance(v, str) and v.strip()
+        }
         return cls(
             section_type=str(data.get("section_type") or "Guía"),
             section_number=int(data.get("section_number") or 1),
@@ -176,6 +198,7 @@ class PlannedSection:
             total_exercises=max(1, int(data.get("total_exercises") or 1)),
             exercise_configs=exercise_configs,
             exercise_tags=exercise_tags,
+            exercise_notes=exercise_notes,
         )
 
 

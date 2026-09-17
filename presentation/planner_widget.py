@@ -7,8 +7,9 @@ resumen global y herramientas de gestión del universo de estudio.
 
 from __future__ import annotations
 
+import html
 import qtawesome as qta
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QComboBox,
@@ -184,7 +185,7 @@ class ExerciseCellButton(QPushButton):
 
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
-        if not self.node.tags:
+        if not self.node.tags and not self.node.has_note:
             return
 
         painter = QPainter(self)
@@ -199,29 +200,36 @@ class ExerciseCellButton(QPushButton):
         clip_path.addRoundedRect(0, 0, w, h, 6, 6)
         painter.setClipPath(clip_path)
 
-        tags = self.node.tags
-        k = len(tags)
-        d = min(22, 14 + (k - 1) * 3)
+        if self.node.tags:
+            tags = self.node.tags
+            k = len(tags)
+            d = min(22, 14 + (k - 1) * 3)
 
-        for i, tag in enumerate(tags):
-            s_start = i / k
-            s_end = (i + 1) / k
-            color = QColor(tag.color)
+            for i, tag in enumerate(tags):
+                s_start = i / k
+                s_end = (i + 1) / k
+                color = QColor(tag.color)
 
-            poly = QPainterPath()
-            if i == 0:
-                poly.moveTo(w, 0)
-                poly.lineTo(w - s_end * d, 0)
-                poly.lineTo(w, s_end * d)
-                poly.closeSubpath()
-            else:
-                poly.moveTo(w - s_start * d, 0)
-                poly.lineTo(w - s_end * d, 0)
-                poly.lineTo(w, s_end * d)
-                poly.lineTo(w, s_start * d)
-                poly.closeSubpath()
+                poly = QPainterPath()
+                if i == 0:
+                    poly.moveTo(w, 0)
+                    poly.lineTo(w - s_end * d, 0)
+                    poly.lineTo(w, s_end * d)
+                    poly.closeSubpath()
+                else:
+                    poly.moveTo(w - s_start * d, 0)
+                    poly.lineTo(w - s_end * d, 0)
+                    poly.lineTo(w, s_end * d)
+                    poly.lineTo(w, s_start * d)
+                    poly.closeSubpath()
 
-            painter.fillPath(poly, color)
+                painter.fillPath(poly, color)
+
+        if self.node.has_note:
+            note_color = "#38bdf8" if self.is_dark else "#0284c7"
+            qta.icon("fa5s.sticky-note", color=note_color).paint(
+                painter, QRect(w - 14, h - 14, 11, 11)
+            )
 
     def _apply_style(self) -> None:
         status = self.node.status
@@ -303,6 +311,14 @@ class ExerciseCellButton(QPushButton):
             for tag in self.node.tags:
                 tag_lines.append(f"<span style='color: {tag.color}; font-size: 13px;'>●</span> <b>{tag.name}</b>")
             lines.append("<br>".join(tag_lines))
+
+        if self.node.has_note and self.node.note:
+            note_escaped = html.escape(self.node.note)
+            lines.append(
+                f"<hr style='margin: 3px 0; border: 0; border-top: 1px solid #475569;'>"
+                f"<span style='color: #38bdf8; font-weight: bold;'>📝 Apuntes / Nota:</span><br>"
+                f"<span style='font-style: italic; color: {'#cbd5e1' if self.is_dark else '#334155'};'>{note_escaped}</span>"
+            )
 
         self.setToolTip("<br>".join(lines))
 

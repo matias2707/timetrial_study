@@ -36,6 +36,8 @@ class ExerciseNodeStatus:
     has_incisos: bool = False
     incisos: list[ExerciseNodeStatus] = field(default_factory=list)
     tags: list[TagDefinition] = field(default_factory=list)
+    note: str = ""
+    has_note: bool = False
 
     @property
     def total_time_ms(self) -> int:
@@ -126,8 +128,8 @@ class PlannerOverview:
 class PlannerService:
     """Coordina el universo planificado y cruza los intentos registrados."""
 
-    @staticmethod
-    def sync_planner_with_records(record: Record) -> bool:
+    @classmethod
+    def sync_planner_with_records(cls, record: Record) -> bool:
         """Incorpora automáticamente en la planificación los ejercicios de items no contemplados.
 
         Devuelve True si se modificó alguna sección de la planificación.
@@ -162,7 +164,67 @@ class PlannerService:
                         sec.set_incisos_count(item.exercise, item.inciso)
                         modified = True
 
+        # Migrar comentarios de items que no tengan notas en la planificación
+        migrated = cls.migrate_legacy_comments_to_notes(record)
+        if migrated > 0:
+            modified = True
+
         return modified
+
+    @classmethod
+    def migrate_legacy_comments_to_notes(cls, record: Record) -> int:
+        """Migra de forma no destructiva los últimos comentarios de items históricos a exercise_notes
+
+        solo para aquellos ejercicios que no tengan una nota ya definida en la planificación.
+        Devuelve la cantidad de notas migradas.
+        """
+        if not record.items:
+            return 0
+
+        latest_comments: dict[tuple[str, int, int, int | None], str] = {}
+        for it in record.items:
+            c = it.comment.strip()
+            if c:
+                key = (it.section_type.strip().lower(), it.section_number, it.exercise, it.inciso)
+                latest_comments[key] = c
+
+        if not latest_comments:
+            return 0
+
+        migrated_count = 0
+        for (sec_type_lower, sec_num, ex, inc), comment in latest_comments.items():
+            matched = [
+                s
+                for s in record.planner_sections
+                if s.section_type.strip().lower() == sec_type_lower
+                and s.section_number == sec_num
+            ]
+            if matched:
+                sec = matched[0]
+                if not sec.get_note(ex, inc):
+                    sec.set_note(ex, inc, comment)
+                    migrated_count += 1
+            else:
+                orig_sec_type = "Guía"
+                for it in record.items:
+                    if (
+                        it.section_type.strip().lower() == sec_type_lower
+                        and it.section_number == sec_num
+                    ):
+                        orig_sec_type = it.section_type.strip()
+                        break
+                sec = PlannedSection(
+                    section_type=orig_sec_type,
+                    section_number=sec_num,
+                    total_exercises=max(1, ex),
+                )
+                if inc and inc > 0:
+                    sec.set_incisos_count(ex, inc)
+                sec.set_note(ex, inc, comment)
+                record.planner_sections.append(sec)
+                migrated_count += 1
+
+        return migrated_count
 
     @staticmethod
     def is_location_within_plan(
@@ -271,9 +333,18 @@ class PlannerService:
 
                         sub_tag_ids = sec.get_exercise_tags(ex_num, inc_num)
                         sub_tags = [tags_by_id[tid] for tid in sub_tag_ids if tid in tags_by_id]
+                        sub_note = sec.get_note(ex_num, inc_num)
+                        sub_has_note = bool(sub_note.strip())
 
                         sub_node = cls._build_node(
-                            sec_type, sec.section_number, ex_num, inc_num, sub_items, sub_tags
+                            sec_type,
+                            sec.section_number,
+                            ex_num,
+                            inc_num,
+                            sub_items,
+                            sub_tags,
+                            note=sub_note,
+                            has_note=sub_has_note,
                         )
                         sub_nodes.append(sub_node)
 
@@ -309,6 +380,9 @@ class PlannerService:
 
                     parent_tag_ids = sec.get_exercise_tags(ex_num, None)
                     parent_tags = [tags_by_id[tid] for tid in parent_tag_ids if tid in tags_by_id]
+                    parent_note = sec.get_note(ex_num, None)
+                    parent_eff_note = parent_note if parent_note.strip() else (node_comments[-1] if node_comments else "")
+                    parent_has_note = bool(parent_note.strip()) or any(s.has_note for s in sub_nodes)
 
                     parent_node = ExerciseNodeStatus(
                         section_type=sec_type,
@@ -326,6 +400,8 @@ class PlannerService:
                         has_incisos=True,
                         incisos=sub_nodes,
                         tags=parent_tags,
+                        note=parent_eff_note,
+                        has_note=parent_has_note or bool(parent_eff_note.strip()),
                     )
                     nodes.append(parent_node)
                     sec_ex_time += node_ex_time
@@ -339,9 +415,18 @@ class PlannerService:
 
                     single_tag_ids = sec.get_exercise_tags(ex_num, None)
                     single_tags = [tags_by_id[tid] for tid in single_tag_ids if tid in tags_by_id]
+                    single_note = sec.get_note(ex_num, None)
+                    single_has_note = bool(single_note.strip())
 
                     single_node = cls._build_node(
-                        sec_type, sec.section_number, ex_num, None, ex_items, single_tags
+                        sec_type,
+                        sec.section_number,
+                        ex_num,
+                        None,
+                        ex_items,
+                        single_tags,
+                        note=single_note,
+                        has_note=single_has_note,
                     )
                     nodes.append(single_node)
 
@@ -392,8 +477,15 @@ class PlannerService:
         inciso: int | None,
         items: list[TimerItem],
         tags: list[TagDefinition] | None = None,
+        note: str = "",
+        has_note: bool = False,
     ) -> ExerciseNodeStatus:
         attempts = len(items)
+        comments = [it.comment.strip() for it in items if it.comment.strip()]
+        latest_comment = comments[-1] if comments else ""
+        effective_note = note if note.strip() else latest_comment
+        effective_has_note = has_note or bool(effective_note.strip())
+
         if attempts == 0:
             return ExerciseNodeStatus(
                 section_type=section_type,
@@ -402,14 +494,14 @@ class PlannerService:
                 inciso=inciso,
                 status=STATUS_PENDING,
                 tags=tags or [],
+                note=effective_note,
+                has_note=effective_has_note,
             )
 
         completed_count = sum(1 for it in items if it.completed)
         failed_count = attempts - completed_count
         ex_time = sum(it.exercise_time_ms for it in items)
         br_time = sum(it.break_time_ms for it in items)
-        comments = [it.comment.strip() for it in items if it.comment.strip()]
-        latest_comment = comments[-1] if comments else ""
 
         if completed_count > 0:
             status = STATUS_COMPLETED
@@ -432,6 +524,8 @@ class PlannerService:
             has_incisos=False,
             incisos=[],
             tags=tags or [],
+            note=effective_note,
+            has_note=effective_has_note,
         )
 
     @classmethod
@@ -553,3 +647,53 @@ class PlannerService:
         if not matched:
             return []
         return matched[0].get_exercise_tags(exercise, inciso)
+
+    @staticmethod
+    def set_exercise_note(
+        record: Record,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None,
+        note: str,
+    ) -> None:
+        """Asigna o elimina la nota de un ejercicio o inciso, sincronizando la sección si no existía."""
+        matched = [
+            s for s in record.planner_sections
+            if s.section_type.strip().lower() == section_type.strip().lower()
+            and s.section_number == section_number
+        ]
+        if not matched:
+            sec = PlannedSection(
+                section_type=section_type,
+                section_number=section_number,
+                total_exercises=max(1, exercise),
+            )
+            if inciso and inciso > 0:
+                sec.set_incisos_count(exercise, inciso)
+            record.planner_sections.append(sec)
+        else:
+            sec = matched[0]
+            if exercise > sec.total_exercises:
+                sec.total_exercises = exercise
+            if inciso and inciso > sec.get_incisos_count(exercise):
+                sec.set_incisos_count(exercise, inciso)
+        sec.set_note(exercise, inciso, note)
+
+    @staticmethod
+    def get_exercise_note(
+        record: Record,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None,
+    ) -> str:
+        """Devuelve la nota asignada a una ubicación en la planificación."""
+        matched = [
+            s for s in record.planner_sections
+            if s.section_type.strip().lower() == section_type.strip().lower()
+            and s.section_number == section_number
+        ]
+        if not matched:
+            return ""
+        return matched[0].get_note(exercise, inciso)

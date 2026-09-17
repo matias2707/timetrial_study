@@ -79,7 +79,17 @@ class StudyApplicationService:
         """Actualiza la ubicación solo cuando no hay una sesión activa, salvo que force=True."""
         if not force and self.mode is not TimerMode.WAITING:
             return
+        loc_changed = (
+            self.location.section_type != location.section_type
+            or self.location.section_number != location.section_number
+            or self.location.exercise != location.exercise
+            or self.location.inciso != location.inciso
+        )
         self.location = location
+        if loc_changed and not self.is_editing:
+            self.pending_comment = self.get_exercise_note(
+                location.section_type, location.section_number, location.exercise, location.inciso
+            )
 
     def toggle_session(self, location: SessionLocation | None = None) -> TimerMode:
         """Inicia, pausa o reanuda la sesión y devuelve el modo resultante."""
@@ -231,6 +241,8 @@ class StudyApplicationService:
 
     def load(self, path: Path) -> None:
         self.record = self.storage.load(path)
+        if PlannerService.migrate_legacy_comments_to_notes(self.record) > 0:
+            self.save()
 
     def import_items(self, path: Path, item_indexes: list[int]) -> int:
         """Añade copias de los items seleccionados sin cambiar el archivo activo."""
@@ -440,4 +452,38 @@ class StudyApplicationService:
         PlannerService.set_exercise_tags(
             self.record, section_type, section_number, exercise, inciso, tag_ids
         )
+        self.save()
+
+    def get_exercise_note(
+        self, section_type: str, section_number: int, exercise: int, inciso: int | None = None
+    ) -> str:
+        """Devuelve la nota asignada a un ejercicio o inciso."""
+        if not self.is_record_open:
+            return ""
+        return PlannerService.get_exercise_note(
+            self.record, section_type, section_number, exercise, inciso
+        )
+
+    def set_exercise_note(
+        self,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None,
+        note: str,
+    ) -> None:
+        """Asigna o actualiza la nota de un ejercicio o inciso y persiste los cambios."""
+        if not self.is_record_open:
+            return
+        PlannerService.set_exercise_note(
+            self.record, section_type, section_number, exercise, inciso, note
+        )
+        loc = self.location
+        if (
+            loc.section_type.strip().lower() == section_type.strip().lower()
+            and loc.section_number == section_number
+            and loc.exercise == exercise
+            and loc.inciso == inciso
+        ):
+            self.pending_comment = note.strip()
         self.save()

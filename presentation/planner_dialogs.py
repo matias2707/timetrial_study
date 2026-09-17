@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -379,30 +380,90 @@ class ExerciseDetailPopup(QDialog):
                 inc_layout.addLayout(row_h)
             layout.addWidget(inc_group)
 
-        # Comentarios
-        comm_group = QGroupBox("Comentarios de Intentos")
-        comm_layout = QVBoxLayout(comm_group)
+        # Notas y Apuntes del Ejercicio
+        notes_group = QGroupBox("Notas y Apuntes del Ejercicio")
+        notes_layout = QVBoxLayout(notes_group)
+        notes_layout.setSpacing(6)
+
+        current_note = ""
+        if self.app_service:
+            current_note = self.app_service.get_exercise_note(
+                node.section_type, node.section_number, node.exercise, node.inciso
+            )
+        if not current_note and node.note:
+            current_note = node.note
+
+        self.notes_edit = QPlainTextEdit()
+        self.notes_edit.setPlaceholderText(
+            "Escribe notas, fórmulas clave, advertencias o dudas sobre este ejercicio..."
+        )
+        self.notes_edit.setPlainText(current_note)
+        self.notes_edit.setMinimumHeight(65)
+        self.notes_edit.setMaximumHeight(100)
+        self.notes_edit.setStyleSheet(
+            f"""
+            QPlainTextEdit {{
+                background-color: {"#0f172a" if is_dark else "#f8fafc"};
+                color: {"#f1f5f9" if is_dark else "#0f172a"};
+                border: 1px solid {"#334155" if is_dark else "#cbd5e1"};
+                border-radius: 6px;
+                padding: 6px;
+                font-size: 12px;
+            }}
+            QPlainTextEdit:focus {{
+                border-color: #38bdf8;
+            }}
+            """
+        )
+        notes_layout.addWidget(self.notes_edit)
+
+        notes_bar = QHBoxLayout()
+        self.notes_feedback_label = QLabel("")
+        self.notes_feedback_label.setStyleSheet("color: #10b981; font-weight: 600; font-size: 11px;")
+        notes_bar.addWidget(self.notes_feedback_label)
+        notes_bar.addStretch()
+
+        btn_save_note = QPushButton("💾 Guardar Apunte")
+        btn_save_note.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #0284c7;
+                color: #ffffff;
+                font-weight: 600;
+                padding: 4px 12px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+            }
+            """
+        )
+        btn_save_note.clicked.connect(self._on_save_note)
+        notes_bar.addWidget(btn_save_note)
+        notes_layout.addLayout(notes_bar)
+
         if node.comments:
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setMaximumHeight(80)
-            inner = QWidget()
-            in_lay = QVBoxLayout(inner)
-            in_lay.setContentsMargins(4, 4, 4, 4)
-            in_lay.setSpacing(4)
+            comm_sub_group = QGroupBox(f"Historial de Comentarios de Intentos ({len(node.comments)})")
+            comm_sub_layout = QVBoxLayout(comm_sub_group)
+            comm_sub_layout.setContentsMargins(4, 4, 4, 4)
+            comm_scroll = QScrollArea()
+            comm_scroll.setWidgetResizable(True)
+            comm_scroll.setMaximumHeight(60)
+            comm_inner = QWidget()
+            comm_in_lay = QVBoxLayout(comm_inner)
+            comm_in_lay.setContentsMargins(4, 4, 4, 4)
+            comm_in_lay.setSpacing(2)
             for c in node.comments:
                 c_lbl = QLabel(f"• {c}")
                 c_lbl.setWordWrap(True)
-                c_lbl.setStyleSheet("font-size: 12px;")
-                in_lay.addWidget(c_lbl)
-            scroll.setWidget(inner)
-            comm_layout.addWidget(scroll)
-        else:
-            no_comm = QLabel("Sin comentarios registrados para este ejercicio.")
-            no_comm.setStyleSheet("color: #64748b; font-style: italic; font-size: 11px;")
-            comm_layout.addWidget(no_comm)
+                c_lbl.setStyleSheet("font-size: 11px; color: #94a3b8;")
+                comm_in_lay.addWidget(c_lbl)
+            comm_scroll.setWidget(comm_inner)
+            comm_sub_layout.addWidget(comm_scroll)
+            notes_layout.addWidget(comm_sub_group)
 
-        layout.addWidget(comm_group)
+        layout.addWidget(notes_group)
 
         # Botones de acción
         actions_layout = QHBoxLayout()
@@ -431,6 +492,21 @@ class ExerciseDetailPopup(QDialog):
         actions_layout.addWidget(btn_close)
 
         layout.addLayout(actions_layout)
+
+    def _on_save_note(self) -> None:
+        if not self.app_service:
+            return
+        text = self.notes_edit.toPlainText().strip()
+        self.app_service.set_exercise_note(
+            self.node.section_type,
+            self.node.section_number,
+            self.node.exercise,
+            self.node.inciso,
+            text,
+        )
+        self.node.note = text
+        self.node.has_note = bool(text)
+        self.notes_feedback_label.setText("✓ Apunte guardado")
 
     def _render_detail_tags(self) -> None:
         if not self.app_service:
@@ -744,6 +820,105 @@ class TagSelectionDialog(QDialog):
         self.app_service.set_exercise_tags(
             self.section_type, self.section_number, self.exercise, self.inciso, selected_ids
         )
+        self.accept()
+
+
+class ExerciseNoteDialog(QDialog):
+    """Diálogo modal para editar el bloc de notas / apuntes de un ejercicio o inciso."""
+
+    def __init__(
+        self,
+        parent: QWidget | None,
+        app_service: Any,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None = None,
+        is_dark: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self.app_service = app_service
+        self.section_type = section_type
+        self.section_number = section_number
+        self.exercise = exercise
+        self.inciso = inciso
+        self.is_dark = is_dark
+
+        label_target = f"{section_type} {section_number} · Ejercicio {exercise}"
+        if inciso is not None and inciso > 0:
+            label_target += f".{inciso}"
+
+        self.setWindowTitle(f"Notas · {label_target}")
+        self.resize(460, 320)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        lbl_desc = QLabel(f"📝 <b>Apuntes del ejercicio: {label_target}</b>")
+        lbl_desc.setStyleSheet("font-size: 14px;")
+        layout.addWidget(lbl_desc)
+
+        self.editor = QPlainTextEdit()
+        self.editor.setPlaceholderText(
+            "Escribe notas, fórmulas, recordatorios o dudas para este ejercicio..."
+        )
+        existing = ""
+        if self.app_service:
+            existing = self.app_service.get_exercise_note(
+                self.section_type, self.section_number, self.exercise, self.inciso
+            )
+        self.editor.setPlainText(existing)
+        self.editor.setStyleSheet(
+            f"""
+            QPlainTextEdit {{
+                background-color: {"#0f172a" if is_dark else "#f8fafc"};
+                color: {"#f1f5f9" if is_dark else "#0f172a"};
+                border: 1.5px solid {"#334155" if is_dark else "#cbd5e1"};
+                border-radius: 8px;
+                padding: 8px;
+                font-size: 13px;
+            }}
+            QPlainTextEdit:focus {{
+                border-color: #38bdf8;
+            }}
+            """
+        )
+        layout.addWidget(self.editor, 1)
+
+        btn_lay = QHBoxLayout()
+        btn_lay.addStretch()
+
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.clicked.connect(self.reject)
+        btn_lay.addWidget(btn_cancel)
+
+        btn_save = QPushButton("Guardar Apuntes")
+        btn_save.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #0284c7;
+                color: #ffffff;
+                font-weight: 700;
+                padding: 6px 14px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+            }
+            """
+        )
+        btn_save.clicked.connect(self._on_save)
+        btn_lay.addWidget(btn_save)
+
+        layout.addLayout(btn_lay)
+
+    def _on_save(self) -> None:
+        note_text = self.editor.toPlainText().strip()
+        if self.app_service:
+            self.app_service.set_exercise_note(
+                self.section_type, self.section_number, self.exercise, self.inciso, note_text
+            )
         self.accept()
 
 
