@@ -298,12 +298,12 @@ class HomeViewWidget(QWidget):
 
         self.session_button = QPushButton("  INICIAR")
         self.session_button.setObjectName("hero_start")
-        self.session_button.setIcon(qta.icon("fa5s.play", color="#bef264"))
+        self.session_button.setIcon(qta.icon("fa5s.play", color="#6ee7b7" if self.is_dark_mode else "#ffffff"))
         self.session_button.clicked.connect(self.toggle_session)
 
         self.stop_button = QPushButton("  DETENER")
         self.stop_button.setObjectName("stop")
-        self.stop_button.setIcon(qta.icon("fa5s.stop", color="#dc2626"))
+        self.stop_button.setIcon(qta.icon("fa5s.stop", color="#fca5a5" if self.is_dark_mode else "#b91c1c"))
         self.stop_button.clicked.connect(self.stop_timer)
 
         self.complete_button = QPushButton("  COMPLETO")
@@ -313,7 +313,7 @@ class HomeViewWidget(QWidget):
 
         self.incomplete_button = QPushButton("  INCOMPLETO")
         self.incomplete_button.setObjectName("danger")
-        self.incomplete_button.setIcon(qta.icon("fa5s.times-circle", color="#ffffff"))
+        self.incomplete_button.setIcon(qta.icon("fa5s.times-circle", color="#fca5a5" if self.is_dark_mode else "#b91c1c"))
         self.incomplete_button.clicked.connect(lambda: self.finish_item(False, keep_location=True))
 
         self.comment_button = QPushButton("  APUNTES")
@@ -506,7 +506,7 @@ class HomeViewWidget(QWidget):
     def update_session_button(self) -> None:
         if self.application.mode is TimerMode.WAITING:
             self.session_button.setText("  INICIAR")
-            self.session_button.setIcon(qta.icon("fa5s.play", color="#bef264"))
+            self.session_button.setIcon(qta.icon("fa5s.play", color="#6ee7b7" if self.is_dark_mode else "#ffffff"))
             self.session_button.setObjectName("hero_start")
         elif self.application.mode is TimerMode.PLAY:
             self.session_button.setText("  RECESO")

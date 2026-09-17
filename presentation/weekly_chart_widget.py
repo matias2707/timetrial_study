@@ -74,7 +74,7 @@ class WeeklyChartWidget(QWidget):
                 bar_h = max(8.0, ratio * available_bar_height)
                 bar_y = height - bottom_margin - bar_h
                 bar_rect = QRectF(bar_x, bar_y, bar_width, bar_h)
-                painter.setBrush(QBrush(QColor("#84cc16")))
+                painter.setBrush(QBrush(QColor("#059669")))
                 painter.drawRoundedRect(bar_rect, 6.0, 6.0)
 
             time_text = format_hh_mm(stat.exercise_time_ms)

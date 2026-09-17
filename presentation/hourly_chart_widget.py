@@ -93,8 +93,8 @@ class Hourly24hChartWidget(QWidget):
         max_ms = max(list(self.hourly_data.values()) + [3_600_000])
 
         bg_track_color = QColor("#1e293b" if self.is_dark else "#f1f5f9")
-        bar_fill_color = QColor("#38bdf8" if self.is_dark else "#0284c7")
-        peak_fill_color = QColor("#bef264" if self.is_dark else "#65a30d")
+        bar_fill_color = QColor("#0284c7" if self.is_dark else "#0369a1")
+        peak_fill_color = QColor("#059669" if self.is_dark else "#047857")
         text_muted = QColor("#94a3b8" if self.is_dark else "#64748b")
         text_highlight = QColor("#ffffff" if self.is_dark else "#0f172a")
 

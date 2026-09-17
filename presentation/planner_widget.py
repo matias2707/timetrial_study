@@ -136,13 +136,13 @@ class SegmentedProgressBar(QProgressBar):
             if w_comp + w_failed > w:
                 w_failed = max(0, w - w_comp)
 
-            # Segmento verde: Hechos / Completados (#bef264)
+            # Segmento verde: Hechos / Completados (#059669)
             if w_comp > 0:
-                painter.fillRect(0, 0, w_comp, h, QColor("#bef264"))
+                painter.fillRect(0, 0, w_comp, h, QColor("#059669"))
 
-            # Segmento rojo: En dificultad / Fallados (#ef4444)
+            # Segmento rojo: En dificultad / Fallados (#b91c1c)
             if w_failed > 0:
-                painter.fillRect(w_comp, 0, w_failed, h, QColor("#ef4444"))
+                painter.fillRect(w_comp, 0, w_failed, h, QColor("#b91c1c"))
 
 
 class ExerciseCellButton(QPushButton):
@@ -201,6 +201,8 @@ class ExerciseCellButton(QPushButton):
         clip_path.addRoundedRect(0, 0, w, h, 6, 6)
         painter.setClipPath(clip_path)
 
+        outline_offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
         if self.node.tags:
             tags = self.node.tags
             k = len(tags)
@@ -212,18 +214,32 @@ class ExerciseCellButton(QPushButton):
             total_w = k * bw + (k - 1) * gap
             start_x = w - 4 - total_w
 
+            outline_bm = qta.icon("fa5s.bookmark", color="rgba(0, 0, 0, 180)")
+
             for i, tag in enumerate(tags):
                 x_pos = start_x + i * (bw + gap)
                 y_pos = 2
                 color = tag.color or "#a855f7"
+
+                # Contorno negro sutil para maximizar el contraste
+                for ox, oy in outline_offsets:
+                    outline_bm.paint(
+                        painter, QRect(int(x_pos + ox), int(y_pos + oy), int(bw), int(bh))
+                    )
+
+                # Ícono relleno con el color del marcador
                 qta.icon("fa5s.bookmark", color=color).paint(
                     painter, QRect(int(x_pos), int(y_pos), int(bw), int(bh))
                 )
 
         if self.node.has_note:
             note_color = "#38bdf8" if self.is_dark else "#0284c7"
+            nx, ny, nw, nh = w - 14, h - 14, 11, 11
+            note_outline = qta.icon("fa5s.sticky-note", color="rgba(0, 0, 0, 180)")
+            for ox, oy in outline_offsets:
+                note_outline.paint(painter, QRect(nx + ox, ny + oy, nw, nh))
             qta.icon("fa5s.sticky-note", color=note_color).paint(
-                painter, QRect(w - 14, h - 14, 11, 11)
+                painter, QRect(nx, ny, nw, nh)
             )
 
     def _apply_style(self) -> None:
@@ -231,26 +247,26 @@ class ExerciseCellButton(QPushButton):
 
         if status == STATUS_COMPLETED:
             if self.is_dark:
-                bg = "#14532d"
-                hover_bg = "#166534"
-                text = "#86efac"
-                border = "#22c55e"
+                bg = "#064e3b"
+                hover_bg = "#065f46"
+                text = "#6ee7b7"
+                border = "#059669"
             else:
-                bg = "#dcfce7"
-                hover_bg = "#bbf7d0"
-                text = "#15803d"
-                border = "#86efac"
+                bg = "#ecfdf5"
+                hover_bg = "#d1fae5"
+                text = "#047857"
+                border = "#a7f3d0"
         elif status == STATUS_FAILED:
             if self.is_dark:
-                bg = "#7f1d1d"
-                hover_bg = "#991b1b"
+                bg = "#450a0a"
+                hover_bg = "#5c1010"
                 text = "#fca5a5"
-                border = "#ef4444"
+                border = "#7f1d1d"
             else:
-                bg = "#fee2e2"
-                hover_bg = "#fecaca"
+                bg = "#fef2f2"
+                hover_bg = "#fee2e2"
                 text = "#b91c1c"
-                border = "#fca5a5"
+                border = "#fecaca"
         else:  # STATUS_PENDING
             if self.is_dark:
                 bg = "#1e293b"

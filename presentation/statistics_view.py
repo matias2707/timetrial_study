@@ -114,9 +114,9 @@ class StatisticsViewWidget(QWidget):
                 color: #f8fafc;
             }
             QPushButton:checked {
-                background-color: #3b82f6;
-                border-color: #3b82f6;
-                color: #ffffff;
+                background-color: #065f46;
+                border-color: #059669;
+                color: #ecfdf5;
                 font-weight: 700;
             }
         """
@@ -498,16 +498,18 @@ class StatisticsViewWidget(QWidget):
             btn.setStyleSheet(
                 """
                 QPushButton {
-                    background-color: #0284c7;
-                    color: #ffffff;
-                    border: none;
+                    background-color: #1e293b;
+                    color: #93c5fd;
+                    border: 1px solid #334155;
                     border-radius: 4px;
                     padding: 3px 8px;
                     font-size: 11px;
                     font-weight: 600;
                 }
                 QPushButton:hover {
-                    background-color: #0369a1;
+                    background-color: #273549;
+                    border-color: #60a5fa;
+                    color: #ffffff;
                 }
                 """
             )

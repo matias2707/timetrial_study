@@ -186,7 +186,7 @@ class RecordsViewWidget(QWidget):
 
         self.add_item_button = QPushButton(" Agregar intento")
         self.add_item_button.setObjectName("toolbar_primary")
-        self.add_item_button.setIcon(qta.icon("fa5s.plus", color="#bef264"))
+        self.add_item_button.setIcon(qta.icon("fa5s.plus", color="#ffffff"))
         self.add_item_button.clicked.connect(self.add_item)
         toolbar.addWidget(self.add_item_button)
 
