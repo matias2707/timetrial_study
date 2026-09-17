@@ -49,7 +49,7 @@
 | ID | Tipo | Tarea | Prioridad | Capas | Dependencias | Estado |
 | :--- | :---: | :--- | :---: | :--- | :---: | :---: |
 | [TASK-001](#task-001) | 🔨 Enhancement | Continuación desde registros (recarga al cronómetro para sobrescritura) | 🔴 Alta | `presentation`, `application`, `domain`, `tests` | Ninguna | `[x]` |
-| [TASK-002](#task-002) | ✨ Feature | Sistema de marcadores y etiquetas para ejercicios en la planificación | 🔴 Alta | `presentation`, `application`, `domain`, `docs`, `tests` | Ninguna | `[ ]` |
+| [TASK-002](#task-002) | ✨ Feature | Sistema de marcadores y etiquetas para ejercicios en la planificación | 🔴 Alta | `presentation`, `application`, `domain`, `docs`, `tests` | Ninguna | `[x]` |
 | [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación (rediseño de comentarios) | 🟡 Media | `presentation`, `application`, `domain`, `docs`, `tests` | `TASK-002` (sugerida) | `[ ]` |
 | [TASK-004](#task-004) | ✨ Feature | Pestaña de Ambientación: Mezclador de audio multicanal adaptativo al cronómetro | 🟡 Media | `presentation`, `application`, `infrastructure`, `domain`, `tests` | Ninguna | `[ ]` |
 | [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[x]` |
@@ -125,7 +125,7 @@ Permitir que el usuario retome un intento previamente guardado desde la pestaña
 
 - **Tipo:** ✨ Feature  
 - **Prioridad:** 🔴 Alta  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Capas afectadas:** `domain/`, `application/`, `presentation/`, `infrastructure/`, `docs/`, `tests/`  
 - **Dependencias:** Ninguna  
 
@@ -183,14 +183,14 @@ Permitir categorizar, marcar y rastrear ejercicios del universo de estudio media
   - Pruebas de filtrado por etiqueta.
 
 ##### Criterios de aceptación
-- [ ] Los archivos JSON existentes cargan correctamente sin errores asignando etiquetas por defecto.
-- [ ] El botón de marcadores en el cronómetro permite asignar/desasignar etiquetas al ejercicio en curso.
-- [ ] En el planificador, las celdas de ejercicios muestran la cinta (*ribbon*) con el o los colores correspondientes.
-- [ ] El tooltip y el popup de detalle muestran claramente el nombre y color de cada etiqueta.
-- [ ] Es posible editar las etiquetas de un ejercicio directamente desde el planificador sin usar el cronómetro.
-- [ ] Es posible renombrar, cambiar el color y agregar etiquetas al catálogo de la materia.
-- [ ] El filtro de la barra superior permite aislar rápidamente ejercicios marcados o filtrar por una etiqueta específica.
-- [ ] La suite completa de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+- [x] Los archivos JSON existentes cargan correctamente sin errores asignando etiquetas por defecto.
+- [x] El botón de marcadores en el cronómetro permite asignar/desasignar etiquetas al ejercicio en curso.
+- [x] En el planificador, las celdas de ejercicios muestran la cinta (*ribbon*) con el o los colores correspondientes.
+- [x] El tooltip y el popup de detalle muestran claramente el nombre y color de cada etiqueta.
+- [x] Es posible editar las etiquetas de un ejercicio directamente desde el planificador sin usar el cronómetro.
+- [x] Es posible renombrar, cambiar el color y agregar etiquetas al catálogo de la materia.
+- [x] El filtro de la barra superior permite aislar rápidamente ejercicios marcados o filtrar por una etiqueta específica.
+- [x] La suite completa de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 

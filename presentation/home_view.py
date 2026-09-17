@@ -321,12 +321,19 @@ class HomeViewWidget(QWidget):
         self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
         self.comment_button.clicked.connect(self.add_home_comment)
 
+        self.tags_button = QPushButton("  MARCADORES")
+        self.tags_button.setObjectName("tags_action")
+        self.tags_button.setIcon(qta.icon("fa5s.tags", color="#475569"))
+        self.tags_button.setToolTip("Asignar o editar marcadores para este ejercicio")
+        self.tags_button.clicked.connect(self.manage_home_tags)
+
         self.primary_buttons = (
             self.session_button,
             self.stop_button,
+            self.comment_button,
+            self.tags_button,
             self.complete_button,
             self.incomplete_button,
-            self.comment_button,
         )
         for button in self.primary_buttons:
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -369,6 +376,8 @@ class HomeViewWidget(QWidget):
         self.set_locked(is_empty)
         self.session_button.setEnabled(not is_empty)
         self.comment_button.setEnabled(not is_empty)
+        if hasattr(self, "tags_button"):
+            self.tags_button.setEnabled(not is_empty)
         self.stop_button.setEnabled(not is_empty)
         self.complete_button.setEnabled(not is_empty)
         self.incomplete_button.setEnabled(not is_empty)
@@ -378,6 +387,7 @@ class HomeViewWidget(QWidget):
             self.status_label.setText("Ningún proyecto abierto")
         else:
             self.update_timer_visual_state()
+            self.update_tags_visual_state()
             self.status_label.setText("Listo para comenzar")
 
     def _create_stepper(self, spinbox: QSpinBox, tooltip_prefix: str) -> QWidget:
@@ -427,14 +437,16 @@ class HomeViewWidget(QWidget):
             self.primary_controls.addWidget(self.session_button, 0, 0, 1, 2)
             self.primary_controls.addWidget(self.stop_button, 1, 0)
             self.primary_controls.addWidget(self.comment_button, 1, 1)
-            self.primary_controls.addWidget(self.complete_button, 2, 0)
-            self.primary_controls.addWidget(self.incomplete_button, 2, 1)
+            self.primary_controls.addWidget(self.tags_button, 2, 0, 1, 2)
+            self.primary_controls.addWidget(self.complete_button, 3, 0)
+            self.primary_controls.addWidget(self.incomplete_button, 3, 1)
         else:
             self.primary_controls.addWidget(self.session_button, 0, 0, 1, 2)
-            self.primary_controls.addWidget(self.stop_button, 0, 2)
-            self.primary_controls.addWidget(self.comment_button, 0, 3)
+            self.primary_controls.addWidget(self.comment_button, 0, 2)
+            self.primary_controls.addWidget(self.tags_button, 0, 3)
             self.primary_controls.addWidget(self.complete_button, 1, 0, 1, 2)
-            self.primary_controls.addWidget(self.incomplete_button, 1, 2, 1, 2)
+            self.primary_controls.addWidget(self.incomplete_button, 1, 2)
+            self.primary_controls.addWidget(self.stop_button, 1, 3)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -462,6 +474,7 @@ class HomeViewWidget(QWidget):
         suffix = f" · Inciso {location.inciso}" if location.inciso else ""
         text = f"{location.section_type} {location.section_number} · Ejercicio {location.exercise}{suffix}"
         self.location_label.setText(text)
+        self.update_tags_visual_state()
 
     def set_locked(self, locked: bool) -> None:
         for widget in (self.section_input, self.section_number_input, self.exercise_input, self.inciso_input):
@@ -709,6 +722,44 @@ class HomeViewWidget(QWidget):
                 self.comment_button.setText("  COMENTARIO")
                 self.comment_button.setIcon(qta.icon("fa5s.comment-dots", color="#475569"))
             self.status_label.setText("Comentario preparado para el próximo registro")
+
+    def manage_home_tags(self) -> None:
+        if not self.application.is_record_open:
+            return
+        sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
+        sec_num = self.section_number_input.value()
+        ex = self.exercise_input.value()
+        inc = self.inciso_input.value() or None
+
+        from presentation.planner_dialogs import TagSelectionDialog
+        dlg = TagSelectionDialog(
+            parent=self.window(),
+            app_service=self.application,
+            section_type=sec_type,
+            section_number=sec_num,
+            exercise=ex,
+            inciso=inc,
+            is_dark=self.is_dark_mode,
+        )
+        if dlg.exec() == TagSelectionDialog.DialogCode.Accepted:
+            self.update_tags_visual_state()
+
+    def update_tags_visual_state(self) -> None:
+        """Actualiza el aspecto del botón de marcadores según si el ejercicio actual tiene etiquetas."""
+        if not hasattr(self, "tags_button") or not self.application.is_record_open:
+            return
+        sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
+        sec_num = self.section_number_input.value()
+        ex = self.exercise_input.value()
+        inc = self.inciso_input.value() or None
+
+        tag_ids = self.application.get_exercise_tags(sec_type, sec_num, ex, inc)
+        if tag_ids:
+            self.tags_button.setText(f"  MARCADORES ({len(tag_ids)})")
+            self.tags_button.setIcon(qta.icon("fa5s.tags", color="#a855f7"))
+        else:
+            self.tags_button.setText("  MARCADORES")
+            self.tags_button.setIcon(qta.icon("fa5s.tags", color="#475569" if self.is_dark_mode else "#64748b"))
 
     def refresh_clock(self) -> None:
         exercise_ms, break_ms = self.application.timer.snapshot()

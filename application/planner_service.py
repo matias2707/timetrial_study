@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from domain.models import PlannedSection, Record, TimerItem
+from domain.models import PlannedSection, Record, TagDefinition, TimerItem
 
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
@@ -35,6 +35,7 @@ class ExerciseNodeStatus:
     latest_comment: str = ""
     has_incisos: bool = False
     incisos: list[ExerciseNodeStatus] = field(default_factory=list)
+    tags: list[TagDefinition] = field(default_factory=list)
 
     @property
     def total_time_ms(self) -> int:
@@ -221,6 +222,9 @@ class PlannerService:
             key = (norm_type, it.section_number, it.exercise, it.inciso)
             item_groups.setdefault(key, []).append(it)
 
+        # Mapeo rápido de etiquetas del catálogo por ID
+        tags_by_id = {tag.id: tag for tag in record.tags}
+
         # Ordenar secciones por tipo y número
         sorted_sections = sorted(
             record.planner_sections, key=lambda s: (s.section_type, s.section_number)
@@ -265,8 +269,11 @@ class PlannerService:
                         if not sub_items and inc_num == 1:
                             sub_items = item_groups.get((sec_type, sec.section_number, ex_num, None), [])
 
+                        sub_tag_ids = sec.get_exercise_tags(ex_num, inc_num)
+                        sub_tags = [tags_by_id[tid] for tid in sub_tag_ids if tid in tags_by_id]
+
                         sub_node = cls._build_node(
-                            sec_type, sec.section_number, ex_num, inc_num, sub_items
+                            sec_type, sec.section_number, ex_num, inc_num, sub_items, sub_tags
                         )
                         sub_nodes.append(sub_node)
 
@@ -300,6 +307,9 @@ class PlannerService:
                         parent_status = STATUS_PENDING
                         sec_pending += 1
 
+                    parent_tag_ids = sec.get_exercise_tags(ex_num, None)
+                    parent_tags = [tags_by_id[tid] for tid in parent_tag_ids if tid in tags_by_id]
+
                     parent_node = ExerciseNodeStatus(
                         section_type=sec_type,
                         section_number=sec.section_number,
@@ -315,6 +325,7 @@ class PlannerService:
                         latest_comment=node_comments[-1] if node_comments else "",
                         has_incisos=True,
                         incisos=sub_nodes,
+                        tags=parent_tags,
                     )
                     nodes.append(parent_node)
                     sec_ex_time += node_ex_time
@@ -326,8 +337,11 @@ class PlannerService:
                     if not ex_items:
                         ex_items = item_groups.get((sec_type, sec.section_number, ex_num, 1), [])
 
+                    single_tag_ids = sec.get_exercise_tags(ex_num, None)
+                    single_tags = [tags_by_id[tid] for tid in single_tag_ids if tid in tags_by_id]
+
                     single_node = cls._build_node(
-                        sec_type, sec.section_number, ex_num, None, ex_items
+                        sec_type, sec.section_number, ex_num, None, ex_items, single_tags
                     )
                     nodes.append(single_node)
 
@@ -377,6 +391,7 @@ class PlannerService:
         exercise: int,
         inciso: int | None,
         items: list[TimerItem],
+        tags: list[TagDefinition] | None = None,
     ) -> ExerciseNodeStatus:
         attempts = len(items)
         if attempts == 0:
@@ -386,6 +401,7 @@ class PlannerService:
                 exercise=exercise,
                 inciso=inciso,
                 status=STATUS_PENDING,
+                tags=tags or [],
             )
 
         completed_count = sum(1 for it in items if it.completed)
@@ -415,6 +431,7 @@ class PlannerService:
             latest_comment=latest_comment,
             has_incisos=False,
             incisos=[],
+            tags=tags or [],
         )
 
     @classmethod
@@ -447,3 +464,92 @@ class PlannerService:
             )
         ]
         return len(record.planner_sections) < initial_len
+
+    @staticmethod
+    def get_tag_catalog(record: Record) -> list[TagDefinition]:
+        """Devuelve el catálogo de etiquetas configurado en el registro."""
+        return record.tags
+
+    @staticmethod
+    def add_tag_definition(record: Record, name: str, color: str) -> TagDefinition:
+        """Añade una nueva etiqueta al catálogo con un ID generado."""
+        from uuid import uuid4
+        new_id = f"tag-{uuid4().hex[:8]}"
+        tag = TagDefinition(id=new_id, name=name.strip(), color=color.strip())
+        record.tags.append(tag)
+        return tag
+
+    @staticmethod
+    def update_tag_definition(record: Record, tag_id: str, name: str, color: str) -> bool:
+        """Actualiza el nombre y color de una etiqueta existente en el catálogo."""
+        for t in record.tags:
+            if t.id == tag_id:
+                t.name = name.strip()
+                t.color = color.strip()
+                return True
+        return False
+
+    @staticmethod
+    def delete_tag_definition(record: Record, tag_id: str) -> bool:
+        """Elimina una etiqueta del catálogo y limpia las referencias en las secciones planificadas."""
+        initial_len = len(record.tags)
+        record.tags = [t for t in record.tags if t.id != tag_id]
+        if len(record.tags) < initial_len:
+            for sec in record.planner_sections:
+                for key in list(sec.exercise_tags.keys()):
+                    if tag_id in sec.exercise_tags[key]:
+                        sec.exercise_tags[key] = [tid for tid in sec.exercise_tags[key] if tid != tag_id]
+                        if not sec.exercise_tags[key]:
+                            sec.exercise_tags.pop(key, None)
+            return True
+        return False
+
+    @staticmethod
+    def set_exercise_tags(
+        record: Record,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None,
+        tag_ids: list[str],
+    ) -> None:
+        """Asocia una lista de IDs de etiquetas a un ejercicio o inciso, sincronizando la sección si no existía."""
+        matched = [
+            s for s in record.planner_sections
+            if s.section_type.strip().lower() == section_type.strip().lower()
+            and s.section_number == section_number
+        ]
+        if not matched:
+            sec = PlannedSection(
+                section_type=section_type,
+                section_number=section_number,
+                total_exercises=max(1, exercise),
+            )
+            if inciso and inciso > 0:
+                sec.set_incisos_count(exercise, inciso)
+            record.planner_sections.append(sec)
+        else:
+            sec = matched[0]
+            if exercise > sec.total_exercises:
+                sec.total_exercises = exercise
+            if inciso and inciso > sec.get_incisos_count(exercise):
+                sec.set_incisos_count(exercise, inciso)
+        sec.set_exercise_tags(exercise, inciso, tag_ids)
+
+    @staticmethod
+    def get_exercise_tags(
+        record: Record,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None,
+    ) -> list[str]:
+        """Devuelve los IDs de etiquetas asignadas a una ubicación en la planificación."""
+        matched = [
+            s for s in record.planner_sections
+            if s.section_type.strip().lower() == section_type.strip().lower()
+            and s.section_number == section_number
+        ]
+        if not matched:
+            return []
+        return matched[0].get_exercise_tags(exercise, inciso)

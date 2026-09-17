@@ -11,7 +11,9 @@ import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -37,6 +39,7 @@ from presentation.flow_layout import FlowLayout
 from presentation.planner_dialogs import (
     ExerciseDetailPopup,
     PlannedSectionDialog,
+    TagManagerDialog,
 )
 from presentation.presentation_formatters import format_milliseconds
 
@@ -154,17 +157,71 @@ class ExerciseCellButton(QPushButton):
         self.node = node
         self.is_dark = is_dark
         self.is_sub_inciso = is_sub_inciso
+        self._opacity_effect: QGraphicsOpacityEffect | None = None
 
         self.setText(node.display_label)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.setFixedSize(QSize(46, 44))
+        self.setFixedSize(QSize(52, 48))
 
         self._apply_style()
         self._set_tooltip()
 
     def sizeHint(self) -> QSize:
-        return QSize(46, 44)
+        return QSize(52, 48)
+
+    def set_dimmed(self, dimmed: bool) -> None:
+        """Atenúa visualmente el botón cuando no coincide con un filtro activo."""
+        if dimmed:
+            if self._opacity_effect is None:
+                self._opacity_effect = QGraphicsOpacityEffect(self)
+                self._opacity_effect.setOpacity(0.18)
+                self.setGraphicsEffect(self._opacity_effect)
+        else:
+            if self._opacity_effect is not None:
+                self.setGraphicsEffect(None)
+                self._opacity_effect = None
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self.node.tags:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        w = rect.width()
+        h = rect.height()
+
+        # Clip redondeado acorde al botón
+        clip_path = QPainterPath()
+        clip_path.addRoundedRect(0, 0, w, h, 6, 6)
+        painter.setClipPath(clip_path)
+
+        tags = self.node.tags
+        k = len(tags)
+        d = min(22, 14 + (k - 1) * 3)
+
+        for i, tag in enumerate(tags):
+            s_start = i / k
+            s_end = (i + 1) / k
+            color = QColor(tag.color)
+
+            poly = QPainterPath()
+            if i == 0:
+                poly.moveTo(w, 0)
+                poly.lineTo(w - s_end * d, 0)
+                poly.lineTo(w, s_end * d)
+                poly.closeSubpath()
+            else:
+                poly.moveTo(w - s_start * d, 0)
+                poly.lineTo(w - s_end * d, 0)
+                poly.lineTo(w, s_end * d)
+                poly.lineTo(w, s_start * d)
+                poly.closeSubpath()
+
+            painter.fillPath(poly, color)
 
     def _apply_style(self) -> None:
         status = self.node.status
@@ -240,6 +297,12 @@ class ExerciseCellButton(QPushButton):
             lines.append(f"Tiempo: {format_milliseconds(self.node.exercise_time_ms)}")
             if self.node.latest_comment:
                 lines.append(f"Comentario: {self.node.latest_comment}")
+
+        if self.node.tags:
+            tag_lines = ["<b>Marcadores:</b>"]
+            for tag in self.node.tags:
+                tag_lines.append(f"<span style='color: {tag.color}; font-size: 13px;'>●</span> <b>{tag.name}</b>")
+            lines.append("<br>".join(tag_lines))
 
         self.setToolTip("<br>".join(lines))
 
@@ -446,6 +509,17 @@ class PlannedSectionCard(QFrame):
 
         layout.addWidget(exercises_container)
 
+    def apply_tag_filter(self, mode: str, tag_id: str | None = None) -> None:
+        """Aplica el filtro de etiquetas sobre los botones de ejercicio de esta sección."""
+        buttons = self.findChildren(ExerciseCellButton)
+        for btn in buttons:
+            if mode == "all":
+                btn.set_dimmed(False)
+            elif mode == "only_tagged":
+                btn.set_dimmed(len(btn.node.tags) == 0)
+            elif mode == "by_tag":
+                btn.set_dimmed(not any(t.id == tag_id for t in btn.node.tags))
+
 
 class PlannerWidget(QWidget):
     """Pestaña Planificador: vista general unificada con scroll de todas las guías."""
@@ -461,6 +535,8 @@ class PlannerWidget(QWidget):
         super().__init__(parent)
         self.app_service = app_service
         self.is_dark = is_dark_mode
+        self.active_filter_mode = "all"
+        self.active_filter_tag_id: str | None = None
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 16, 20, 16)
@@ -482,6 +558,23 @@ class PlannerWidget(QWidget):
         top_bar.addLayout(v_titles)
 
         top_bar.addStretch()
+
+        # Filtro rápido por marcadores
+        lbl_filter = QLabel("Filtrar:")
+        lbl_filter.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        top_bar.addWidget(lbl_filter)
+
+        self.combo_tag_filter = QComboBox()
+        self.combo_tag_filter.setObjectName("planner_tag_filter_combo")
+        self.combo_tag_filter.setStyleSheet("padding: 4px 8px; font-size: 12px; border-radius: 6px;")
+        self.combo_tag_filter.currentIndexChanged.connect(self._on_filter_changed)
+        top_bar.addWidget(self.combo_tag_filter)
+
+        self.btn_manage_tags = QPushButton("Marcadores...")
+        self.btn_manage_tags.setIcon(qta.icon("fa5s.tags", color="#a855f7"))
+        self.btn_manage_tags.setToolTip("Administrar el catálogo de etiquetas y marcadores")
+        self.btn_manage_tags.clicked.connect(self._on_manage_tags)
+        top_bar.addWidget(self.btn_manage_tags)
 
         # Botones de acción globales
         self.btn_sync = QPushButton("Sincronizar con Registros")
@@ -607,6 +700,10 @@ class PlannerWidget(QWidget):
         """Habilita o deshabilita acciones de planificación según si hay proyecto activo."""
         self.btn_sync.setEnabled(not is_empty)
         self.btn_add_section.setEnabled(not is_empty)
+        if hasattr(self, "combo_tag_filter"):
+            self.combo_tag_filter.setEnabled(not is_empty)
+        if hasattr(self, "btn_manage_tags"):
+            self.btn_manage_tags.setEnabled(not is_empty)
         if is_empty:
             self._update_stat_badge("total_planificado", "-")
             self._update_stat_badge("hechos", "-")
@@ -627,6 +724,7 @@ class PlannerWidget(QWidget):
             self.set_empty_state(True)
             return
 
+        self._populate_filter_combo()
         overview: PlannerOverview = self.app_service.get_planner_overview()
 
         # Actualizar chips globales
@@ -689,6 +787,54 @@ class PlannerWidget(QWidget):
             self.cards_layout.addWidget(card)
 
         self.cards_layout.addStretch()
+        self._apply_current_filter()
+
+    def _populate_filter_combo(self) -> None:
+        if not hasattr(self, "combo_tag_filter"):
+            return
+        current_data = self.combo_tag_filter.currentData()
+        self.combo_tag_filter.blockSignals(True)
+        self.combo_tag_filter.clear()
+        self.combo_tag_filter.addItem("Todos los ejercicios", ("all", None))
+        self.combo_tag_filter.addItem("Solo con marcadores", ("only_tagged", None))
+
+        catalog = self.app_service.get_tag_catalog()
+        for tag in catalog:
+            self.combo_tag_filter.addItem(f"● {tag.name}", ("by_tag", tag.id))
+
+        restored = False
+        if current_data:
+            for idx in range(self.combo_tag_filter.count()):
+                if self.combo_tag_filter.itemData(idx) == current_data:
+                    self.combo_tag_filter.setCurrentIndex(idx)
+                    restored = True
+                    break
+        if not restored:
+            self.combo_tag_filter.setCurrentIndex(0)
+            self.active_filter_mode = "all"
+            self.active_filter_tag_id = None
+        self.combo_tag_filter.blockSignals(False)
+
+    def _on_filter_changed(self, index: int) -> None:
+        data = self.combo_tag_filter.itemData(index)
+        if not data:
+            self.active_filter_mode = "all"
+            self.active_filter_tag_id = None
+        else:
+            self.active_filter_mode, self.active_filter_tag_id = data
+        self._apply_current_filter()
+
+    def _apply_current_filter(self) -> None:
+        cards = self.findChildren(PlannedSectionCard)
+        for card in cards:
+            card.apply_tag_filter(self.active_filter_mode, self.active_filter_tag_id)
+
+    def _on_manage_tags(self) -> None:
+        if not self.app_service.is_record_open:
+            return
+        dlg = TagManagerDialog(self, self.app_service, is_dark=self.is_dark)
+        dlg.exec()
+        self.refresh_view()
 
     def _update_stat_badge(self, key: str, val: str) -> None:
         w = self.summary_frame.findChild(QLabel, f"stat_val_{key}")
@@ -748,7 +894,7 @@ class PlannerWidget(QWidget):
 
     def _on_node_clicked(self, node: ExerciseNodeStatus) -> None:
         """Abre la ventana emergente de detalle para el ejercicio seleccionado."""
-        popup = ExerciseDetailPopup(self, node, is_dark=self.is_dark)
+        popup = ExerciseDetailPopup(self, node, app_service=self.app_service, is_dark=self.is_dark)
         if popup.exec() == ExerciseDetailPopup.DialogCode.Accepted:
             if popup.chosen_action == "load_timer":
                 self.request_load_timer.emit(
@@ -757,6 +903,7 @@ class PlannerWidget(QWidget):
                     node.exercise,
                     node.inciso,
                 )
+        self.refresh_view()
 
     def _on_add_section(self) -> None:
         if not self.app_service.is_record_open:

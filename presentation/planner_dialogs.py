@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import qtawesome as qta
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QColorDialog,
     QComboBox,
     QDialog,
     QFrame,
@@ -12,6 +15,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -30,7 +34,7 @@ from application.planner_service import (
     STATUS_PENDING,
     ExerciseNodeStatus,
 )
-from domain.models import PlannedSection
+from domain.models import PlannedSection, TagDefinition
 from presentation.presentation_formatters import format_milliseconds
 
 ACTION_CANCEL = "cancel"
@@ -224,15 +228,17 @@ class ExerciseDetailPopup(QDialog):
         self,
         parent: QWidget | None,
         node: ExerciseNodeStatus,
+        app_service: Any = None,
         is_dark: bool = True,
     ) -> None:
         super().__init__(parent)
         self.node = node
         self.is_dark = is_dark
+        self.app_service = app_service or getattr(parent, "app_service", None)
         self.chosen_action = ACTION_CANCEL
 
         self.setWindowTitle(f"Detalle · {node.full_label}")
-        self.resize(460, 420)
+        self.resize(480, 460)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
@@ -331,6 +337,25 @@ class ExerciseDetailPopup(QDialog):
 
         layout.addLayout(metrics_grid)
 
+        # Marcadores / Etiquetas
+        if self.app_service:
+            tag_group = QGroupBox("Marcadores / Etiquetas")
+            tag_layout = QVBoxLayout(tag_group)
+            tag_layout.setSpacing(6)
+
+            self.tag_checkboxes_layout = QHBoxLayout()
+            self.tag_checkboxes_layout.setSpacing(10)
+            self.tag_checkboxes: dict[str, QCheckBox] = {}
+            self._render_detail_tags()
+            tag_layout.addLayout(self.tag_checkboxes_layout)
+
+            btn_manage_tags = QPushButton("⚙️ Gestionar Catálogo de Etiquetas...")
+            btn_manage_tags.setStyleSheet("font-size: 11px; text-align: left; padding: 2px;")
+            btn_manage_tags.clicked.connect(self._on_manage_catalog_from_detail)
+            tag_layout.addWidget(btn_manage_tags)
+
+            layout.addWidget(tag_group)
+
         # Si el ejercicio tiene incisos, lista de incisos
         if node.has_incisos and node.incisos:
             inc_group = QGroupBox("Estado de los Incisos")
@@ -407,8 +432,319 @@ class ExerciseDetailPopup(QDialog):
 
         layout.addLayout(actions_layout)
 
+    def _render_detail_tags(self) -> None:
+        if not self.app_service:
+            return
+        while self.tag_checkboxes_layout.count():
+            it = self.tag_checkboxes_layout.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        self.tag_checkboxes.clear()
+
+        catalog = self.app_service.get_tag_catalog()
+        current_tags = set(
+            self.app_service.get_exercise_tags(
+                self.node.section_type,
+                self.node.section_number,
+                self.node.exercise,
+                self.node.inciso,
+            )
+        )
+
+        for tag in catalog:
+            cb = QCheckBox(f"● {tag.name}")
+            cb.setStyleSheet(f"QCheckBox {{ font-size: 12px; font-weight: 600; color: {tag.color}; }}")
+            cb.setChecked(tag.id in current_tags)
+            cb.toggled.connect(self._on_tag_toggled)
+            self.tag_checkboxes_layout.addWidget(cb)
+            self.tag_checkboxes[tag.id] = cb
+
+        self.tag_checkboxes_layout.addStretch()
+
+    def _on_tag_toggled(self) -> None:
+        if not self.app_service:
+            return
+        selected_ids = [tid for tid, cb in self.tag_checkboxes.items() if cb.isChecked()]
+        self.app_service.set_exercise_tags(
+            self.node.section_type,
+            self.node.section_number,
+            self.node.exercise,
+            self.node.inciso,
+            selected_ids,
+        )
+        tag_map = {t.id: t for t in self.app_service.get_tag_catalog()}
+        self.node.tags = [tag_map[tid] for tid in selected_ids if tid in tag_map]
+
+    def _on_manage_catalog_from_detail(self) -> None:
+        dlg = TagManagerDialog(self, self.app_service, is_dark=self.is_dark)
+        dlg.exec()
+        self._render_detail_tags()
+
     def _on_load_timer(self) -> None:
         self.chosen_action = "load_timer"
         self.accept()
+
+
+class TagManagerDialog(QDialog):
+    """Diálogo para configurar el catálogo de etiquetas y marcadores de la materia."""
+
+    def __init__(
+        self,
+        parent: QWidget | None,
+        app_service: Any,
+        is_dark: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self.app_service = app_service
+        self.is_dark = is_dark
+        self.setWindowTitle("Catálogo de Marcadores y Etiquetas")
+        self.resize(520, 440)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        lbl_info = QLabel("Personaliza los nombres y colores de las etiquetas de estudio para esta materia:")
+        lbl_info.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        layout.addWidget(lbl_info)
+
+        # Tabla de etiquetas
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Color", "Nombre", "Acciones"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        layout.addWidget(self.table)
+
+        # Panel para agregar nueva etiqueta
+        add_group = QGroupBox("Añadir Nueva Etiqueta")
+        add_lay = QHBoxLayout(add_group)
+        add_lay.setSpacing(8)
+
+        self.edit_new_name = QLineEdit()
+        self.edit_new_name.setPlaceholderText("Nombre de la etiqueta (ej. Consultar docente)")
+        add_lay.addWidget(self.edit_new_name, 1)
+
+        self.selected_color = "#3b82f6"
+        self.btn_color_pick = QPushButton("  Color  ")
+        self._update_color_pick_button()
+        self.btn_color_pick.clicked.connect(self._on_pick_color)
+        add_lay.addWidget(self.btn_color_pick)
+
+        btn_add = QPushButton("Añadir")
+        btn_add.setIcon(qta.icon("fa5s.plus", color="#bef264" if is_dark else "#4d7c0f"))
+        btn_add.clicked.connect(self._on_add_tag)
+        add_lay.addWidget(btn_add)
+
+        layout.addWidget(add_group)
+
+        # Botón cerrar
+        btn_close_lay = QHBoxLayout()
+        btn_close_lay.addStretch()
+        btn_close = QPushButton("Cerrar")
+        btn_close.clicked.connect(self.accept)
+        btn_close_lay.addWidget(btn_close)
+        layout.addLayout(btn_close_lay)
+
+        self._refresh_table()
+
+    def _update_color_pick_button(self) -> None:
+        self.btn_color_pick.setStyleSheet(
+            f"background-color: {self.selected_color}; color: #ffffff; font-weight: 700; border-radius: 4px; padding: 4px 10px;"
+        )
+
+    def _on_pick_color(self) -> None:
+        c = QColorDialog.getColor(QColor(self.selected_color), self, "Seleccionar Color de Etiqueta")
+        if c.isValid():
+            self.selected_color = c.name()
+            self._update_color_pick_button()
+
+    def _refresh_table(self) -> None:
+        self.table.setRowCount(0)
+        tags = self.app_service.get_tag_catalog()
+        for row_idx, tag in enumerate(tags):
+            self.table.insertRow(row_idx)
+
+            # Botón / badge de color para cambiar color
+            btn_col = QPushButton("●")
+            btn_col.setStyleSheet(f"color: {tag.color}; font-size: 20px; border: none; background: transparent;")
+            btn_col.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_col.setToolTip("Haz clic para cambiar el color")
+            btn_col.clicked.connect(lambda _, t=tag: self._on_change_tag_color(t))
+            self.table.setCellWidget(row_idx, 0, btn_col)
+
+            # Nombre
+            item_name = QTableWidgetItem(tag.name)
+            item_name.setToolTip("Haz doble clic en el botón Editar para renombrar")
+            self.table.setItem(row_idx, 1, item_name)
+
+            # Acciones: Editar, Eliminar
+            w_actions = QWidget()
+            h_act = QHBoxLayout(w_actions)
+            h_act.setContentsMargins(4, 2, 4, 2)
+            h_act.setSpacing(4)
+
+            btn_edit = QPushButton()
+            btn_edit.setIcon(qta.icon("fa5s.edit", color="#94a3b8"))
+            btn_edit.setToolTip("Renombrar etiqueta")
+            btn_edit.clicked.connect(lambda _, t=tag: self._on_edit_tag_name(t))
+            h_act.addWidget(btn_edit)
+
+            btn_del = QPushButton()
+            btn_del.setIcon(qta.icon("fa5s.trash-alt", color="#ef4444"))
+            btn_del.setToolTip("Eliminar etiqueta")
+            btn_del.clicked.connect(lambda _, t=tag: self._on_delete_tag(t))
+            h_act.addWidget(btn_del)
+
+            self.table.setCellWidget(row_idx, 2, w_actions)
+
+    def _on_change_tag_color(self, tag: TagDefinition) -> None:
+        c = QColorDialog.getColor(QColor(tag.color), self, f"Color para '{tag.name}'")
+        if c.isValid():
+            self.app_service.update_tag_definition(tag.id, tag.name, c.name())
+            self._refresh_table()
+
+    def _on_edit_tag_name(self, tag: TagDefinition) -> None:
+        new_name, ok = QInputDialog.getText(self, "Renombrar Etiqueta", "Nuevo nombre:", text=tag.name)
+        if ok and new_name.strip():
+            self.app_service.update_tag_definition(tag.id, new_name.strip(), tag.color)
+            self._refresh_table()
+
+    def _on_delete_tag(self, tag: TagDefinition) -> None:
+        confirm = QMessageBox.question(
+            self,
+            "Eliminar Etiqueta",
+            f"¿Deseas eliminar la etiqueta '{tag.name}' del catálogo?\n\n"
+            "Se quitará de todos los ejercicios donde esté asignada.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
+            self.app_service.delete_tag_definition(tag.id)
+            self._refresh_table()
+
+    def _on_add_tag(self) -> None:
+        name = self.edit_new_name.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Campo Vacío", "Por favor ingresa un nombre para la etiqueta.")
+            return
+        self.app_service.add_tag_definition(name, self.selected_color)
+        self.edit_new_name.clear()
+        self._refresh_table()
+
+
+class TagSelectionDialog(QDialog):
+    """Diálogo compacto para seleccionar etiquetas asignadas a una ubicación de ejercicio."""
+
+    def __init__(
+        self,
+        parent: QWidget | None,
+        app_service: Any,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None = None,
+        is_dark: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self.app_service = app_service
+        self.section_type = section_type
+        self.section_number = section_number
+        self.exercise = exercise
+        self.inciso = inciso
+        self.is_dark = is_dark
+
+        label_target = f"{section_type} {section_number} · Ejercicio {exercise}"
+        if inciso:
+            label_target += f".{inciso}"
+
+        self.setWindowTitle(f"Marcadores · {label_target}")
+        self.resize(380, 320)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        lbl_desc = QLabel(f"Asigna o desasigna marcadores para:\n<b>{label_target}</b>")
+        lbl_desc.setWordWrap(True)
+        layout.addWidget(lbl_desc)
+
+        # Área de checkboxes con scroll
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll_content = QWidget()
+        self.v_checks = QVBoxLayout(self.scroll_content)
+        self.v_checks.setSpacing(8)
+        self.scroll.setWidget(self.scroll_content)
+        layout.addWidget(self.scroll, 1)
+
+        self.checkboxes: dict[str, QCheckBox] = {}
+        self._populate_checkboxes()
+
+        # Botón para gestionar catálogo
+        btn_manage = QPushButton("⚙️ Gestionar Catálogo de Etiquetas...")
+        btn_manage.setStyleSheet("font-size: 11px; text-align: left; padding: 4px;")
+        btn_manage.clicked.connect(self._on_manage_catalog)
+        layout.addWidget(btn_manage)
+
+        # Botones inferiores
+        btn_lay = QHBoxLayout()
+        btn_lay.addStretch()
+
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.clicked.connect(self.reject)
+        btn_lay.addWidget(btn_cancel)
+
+        btn_save = QPushButton("Guardar Marcadores")
+        btn_save.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #bef264;
+                color: #0f172a;
+                font-weight: 700;
+                padding: 6px 14px;
+                border-radius: 6px;
+            }
+            """
+        )
+        btn_save.clicked.connect(self._on_save)
+        btn_lay.addWidget(btn_save)
+
+        layout.addLayout(btn_lay)
+
+    def _populate_checkboxes(self) -> None:
+        while self.v_checks.count():
+            item = self.v_checks.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.checkboxes.clear()
+
+        catalog = self.app_service.get_tag_catalog()
+        current_tags = set(
+            self.app_service.get_exercise_tags(
+                self.section_type, self.section_number, self.exercise, self.inciso
+            )
+        )
+
+        for tag in catalog:
+            cb = QCheckBox(f"  ●  {tag.name}")
+            cb.setStyleSheet(f"QCheckBox {{ font-size: 13px; font-weight: 600; color: {tag.color}; }}")
+            cb.setChecked(tag.id in current_tags)
+            self.v_checks.addWidget(cb)
+            self.checkboxes[tag.id] = cb
+
+        self.v_checks.addStretch()
+
+    def _on_manage_catalog(self) -> None:
+        dlg = TagManagerDialog(self, self.app_service, is_dark=self.is_dark)
+        dlg.exec()
+        self._populate_checkboxes()
+
+    def _on_save(self) -> None:
+        selected_ids = [tag_id for tag_id, cb in self.checkboxes.items() if cb.isChecked()]
+        self.app_service.set_exercise_tags(
+            self.section_type, self.section_number, self.exercise, self.inciso, selected_ids
+        )
+        self.accept()
+
 
 

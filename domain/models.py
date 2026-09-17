@@ -69,6 +69,38 @@ class TimerItem:
 
 
 @dataclass
+class TagDefinition:
+    """Definición de una etiqueta o marcador visual a nivel de materia/registro."""
+
+    id: str
+    name: str
+    color: str  # Código hexadecimal ej: "#ef4444"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serializa la definición de etiqueta a un diccionario."""
+        return {"id": self.id, "name": self.name, "color": self.color}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TagDefinition":
+        """Reconstruye una etiqueta desde un diccionario JSON."""
+        return cls(
+            id=str(data.get("id") or str(uuid4())[:8]),
+            name=str(data.get("name") or "Etiqueta"),
+            color=str(data.get("color") or "#3b82f6"),
+        )
+
+
+def default_tags() -> list[TagDefinition]:
+    """Genera el catálogo de etiquetas predeterminadas para un nuevo registro."""
+    return [
+        TagDefinition(id="tag-redo", name="Rehacer", color="#ef4444"),
+        TagDefinition(id="tag-doubt", name="Duda para clase", color="#f59e0b"),
+        TagDefinition(id="tag-consulted", name="Consulté respuesta", color="#3b82f6"),
+        TagDefinition(id="tag-key", name="Clave / Importante", color="#a855f7"),
+    ]
+
+
+@dataclass
 class PlannedSection:
     """Configuración planificada de una sección de estudio (guía, práctica, etc.)."""
 
@@ -77,6 +109,11 @@ class PlannedSection:
     title: str = ""
     total_exercises: int = 1
     exercise_configs: dict[int, int] = field(default_factory=dict)
+    exercise_tags: dict[str, list[str]] = field(default_factory=dict)
+
+    @staticmethod
+    def _make_exercise_key(exercise: int, inciso: int | None = None) -> str:
+        return f"{exercise}.{inciso}" if (inciso is not None and inciso > 0) else str(exercise)
 
     def get_incisos_count(self, exercise: int) -> int:
         """Devuelve la cantidad de incisos configurada para un ejercicio específico (0 si no tiene)."""
@@ -89,6 +126,28 @@ class PlannedSection:
         else:
             self.exercise_configs[exercise] = count
 
+    def get_exercise_tags(self, exercise: int, inciso: int | None = None) -> list[str]:
+        """Devuelve la lista de IDs de etiquetas asociadas al ejercicio o inciso."""
+        key = self._make_exercise_key(exercise, inciso)
+        return list(self.exercise_tags.get(key, []))
+
+    def set_exercise_tags(
+        self, exercise: int, inciso: int | None = None, tag_ids: list[str] | None = None
+    ) -> None:
+        """Asigna o elimina las etiquetas para un ejercicio o inciso específico."""
+        key = self._make_exercise_key(exercise, inciso)
+        if not tag_ids:
+            self.exercise_tags.pop(key, None)
+        else:
+            # Preservar unicidad manteniendo el orden
+            seen = set()
+            cleaned = []
+            for t in tag_ids:
+                if t not in seen:
+                    seen.add(t)
+                    cleaned.append(t)
+            self.exercise_tags[key] = cleaned
+
     def to_dict(self) -> dict[str, Any]:
         """Serializa la sección planificada a un diccionario."""
         return {
@@ -97,6 +156,7 @@ class PlannedSection:
             "title": self.title,
             "total_exercises": self.total_exercises,
             "exercise_configs": {str(k): v for k, v in self.exercise_configs.items()},
+            "exercise_tags": self.exercise_tags,
         }
 
     @classmethod
@@ -104,12 +164,18 @@ class PlannedSection:
         """Reconstruye una sección planificada desde un diccionario JSON."""
         raw_configs = data.get("exercise_configs") or {}
         exercise_configs = {int(k): int(v) for k, v in raw_configs.items()}
+        raw_exercise_tags = data.get("exercise_tags") or {}
+        exercise_tags = {
+            str(k): [str(tid) for tid in v] if isinstance(v, list) else []
+            for k, v in raw_exercise_tags.items()
+        }
         return cls(
             section_type=str(data.get("section_type") or "Guía"),
             section_number=int(data.get("section_number") or 1),
             title=str(data.get("title") or ""),
             total_exercises=max(1, int(data.get("total_exercises") or 1)),
             exercise_configs=exercise_configs,
+            exercise_tags=exercise_tags,
         )
 
 
@@ -120,6 +186,7 @@ class Record:
     record_name: str = "StudyTimetrial"
     items: list[TimerItem] = field(default_factory=list)
     planner_sections: list[PlannedSection] = field(default_factory=list)
+    tags: list[TagDefinition] = field(default_factory=default_tags)
     schema_version: int = 1
     application: str = "Study Timetrial"
     created_at: str = field(default_factory=now_iso)
@@ -136,6 +203,7 @@ class Record:
             "updated_at": self.updated_at,
             "items": [item.to_dict() for item in self.items],
             "planner_sections": [sec.to_dict() for sec in self.planner_sections],
+            "tags": [tag.to_dict() for tag in self.tags],
         }
 
     @classmethod
@@ -151,10 +219,21 @@ class Record:
             if isinstance(s, dict)
         ] if isinstance(raw_sections, list) else []
 
+        raw_tags = data.get("tags")
+        if raw_tags is None:
+            tags = default_tags()
+        else:
+            tags = [
+                TagDefinition.from_dict(t)
+                for t in raw_tags
+                if isinstance(t, dict)
+            ]
+
         return cls(
             record_name=str(data.get("record_name") or "StudyTimetrial"),
             items=[TimerItem.from_dict(item) for item in data["items"]],
             planner_sections=planner_sections,
+            tags=tags,
             created_at=str(data.get("created_at") or now_iso()),
             updated_at=str(data.get("updated_at") or now_iso()),
         )

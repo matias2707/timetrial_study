@@ -16,7 +16,7 @@ from application.statistics_service import (
     compute_statistics,
     compute_today_study_time_ms,
 )
-from domain.models import PlannedSection, Record, TimerItem
+from domain.models import PlannedSection, Record, TagDefinition, TimerItem
 from domain.timer_service import TimerMode, TimerService
 from infrastructure.storage_service import StorageService
 
@@ -383,3 +383,61 @@ class StudyApplicationService:
             location.exercise,
             location.inciso,
         )
+
+    def get_tag_catalog(self) -> list[TagDefinition]:
+        """Devuelve el catálogo de etiquetas del registro activo."""
+        if not self.is_record_open:
+            return []
+        return PlannerService.get_tag_catalog(self.record)
+
+    def add_tag_definition(self, name: str, color: str) -> TagDefinition | None:
+        """Añade una nueva etiqueta al catálogo y persiste."""
+        if not self.is_record_open:
+            return None
+        tag = PlannerService.add_tag_definition(self.record, name, color)
+        self.save()
+        return tag
+
+    def update_tag_definition(self, tag_id: str, name: str, color: str) -> bool:
+        """Actualiza una etiqueta en el catálogo y persiste."""
+        if not self.is_record_open:
+            return False
+        updated = PlannerService.update_tag_definition(self.record, tag_id, name, color)
+        if updated:
+            self.save()
+        return updated
+
+    def delete_tag_definition(self, tag_id: str) -> bool:
+        """Elimina una etiqueta del catálogo, limpia referencias y persiste."""
+        if not self.is_record_open:
+            return False
+        deleted = PlannerService.delete_tag_definition(self.record, tag_id)
+        if deleted:
+            self.save()
+        return deleted
+
+    def get_exercise_tags(
+        self, section_type: str, section_number: int, exercise: int, inciso: int | None = None
+    ) -> list[str]:
+        """Devuelve los IDs de etiquetas asociadas a un ejercicio o inciso."""
+        if not self.is_record_open:
+            return []
+        return PlannerService.get_exercise_tags(
+            self.record, section_type, section_number, exercise, inciso
+        )
+
+    def set_exercise_tags(
+        self,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None,
+        tag_ids: list[str],
+    ) -> None:
+        """Asigna etiquetas a un ejercicio o inciso y persiste los cambios."""
+        if not self.is_record_open:
+            return
+        PlannerService.set_exercise_tags(
+            self.record, section_type, section_number, exercise, inciso, tag_ids
+        )
+        self.save()
