@@ -2,22 +2,34 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import TYPE_CHECKING
+
 import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QButtonGroup,
     QComboBox,
     QDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QRadioButton,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from presentation.presentation_formatters import format_hh_mm_ss
+
+if TYPE_CHECKING:
+    from domain.models import TimerItem
 
 ACTION_CORRECT_ALL = "correct_all"
 ACTION_KEEP_MANUAL = "keep_manual"
@@ -42,13 +54,15 @@ class IncisoCorrectionDialog(QDialog):
         current_inciso: int = 2,
         affected_count: int = 1,
         is_dark: bool = True,
+        gap_items: list[TimerItem] | None = None,
     ) -> None:
         super().__init__(parent)
         self.section_type = section_type
         self.section_number = section_number
         self.exercise = exercise
         self.current_inciso = current_inciso
-        self.affected_count = affected_count
+        self.gap_items = list(gap_items) if gap_items else []
+        self.affected_count = len(self.gap_items) if self.gap_items else affected_count
         self.is_dark = is_dark
 
         self.result_action = ACTION_CANCEL
@@ -58,7 +72,12 @@ class IncisoCorrectionDialog(QDialog):
         self.selected_inciso = current_inciso
 
         self.setWindowTitle("Corrección de Incisos")
-        self.resize(560, 430)
+        if len(self.gap_items) == 1:
+            self.resize(580, 520)
+        elif len(self.gap_items) > 1:
+            self.resize(600, 550)
+        else:
+            self.resize(560, 430)
         self.setModal(True)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
@@ -125,6 +144,10 @@ class IncisoCorrectionDialog(QDialog):
         badge_info.setStyleSheet(f"color: {badge_text_color}; font-size: 12px; border: none; background: transparent;")
         badge_layout.addWidget(badge_info)
         layout.addWidget(badge_frame)
+
+        conflict_preview = self._build_conflict_preview()
+        if conflict_preview is not None:
+            layout.addWidget(conflict_preview)
 
         # Opciones
         options_lbl = QLabel("Selecciona cómo deseas proceder:")
@@ -278,3 +301,183 @@ class IncisoCorrectionDialog(QDialog):
             custom_inc = self.spin_custom_inciso.value()
             self.selected_inciso = None if custom_inc == 0 else custom_inc
         self.accept()
+
+    def _format_item_datetime(self, item: TimerItem) -> str:
+        try:
+            dt = datetime.fromisoformat(item.created_at)
+            return dt.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return item.created_at[:16].replace("T", " ")
+
+    def _format_item_location(self, item: TimerItem) -> str:
+        inciso_part = f"Inciso {item.inciso}" if item.inciso else "(Sin inciso)"
+        return f"{item.section_type} {item.section_number} · Ej. {item.exercise} · {inciso_part}"
+
+    def _create_status_badge(self, completed: bool) -> QLabel:
+        status_text = "Completado" if completed else "Incompleto"
+        status_color = "#22c55e" if completed else ("#f59e0b" if self.is_dark else "#d97706")
+        status_bg = "rgba(34, 197, 94, 0.15)" if completed else ("rgba(245, 158, 11, 0.15)" if self.is_dark else "#fef3c7")
+        status_border = "#16a34a" if completed else ("#b45309" if self.is_dark else "#f59e0b")
+
+        badge = QLabel(f" {status_text} ")
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(f"""
+            QLabel {{
+                background-color: {status_bg};
+                color: {status_color};
+                border: 1px solid {status_border};
+                border-radius: 4px;
+                font-weight: 700;
+                font-size: 11px;
+                padding: 1px 6px;
+            }}
+        """)
+        return badge
+
+    def _build_conflict_preview(self) -> QWidget | None:
+        if not self.gap_items:
+            return None
+
+        if len(self.gap_items) == 1:
+            return self._build_single_item_card(self.gap_items[0])
+        return self._build_multiple_items_table(self.gap_items)
+
+    def _build_single_item_card(self, item: TimerItem) -> QWidget:
+        card = QFrame()
+        card.setObjectName("conflict_preview_card")
+        card_bg = "#1e293b" if self.is_dark else "#f8fafc"
+        card_border = "#334155" if self.is_dark else "#cbd5e1"
+        label_muted = "#94a3b8" if self.is_dark else "#64748b"
+
+        card.setStyleSheet(f"""
+            QFrame#conflict_preview_card {{
+                background-color: {card_bg};
+                border: 1px solid {card_border};
+                border-radius: 8px;
+                padding: 6px 10px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+        card_layout.setSpacing(6)
+
+        title_lbl = QLabel("REGISTRO PREVIO EN CONFLICTO")
+        title_lbl.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {label_muted}; letter-spacing: 0.5px; border: none; background: transparent;")
+        card_layout.addWidget(title_lbl)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(4)
+        grid.setContentsMargins(0, 0, 0, 0)
+
+        date_str = self._format_item_datetime(item)
+        loc_str = self._format_item_location(item)
+        time_str = format_hh_mm_ss(item.exercise_time_ms)
+
+        # Fila 0: Fecha y Tiempo neto
+        lbl_date = QLabel(f"<span style='color: {label_muted};'>Fecha:</span> <b>{date_str}</b>")
+        lbl_date.setStyleSheet("font-size: 12px; border: none; background: transparent;")
+        grid.addWidget(lbl_date, 0, 0)
+
+        lbl_time = QLabel(f"<span style='color: {label_muted};'>Tiempo neto:</span> <b>{time_str}</b>")
+        lbl_time.setStyleSheet("font-size: 12px; border: none; background: transparent;")
+        grid.addWidget(lbl_time, 0, 1)
+
+        # Fila 1: Identificador y Estado
+        lbl_loc = QLabel(f"<span style='color: {label_muted};'>Identificador:</span> <b>{loc_str}</b>")
+        lbl_loc.setStyleSheet("font-size: 12px; border: none; background: transparent;")
+        grid.addWidget(lbl_loc, 1, 0)
+
+        status_box = QHBoxLayout()
+        status_box.setContentsMargins(0, 0, 0, 0)
+        status_box.setSpacing(6)
+        lbl_status_prefix = QLabel(f"<span style='color: {label_muted};'>Estado:</span>")
+        lbl_status_prefix.setStyleSheet("font-size: 12px; border: none; background: transparent;")
+        status_box.addWidget(lbl_status_prefix)
+        status_box.addWidget(self._create_status_badge(item.completed))
+        status_box.addStretch()
+
+        grid.addLayout(status_box, 1, 1)
+
+        card_layout.addLayout(grid)
+        return card
+
+    def _build_multiple_items_table(self, items: list[TimerItem]) -> QWidget:
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(4)
+
+        label_muted = "#94a3b8" if self.is_dark else "#64748b"
+        title_lbl = QLabel(f"REGISTROS PREVIOS EN CONFLICTO ({len(items)})")
+        title_lbl.setStyleSheet(f"font-size: 10px; font-weight: 700; color: {label_muted}; letter-spacing: 0.5px;")
+        container_layout.addWidget(title_lbl)
+
+        table = QTableWidget(len(items), 4)
+        table.setObjectName("conflict_preview_table")
+        table.setHorizontalHeaderLabels(["Fecha y Hora", "Identificador", "Tiempo neto", "Estado"])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setShowGrid(True)
+
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+
+        table_bg = "#1e293b" if self.is_dark else "#ffffff"
+        header_bg = "#0f172a" if self.is_dark else "#f1f5f9"
+        grid_color = "#334155" if self.is_dark else "#e2e8f0"
+        text_color = "#e2e8f0" if self.is_dark else "#0f172a"
+        border_color = "#334155" if self.is_dark else "#cbd5e1"
+
+        table.setStyleSheet(f"""
+            QTableWidget#conflict_preview_table {{
+                background-color: {table_bg};
+                color: {text_color};
+                gridline-color: {grid_color};
+                border: 1px solid {border_color};
+                border-radius: 6px;
+                font-size: 11px;
+            }}
+            QHeaderView::section {{
+                background-color: {header_bg};
+                color: {label_muted};
+                border: none;
+                border-bottom: 1px solid {border_color};
+                font-weight: 700;
+                font-size: 10px;
+                padding: 4px 6px;
+            }}
+        """)
+
+        for row_idx, item in enumerate(items):
+            date_item = QTableWidgetItem(self._format_item_datetime(item))
+            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row_idx, 0, date_item)
+
+            loc_item = QTableWidgetItem(self._format_item_location(item))
+            loc_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            table.setItem(row_idx, 1, loc_item)
+
+            time_item = QTableWidgetItem(format_hh_mm_ss(item.exercise_time_ms))
+            time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row_idx, 2, time_item)
+
+            badge_container = QWidget()
+            badge_layout = QHBoxLayout(badge_container)
+            badge_layout.setContentsMargins(4, 2, 4, 2)
+            badge_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_layout.addWidget(self._create_status_badge(item.completed))
+            table.setCellWidget(row_idx, 3, badge_container)
+
+            table.setRowHeight(row_idx, 28)
+
+        calc_height = min(140, 26 + len(items) * 28 + 4)
+        table.setFixedHeight(calc_height)
+        container_layout.addWidget(table)
+
+        return container

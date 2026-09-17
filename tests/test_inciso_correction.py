@@ -9,7 +9,7 @@ from unittest.mock import patch
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["STUDY_TIMETRIAL_TEST"] = "1"
 
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QTableWidget
 
 from application.application_service import StudyApplicationService
 from domain.models import Record, TimerItem
@@ -220,6 +220,134 @@ class TestIncisoCorrectionDialog(unittest.TestCase):
         from PySide6.QtCore import Qt
         self.assertTrue(dlg.isModal())
         self.assertEqual(dlg.windowModality(), Qt.WindowModality.ApplicationModal)
+
+    def test_dialog_with_single_gap_item_renders_card_preview(self) -> None:
+        """Verifica que con un solo item en conflicto se renderice la tarjeta con fecha, identificador, tiempo y estado."""
+        item = TimerItem(
+            section_type="Guía",
+            section_number=3,
+            exercise=6,
+            inciso=None,
+            exercise_time_ms=754_000,
+            break_time_ms=0,
+            completed=True,
+            comment="Comentario confidencial que no debe mostrarse",
+            created_at="2026-09-10T15:30:00",
+        )
+        dlg = IncisoCorrectionDialog(
+            section_type="Guía",
+            section_number=3,
+            exercise=6,
+            current_inciso=2,
+            gap_items=[item],
+            is_dark=True,
+        )
+
+        card = dlg.findChild(QFrame, "conflict_preview_card")
+        self.assertIsNotNone(card)
+        table = dlg.findChild(QTableWidget, "conflict_preview_table")
+        self.assertIsNone(table)
+
+        labels = [lbl.text() for lbl in dlg.findChildren(QLabel)]
+        self.assertTrue(any("2026-09-10 15:30" in t for t in labels))
+        self.assertTrue(any("Guía 3 · Ej. 6 · (Sin inciso)" in t for t in labels))
+        self.assertTrue(any("00:12:34" in t for t in labels))
+        self.assertTrue(any("Completado" in t for t in labels))
+
+        # Comentario y UUID no deben figurar en ningún label
+        self.assertFalse(any("Comentario confidencial" in t for t in labels))
+        self.assertFalse(any(item.id in t for t in labels))
+
+    def test_dialog_with_multiple_gap_items_renders_table_preview(self) -> None:
+        """Verifica que con múltiples items en conflicto se renderice la tabla compacta con todas las filas."""
+        item1 = TimerItem(
+            section_type="Guía",
+            section_number=3,
+            exercise=6,
+            inciso=None,
+            exercise_time_ms=300_000,
+            break_time_ms=0,
+            completed=True,
+            created_at="2026-09-10T10:00:00",
+        )
+        item2 = TimerItem(
+            section_type="Guía",
+            section_number=3,
+            exercise=6,
+            inciso=None,
+            exercise_time_ms=600_000,
+            break_time_ms=0,
+            completed=False,
+            created_at="2026-09-11T11:00:00",
+        )
+        dlg = IncisoCorrectionDialog(
+            section_type="Guía",
+            section_number=3,
+            exercise=6,
+            current_inciso=2,
+            gap_items=[item1, item2],
+            is_dark=False,
+        )
+
+        card = dlg.findChild(QFrame, "conflict_preview_card")
+        self.assertIsNone(card)
+        table = dlg.findChild(QTableWidget, "conflict_preview_table")
+        self.assertIsNotNone(table)
+        self.assertEqual(table.rowCount(), 2)
+        self.assertEqual(table.columnCount(), 4)
+
+        # Fila 0
+        self.assertEqual(table.item(0, 0).text(), "2026-09-10 10:00")
+        self.assertEqual(table.item(0, 1).text(), "Guía 3 · Ej. 6 · (Sin inciso)")
+        self.assertEqual(table.item(0, 2).text(), "00:05:00")
+        # Fila 1
+        self.assertEqual(table.item(1, 0).text(), "2026-09-11 11:00")
+        self.assertEqual(table.item(1, 1).text(), "Guía 3 · Ej. 6 · (Sin inciso)")
+        self.assertEqual(table.item(1, 2).text(), "00:10:00")
+
+    def test_dialog_with_none_or_empty_gap_items_fallback(self) -> None:
+        """Verifica que si gap_items es None o vacío, degrade elegantemente sin error ni widgets de preview."""
+        dlg_none = IncisoCorrectionDialog(gap_items=None)
+        self.assertIsNone(dlg_none.findChild(QFrame, "conflict_preview_card"))
+        self.assertIsNone(dlg_none.findChild(QTableWidget, "conflict_preview_table"))
+        self.assertEqual(dlg_none.width(), 560)
+        self.assertEqual(dlg_none.height(), 430)
+
+        dlg_empty = IncisoCorrectionDialog(gap_items=[])
+        self.assertIsNone(dlg_empty.findChild(QFrame, "conflict_preview_card"))
+        self.assertIsNone(dlg_empty.findChild(QTableWidget, "conflict_preview_table"))
+        self.assertEqual(dlg_empty.width(), 560)
+        self.assertEqual(dlg_empty.height(), 430)
+
+    def test_home_view_prompt_passes_gap_items_to_dialog(self) -> None:
+        """Verifica que HomeViewWidget propague la lista gap_items al instanciar IncisoCorrectionDialog."""
+        window = MainWindow()
+        try:
+            gap_item = TimerItem("Guía", 1, 5, None, 60_000, 0, True)
+            captured_dialogs: list[IncisoCorrectionDialog] = []
+
+            orig_init = IncisoCorrectionDialog.__init__
+
+            def spy_init(dlg_self, *args, **kwargs):
+                orig_init(dlg_self, *args, **kwargs)
+                captured_dialogs.append(dlg_self)
+
+            with patch.object(IncisoCorrectionDialog, "__init__", spy_init):
+                with patch.object(IncisoCorrectionDialog, "exec", lambda self: None):
+                    window.home_view._prompt_inciso_gap_dialog(
+                        section_type="Guía",
+                        section_number=1,
+                        exercise=5,
+                        inciso=2,
+                        gap_items=[gap_item],
+                    )
+
+            self.assertEqual(len(captured_dialogs), 1)
+            self.assertEqual(captured_dialogs[0].gap_items, [gap_item])
+            self.assertEqual(captured_dialogs[0].affected_count, 1)
+        finally:
+            window.stop_timer()
+            window.close()
 
 
 class TestMainWindowIncisoFlow(unittest.TestCase):

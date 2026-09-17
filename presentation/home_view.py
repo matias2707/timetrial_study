@@ -614,6 +614,7 @@ class HomeViewWidget(QWidget):
             current_inciso=inciso or 1,
             affected_count=len(gap_items),
             is_dark=self.is_dark_mode,
+            gap_items=gap_items,
         )
         try:
             dlg.exec()
