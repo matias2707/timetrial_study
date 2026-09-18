@@ -1,11 +1,12 @@
 import os
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["STUDY_TIMETRIAL_TEST"] = "1"
+
 import unittest
 from PySide6.QtWidgets import QApplication
 
 from presentation.main_window import MainWindow
 from presentation.theme import THEME_DARK, THEME_LIGHT, get_theme_stylesheet, get_dialog_stylesheet
-
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 
 class ThemeTests(unittest.TestCase):
@@ -70,14 +71,16 @@ class ThemeTests(unittest.TestCase):
         self.assertEqual(window.sound_action.text(), "Silenciar sonidos")
         self.assertFalse(window.start_sound.isMuted())
         self.assertFalse(window.complete_sound.isMuted())
+        self.assertFalse(window.ambience_view.engine.is_master_muted)
 
-        # Toggle to muted
+        # Toggle to muted (affects all sounds: effects and ambient)
         window.sound_action.trigger()
         self.assertTrue(window.is_sound_muted)
         self.assertTrue(window.is_muted)
         self.assertEqual(window.sound_action.text(), "Activar sonidos")
         self.assertTrue(window.start_sound.isMuted())
         self.assertTrue(window.complete_sound.isMuted())
+        self.assertTrue(window.ambience_view.engine.is_master_muted)
 
         # Toggle back to unmuted
         window.sound_action.trigger()
@@ -86,6 +89,7 @@ class ThemeTests(unittest.TestCase):
         self.assertEqual(window.sound_action.text(), "Silenciar sonidos")
         self.assertFalse(window.start_sound.isMuted())
         self.assertFalse(window.complete_sound.isMuted())
+        self.assertFalse(window.ambience_view.engine.is_master_muted)
 
     def test_timer_states_and_table_badges(self) -> None:
         window = MainWindow()

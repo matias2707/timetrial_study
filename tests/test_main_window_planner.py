@@ -21,8 +21,8 @@ class TestMainWindowPlanner(unittest.TestCase):
         self.window.close()
 
     def test_planner_tab_exists(self):
-        # The window must have 4 tabs
-        self.assertEqual(self.window.tabs.count(), 4)
+        # The window must have 5 tabs (Cronómetro, Registros, Estadísticas, Planificador, Ambientación)
+        self.assertEqual(self.window.tabs.count(), 5)
         self.assertIn("Planificador", self.window.tabs.tabText(3))
         self.assertTrue(hasattr(self.window, "planner"))
 

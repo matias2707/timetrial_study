@@ -32,6 +32,7 @@ import qtawesome as qta
 from application.application_service import StudyApplicationService
 from domain.models import TimerItem
 from domain.timer_service import TimerMode
+from presentation.ambience_view import AmbienceViewWidget
 from presentation.app_toolbar import AppToolbar
 from presentation.audio_service import AudioService
 from presentation.home_view import APP_TITLE, APP_VERSION, DEFAULT_SECTION_TYPE, MAX_VALUE, HomeViewWidget
@@ -109,6 +110,12 @@ class MainWindow(QMainWindow):
             is_dark_mode=self.is_dark_mode,
             parent=self,
         )
+        self.ambience_view = AmbienceViewWidget(
+            is_dark_mode=self.is_dark_mode,
+            parent=self,
+        )
+        if self.audio_service.is_muted:
+            self.ambience_view.engine.set_master_muted(True)
 
         # Contenedor de pestañas
         self.tabs = QTabWidget(self)
@@ -122,8 +129,11 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.records_view, qta.icon("fa5s.history", color="#94a3b8"), "  Registros")
         self.tabs.addTab(self.statistics_view, qta.icon("fa5s.chart-bar", color="#94a3b8"), "  Estadísticas")
         self.tabs.addTab(self.planner, qta.icon("fa5s.tasks", color="#94a3b8"), "  Planificador")
+        self.tabs.addTab(self.ambience_view, qta.icon("fa5s.headphones", color="#94a3b8"), "  Ambientación")
 
         self._connect_signals()
+
+        self._last_timer_state = (self.application.mode, self.application.timer.is_paused)
 
         # Timer para el refresco del reloj (50 ms)
         self.tick = QTimer(self)
@@ -167,12 +177,16 @@ class MainWindow(QMainWindow):
         self.records_view.data_modified.connect(self._on_records_data_modified)
         self.records_view.request_open_record.connect(self.open_record)
         self.records_view.request_import_records.connect(self.import_records)
-        self.records_view.request_save_as.connect(self.save_as)
         self.records_view.request_rename_record.connect(self.rename_record)
         self.records_view.request_close_record.connect(self.close_record)
         self.records_view.resume_item_requested.connect(self.resume_item_in_timer)
 
         self.planner.request_load_timer.connect(self._on_planner_load_timer)
+
+        # Sincronización bidireccional de silenciamiento
+        self.audio_service.mute_state_changed.connect(self._on_audio_service_mute_changed)
+        if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+            self.ambience_view.engine.master_muted_changed.connect(self._on_ambience_engine_muted_changed)
         self.statistics_view.request_load_timer.connect(self._on_planner_load_timer)
         self.statistics_view.request_configure_schedule.connect(self._on_request_configure_schedule)
 
@@ -182,6 +196,7 @@ class MainWindow(QMainWindow):
             ("fa5s.history", "Registros"),
             ("fa5s.chart-bar", "Estadísticas"),
             ("fa5s.tasks", "Planificador"),
+            ("fa5s.headphones", "Ambientación"),
         ]
         for i, (icon_name, _title) in enumerate(icons):
             color = "#bef264" if i == index else "#94a3b8"
@@ -193,6 +208,8 @@ class MainWindow(QMainWindow):
             self.refresh_statistics()
         elif index == 3:
             self.planner.refresh_view()
+        elif index == 4:
+            self.ambience_view.sync_ui_state()
 
     def _on_home_item_finished(self, _completed: bool) -> None:
         self.application.sync_planner_with_records()
@@ -218,7 +235,10 @@ class MainWindow(QMainWindow):
 
     @is_sound_muted.setter
     def is_sound_muted(self, value: bool) -> None:
-        self.audio_service.is_muted = value
+        val = bool(value)
+        self.audio_service.is_muted = val
+        if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+            self.ambience_view.engine.set_master_muted(val)
         self.toolbar.update_sound_action(self.audio_service.is_muted)
 
     @property
@@ -233,6 +253,17 @@ class MainWindow(QMainWindow):
 
     def update_sound_action(self) -> None:
         self.toolbar.update_sound_action(self.audio_service.is_muted)
+
+    def _on_audio_service_mute_changed(self, is_muted: bool) -> None:
+        if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+            if self.ambience_view.engine.is_master_muted != is_muted:
+                self.ambience_view.engine.set_master_muted(is_muted)
+        self.toolbar.update_sound_action(is_muted)
+
+    def _on_ambience_engine_muted_changed(self, is_muted: bool) -> None:
+        if self.audio_service.is_muted != is_muted:
+            self.audio_service.is_muted = is_muted
+            self.toolbar.update_sound_action(is_muted)
 
     def play_start_sound(self) -> None:
         self.audio_service.play_start()
@@ -251,6 +282,7 @@ class MainWindow(QMainWindow):
         self.home_view.is_dark_mode = self.is_dark_mode
         self.statistics_view.set_dark_mode(self.is_dark_mode)
         self.planner.set_dark_mode(self.is_dark_mode)
+        self.ambience_view.set_dark_mode(self.is_dark_mode)
 
         self.update_theme_icons()
         self.update_timer_visual_state()
@@ -394,6 +426,13 @@ class MainWindow(QMainWindow):
 
     def refresh_clock(self) -> None:
         self.home_view.refresh_clock()
+        current_mode = self.application.mode
+        is_paused = self.application.timer.is_paused
+        timer_state = (current_mode, is_paused)
+        if getattr(self, "_last_timer_state", None) != timer_state:
+            self._last_timer_state = timer_state
+            if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+                self.ambience_view.engine.on_timer_mode_changed(current_mode, is_paused=is_paused)
 
     def update_timer_visual_state(self) -> None:
         self.home_view.update_timer_visual_state()
@@ -793,6 +832,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self.application.is_record_open or self.application.mode is TimerMode.WAITING:
+            if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+                self.ambience_view.engine.stop_all()
             event.accept()
             return
 
@@ -808,8 +849,12 @@ class MainWindow(QMainWindow):
             if self.application.mode is not TimerMode.WAITING:
                 event.ignore()
                 return
+            if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+                self.ambience_view.engine.stop_all()
             event.accept()
         elif answer is QMessageBox.StandardButton.Discard:
+            if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+                self.ambience_view.engine.stop_all()
             event.accept()
         else:
             event.ignore()

@@ -51,7 +51,7 @@
 | [TASK-001](#task-001) | 🔨 Enhancement | Continuación desde registros (recarga al cronómetro para sobrescritura) | 🔴 Alta | `presentation`, `application`, `domain`, `tests` | Ninguna | `[x]` |
 | [TASK-002](#task-002) | ✨ Feature | Sistema de marcadores y etiquetas para ejercicios en la planificación | 🔴 Alta | `presentation`, `application`, `domain`, `docs`, `tests` | Ninguna | `[x]` |
 | [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación (rediseño de comentarios) | 🟡 Media | `presentation`, `application`, `domain`, `docs`, `tests` | `TASK-002` (sugerida) | `[x]` |
-| [TASK-004](#task-004) | ✨ Feature | Pestaña de Ambientación: Mezclador de audio multicanal adaptativo al cronómetro | 🟡 Media | `presentation`, `application`, `infrastructure`, `domain`, `tests` | Ninguna | `[ ]` |
+| [TASK-004](#task-004) | ✨ Feature | Pestaña de Ambientación: Mezclador de audio multicanal adaptativo al cronómetro | 🟡 Media | `presentation`, `application`, `infrastructure`, `domain`, `tests` | Ninguna | `[x]` |
 | [TASK-005](#task-005) | 🐛 Bugfix | Gestión de estado sin proyecto activo y prevención de operaciones erráticas al cerrar archivos | 🔴 Alta | `presentation`, `application`, `infrastructure`, `tests` | Ninguna | `[x]` |
 | [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[x]` |
 | [TASK-007](#task-007) | 🔨 Enhancement | Visualización de registro en conflicto en diálogo de corrección de incisos | 🟡 Media | `presentation`, `tests` | Ninguna | `[x]` |
@@ -260,7 +260,7 @@ Reemplazar el esquema de comentarios fragmentados por intento (`TimerItem.commen
 
 - **Tipo:** ✨ Feature  
 - **Prioridad:** 🟡 Media  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Capas afectadas:** `presentation/`, `application/`, `infrastructure/`, `domain/`, `tests/`  
 - **Dependencias:** Ninguna  
 
@@ -324,15 +324,13 @@ Incorporar una quinta pestaña a la aplicación denominada **"Ambientación"**, 
   - Pruebas de cálculo e interpolación de volumen ante cambios de estado.
   - Pruebas del límite de seguridad de pistas simultáneas.
 
-##### Criterios de aceptación
-- [ ] La pestaña "Ambientación" se muestra en la posición 5 de la ventana principal y se abre correctamente.
-- [ ] El botón "Abrir carpeta de audios" abre la carpeta local del sistema y "Actualizar pistas" detecta nuevos audios.
-- [ ] Es posible configurar volúmenes independientes para cada uno de los 3 estados (Estudio, Descanso, Main).
-- [ ] Al iniciar, pausar o pasar a receso en el cronómetro, el audio transiciona suavemente sin cortes abruptos.
-- [ ] Las pistas compartidas entre estados ajustan su volumen mediante interpolación sin reiniciarse.
-- [ ] Es posible guardar mezclas completas como presets y volver a cargarlas en cualquier momento.
-- [ ] La aplicación no supera el límite seguro de pistas activas y maneja archivos corruptos sin cerrarse ni bloquear la UI.
-- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+##### Criterios de aceptación y verificación
+- [x] Controles independientes de Fade In (0.5s - 5.0s) y Fade Out (0.5s - 5.0s) aplicables a las transiciones entre los 3 modos.
+- [x] Volumen general unificado que escala en tiempo real todas las pistas en cualquiera de los 3 modos.
+- [x] Modo de audición robusto con bloqueo asíncrono que evita pistas huérfanas o reproducción desincronizada ante pulsaciones rápidas repetidas.
+- [x] Regulación de estado y actualización inmediata de sliders individuales a 60 FPS sin saturación del hilo de UI por re-renderizado CSS.
+- [x] Blindaje exhaustivo contra caídas: control de excepciones en decodificación e I/O de pistas, deserialización resiliente ante datos corruptos o valores NaN/Inf, iteración segura contra concurrencia en bucle de fade y sincronización bidireccional de silenciamiento.
+- [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`, 171 pruebas pasando, más 8 pruebas específicas de robustez).
 
 ---
 

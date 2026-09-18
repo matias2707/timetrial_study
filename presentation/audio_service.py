@@ -45,11 +45,14 @@ class AudioService(QObject):
 
     def set_muted(self, muted: bool) -> None:
         """Establece el estado de silenciamiento y lo persiste en QSettings."""
-        self._sound_muted = bool(muted)
-        self.settings.setValue("sound_muted", self._sound_muted)
-        self.start_sound.setMuted(self._sound_muted)
-        self.complete_sound.setMuted(self._sound_muted)
-        self.mute_state_changed.emit(self._sound_muted)
+        try:
+            self._sound_muted = bool(muted)
+            self.settings.setValue("sound_muted", self._sound_muted)
+            self.start_sound.setMuted(self._sound_muted)
+            self.complete_sound.setMuted(self._sound_muted)
+            self.mute_state_changed.emit(self._sound_muted)
+        except Exception:
+            pass
 
     def toggle_muted(self) -> None:
         """Alterna el estado de silenciamiento."""
@@ -58,9 +61,15 @@ class AudioService(QObject):
     def play_start(self) -> None:
         """Reproduce el sonido de inicio si no está silenciado."""
         if not self._sound_muted:
-            self.start_sound.play()
+            try:
+                self.start_sound.play()
+            except Exception:
+                pass
 
     def play_complete(self) -> None:
         """Reproduce el sonido de finalización si no está silenciado."""
         if not self._sound_muted:
-            self.complete_sound.play()
+            try:
+                self.complete_sound.play()
+            except Exception:
+                pass

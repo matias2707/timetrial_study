@@ -341,3 +341,134 @@ class Record:
             created_at=str(data.get("created_at") or now_iso()),
             updated_at=str(data.get("updated_at") or now_iso()),
         )
+
+
+@dataclass
+class AmbienceStateMix:
+    """Configuración de volúmenes por pista (nombre_archivo -> volumen entre 0.0 y 1.0) para cada estado."""
+
+    study: dict[str, float] = field(default_factory=dict)
+    break_state: dict[str, float] = field(default_factory=dict)
+    main_state: dict[str, float] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "study": dict(self.study),
+            "break_state": dict(self.break_state),
+            "main_state": dict(self.main_state),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AmbienceStateMix":
+        def safe_clean_dict(raw: Any) -> dict[str, float]:
+            if not isinstance(raw, dict):
+                return {}
+            res: dict[str, float] = {}
+            for k, v in raw.items():
+                try:
+                    val = float(v)
+                    import math
+                    if not math.isnan(val) and not math.isinf(val):
+                        res[str(k)] = max(0.0, min(1.0, val))
+                except (ValueError, TypeError):
+                    continue
+            return res
+
+        if not isinstance(data, dict):
+            return cls()
+
+        return cls(
+            study=safe_clean_dict(data.get("study")),
+            break_state=safe_clean_dict(data.get("break_state")),
+            main_state=safe_clean_dict(data.get("main_state")),
+        )
+
+
+@dataclass
+class AmbiencePreset:
+    """Preset de configuración global de ambientación sonora."""
+
+    id: str
+    name: str
+    master_volume: float = 0.8
+    fade_duration_sec: float = 1.5  # Mantenido para retrocompatibilidad
+    fade_in_sec: float = 1.5
+    fade_out_sec: float = 1.5
+    mixes: AmbienceStateMix = field(default_factory=AmbienceStateMix)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "master_volume": self.master_volume,
+            "fade_duration_sec": self.fade_duration_sec,
+            "fade_in_sec": self.fade_in_sec,
+            "fade_out_sec": self.fade_out_sec,
+            "mixes": self.mixes.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AmbiencePreset":
+        if not isinstance(data, dict):
+            from uuid import uuid4
+            return cls(id=str(uuid4())[:8], name="Preset")
+
+        raw_mixes = data.get("mixes")
+        mixes = AmbienceStateMix.from_dict(raw_mixes) if isinstance(raw_mixes, dict) else AmbienceStateMix()
+
+        def safe_float(raw: Any, default: float) -> float:
+            try:
+                v = float(raw)
+                import math
+                if math.isnan(v) or math.isinf(v):
+                    return default
+                return v
+            except (ValueError, TypeError):
+                return default
+
+        base_fade = safe_float(data.get("fade_duration_sec"), 1.5)
+        fade_in = safe_float(data.get("fade_in_sec"), base_fade)
+        fade_out = safe_float(data.get("fade_out_sec"), base_fade)
+        master_vol = max(0.0, min(1.0, safe_float(data.get("master_volume"), 0.8)))
+
+        return cls(
+            id=str(data.get("id") or str(uuid4())[:8]),
+            name=str(data.get("name") or "Preset"),
+            master_volume=master_vol,
+            fade_duration_sec=base_fade,
+            fade_in_sec=fade_in,
+            fade_out_sec=fade_out,
+            mixes=mixes,
+        )
+
+
+def default_ambient_presets() -> list[AmbiencePreset]:
+    """Presets predeterminados de fábrica."""
+    return [
+        AmbiencePreset(
+            id="preset-default",
+            name="Por Defecto (Equilibrado)",
+            master_volume=0.8,
+            fade_duration_sec=1.5,
+            fade_in_sec=1.5,
+            fade_out_sec=1.5,
+            mixes=AmbienceStateMix(
+                study={},
+                break_state={},
+                main_state={},
+            ),
+        ),
+        AmbiencePreset(
+            id="preset-focus",
+            name="Enfoque Profundo",
+            master_volume=0.85,
+            fade_duration_sec=2.0,
+            fade_in_sec=2.0,
+            fade_out_sec=1.5,
+            mixes=AmbienceStateMix(
+                study={"Ruido Marron.mp3": 0.6, "Air Conditioner.m4a": 0.3},
+                break_state={"Ruido Marron.mp3": 0.15},
+                main_state={},
+            ),
+        ),
+    ]
