@@ -1,7 +1,7 @@
 # Product Backlog y Hoja de Ruta — Study Timetrial
 
 **Fecha de creación:** 2026-09-13  
-**Última actualización:** 2026-09-16  
+**Última actualización:** 2026-09-19  
 **Estado general:** En desarrollo activo  
 **Audiencia / Destino:** Desarrolladores humanos y Agentes Autónomos de IA  
 
@@ -19,6 +19,7 @@
 
 ### Estados de Tarea (Workflow Lifecycle)
 - `[ ]` **Pendiente (Ready):** Tarea especificada técnicamente y lista para ser tomada por un agente o desarrollador.
+- `[?]` **En revisión (In Review):** Tarea en etapa de análisis, diseño conceptual preliminar o validación de requisitos.
 - `[/]` **En progreso (In Progress):** Tarea actualmente en desarrollo activo en el workspace.
 - `[x]` **Completado (Done):** Código implementado, verificado manualmente y con el 100% de tests unitarios pasando.
 - `[-]` **Descartado / Pospuesto (Archived):** Tarea cancelada o postergada formalmente con justificación documentada.
@@ -56,6 +57,12 @@
 | [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma de cursada: Calendario con hitos de examen, ranking de tiempo neto y distribución 24h | 🟡 Media | `domain`, `application`, `presentation`, `docs`, `tests` | Ninguna | `[x]` |
 | [TASK-007](#task-007) | 🔨 Enhancement | Visualización de registro en conflicto en diálogo de corrección de incisos | 🟡 Media | `presentation`, `tests` | Ninguna | `[x]` |
 | [TASK-008](#task-008) | ⚡ Performance | Optimización de rendimiento en pestaña de Registros (eliminación de congelamiento en archivos grandes) | 🔴 Alta | `presentation`, `tests` | Ninguna | `[x]` |
+| [TASK-009](#task-009) | ✨ Feature | Exportación de registros y reportes analíticos (CSV compatible con Excel, resumen por guía y métricas de cursada) | 🟡 Media | `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[ ]` |
+| [TASK-010](#task-010) | ✨ Feature | Modo Pomodoro y Bloques de Enfoque con temporizador adaptativo, metas de intervalo y alertas de sesión | 🟡 Media | `domain`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
+| [TASK-011](#task-011) | ✨ Feature | Visión Global de la Carrera: Dashboard Multidisciplinar y Calendario Unificado de Exámenes | 🟡 Media | `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
+| [TASK-012](#task-012) | ✨ Feature | Motor de Audio Procedural: Generador de Ruido Sintetizado y Temporizador de Apagado Progresivo | 🟢 Baja | `infrastructure`, `presentation`, `tests` | `TASK-004` | `[?] En revisión` |
+| [TASK-013](#task-013) | 🛡️ Seguridad | Respaldo Automático y Sincronización Segura: Snapshots Rotativos y Exportación a Flashcards | 🟡 Media | `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
+| [TASK-014](#task-014) | 🔨 Enhancement | Rediseño integral del Cronómetro: Récord personal, KPIs diarios, Activity Strip 24h y controles jerárquicos | 🔴 Alta | `application`, `presentation`, `tests` | Ninguna | `[ ]` |
 
 ---
 
@@ -560,6 +567,309 @@ La optimización resuelve integralmente este cuello de botella desacoplando el c
 
 ---
 
+### TASK-009
+#### Exportación de registros y reportes analíticos (CSV compatible con Excel, resumen por guía y métricas de cursada)
+
+- **Tipo:** ✨ Feature  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[ ] Pendiente`  
+- **Capas afectadas:** `infrastructure/`, `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Permitir a los estudiantes exportar el historial de intentos y el análisis consolidado de la cursada a archivos externos para análisis en Excel/Google Sheets, copias de seguridad personales o presentación de reportes académicos. Se contemplan dos modalidades principales de reporte:
+1. **Exportación Detallada de Intentos (Nivel Registro):** Cada fila representa un intento registrado con fecha/hora legible (`YYYY-MM-DD HH:MM:SS`), guía/sección, número, ejercicio, inciso, tiempo neto (en segundos/formato `hh:mm:ss` y ms brutos), tiempo de descanso, estado (`Completado` / `Incompleto`), notas/apuntes y etiquetas asignadas con sus nombres legibles.
+2. **Reporte Resumen Consolidado (Nivel Guía / Ejercicio):** Métricas consolidadas agrupadas por sección y ejercicio: tiempo total invertido, tiempo promedio por ejercicio, cantidad de intentos realizados, tasa de completitud (`% completados`), notas vigentes y marcadores asociados.
+
+La exportación se genera en formato CSV con codificación UTF-8 con BOM (`utf-8-sig`) y delimitador configurable (por defecto `;` para Excel en español y `,` estándar), asegurando que caracteres con tildes, símbolos matemáticos y notas multilínea se abran de manera nativa e impecable sin desalinear columnas ni corromper caracteres.
+
+##### Casos de uso y flujo de interacción
+1. **Disparo desde Registros o Menú Principal:**
+   - Botón *"📤 Exportar"* en la barra de herramientas de `RecordsViewWidget` y opción en el menú principal *"Archivo > Exportar datos..."*.
+   - Se abre el diálogo modal `ExportDialog`.
+2. **Configuración en el Diálogo de Exportación:**
+   - **Alcance de los datos:**
+     - *Todos los registros*: exporta la totalidad del archivo activo.
+     - *Solo registros visibles / filtrados*: exporta respetando los filtros activos actuales en la tabla (búsqueda de texto o filtros Excel).
+     - *Rango de fechas personalizado*: selector de fecha inicio y fin.
+   - **Tipo de Reporte:**
+     - *Historial detallado de intentos*.
+     - *Resumen consolidado por guía y ejercicios*.
+   - **Configuración de Formato:** Selección de delimitador (Punto y coma `;` recomendado para Excel en español, o Coma `,`).
+3. **Generación y Confirmación:**
+   - Selección de destino mediante explorador de archivos nativo (`QFileDialog.getSaveFileName`).
+   - Notificación de éxito con ruta del archivo generado y botón de acceso rápido para *"Abrir carpeta contenedora"*.
+
+##### Cambios técnicos proyectados por capa
+- **`infrastructure/export_service.py` [NEW]:**
+  - Módulo desacoplado para formateo y escritura CSV compatible con RFC 4180:
+    - `export_items_to_csv(items: list[TimerItem], file_path: Path, delimiter: str = ";", tag_catalog: list[TagDefinition] | None = None) -> None`
+    - `export_summary_to_csv(sections_summary: list[dict], file_path: Path, delimiter: str = ";") -> None`
+  - Normalización de notas multilínea entrecomilladas, escape de delimitadores y escritura segura con encoding `utf-8-sig`.
+- **`application/application_service.py`:**
+  - Métodos coordinadores de exportación:
+    - `export_records(file_path: Path, items: list[TimerItem] | None = None, delimiter: str = ";") -> None`
+    - `export_course_summary(file_path: Path, delimiter: str = ";") -> None`
+- **`presentation/export_dialog.py` [NEW]:**
+  - Diálogo modal estilizado respetando tema claro y oscuro (`ThemeManager`), con radio buttons para alcance, tipo de reporte y selector de delimitador.
+- **`presentation/records_view.py` & `presentation/main_window.py`:**
+  - Agregar botón de acción `export_button` con ícono `fa5s.file-export` en la toolbar de Registros.
+  - Conexión al flujo de exportación con diálogos de confirmación y manejo de excepciones de I/O.
+- **`tests/test_export_service.py` [NEW]:**
+  - Pruebas unitarias de serialización CSV, verificación de cabeceras, escape de comillas/saltos de línea en notas, delimitadores alternativos y compatibilidad con BOM.
+
+##### Criterios de aceptación
+- [ ] La acción de exportación está disponible en la toolbar de Registros y en el menú principal.
+- [ ] Es posible exportar el historial completo o únicamente las filas filtradas en pantalla.
+- [ ] El archivo CSV generado se abre en Microsoft Excel sin desalinear columnas y con tildes/caracteres especiales íntegros.
+- [ ] Las notas multilínea y los nombres de las etiquetas se exportan correctamente.
+- [ ] El reporte de resumen calcula y totaliza correctamente tiempos y métricas de completitud por sección.
+- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-010
+#### Modo Pomodoro y Bloques de Enfoque con temporizador adaptativo, metas de intervalo y alertas de sesión
+
+- **Tipo:** ✨ Feature  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[?] En revisión`  
+- **Capas afectadas:** `domain/`, `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Incorporar la técnica de bloques de tiempo (estilo Pomodoro / Time-Boxing) directamente en el cronómetro principal (`HomeViewWidget`). El usuario puede alternar fluidamente entre el modo tradicional (**Cronometraje Libre**) y el **Modo Bloques de Enfoque**, donde se definen intervalos estructurados de estudio y descanso (ej. 25 min estudio / 5 min descanso, 50/10 o intervalos personalizados). 
+
+El temporizador adaptativo proyecta el tiempo restante del bloque activo hacia una meta visual clara, notificando acústica y visualmente al cumplirse el lapso sin interrumpir jamás la monotonía del reloj ni perder milisegundos netos si el estudiante continúa concentrado (*Overtime* protegido).
+
+##### Casos de uso y flujo de interacción
+1. **Conmutación de Modo en el Cronómetro (`HomeViewWidget`):**
+   - Selector compacto en la cabecera del cronómetro: `[ ⏱️ Libre ]` y `[ 🍅 Enfoque / Pomodoro ]`.
+   - Menú desplegable o botones rápidos para seleccionar perfiles estándar (`25 / 5 min`, `50 / 10 min`, `Personalizado...`).
+2. **Visualización durante el Bloque de Trabajo:**
+   - La tarjeta de ejercicio (`exercise_card`) destaca el **tiempo restante del bloque** en cuenta regresiva (ej. `24:15` restantes), acompañado de un indicador de progreso porcentual del intervalo.
+   - En una línea secundaria tenue se visualiza siempre el **tiempo neto acumulado total** del ejercicio actual, preservando la trazabilidad del intento.
+3. **Cumplimiento del Intervalo y Tiempo Extra (*Overtime*):**
+   - Al alcanzar los 00:00 del bloque, el sistema emite una campanada o aviso acústico suave (`AudioService`) y un destello visual no intrusivo en el cronómetro.
+   - **Overtime determinista:** El cronómetro no se frena abruptamente; si el usuario continúa resolviendo el ejercicio, el contador entra en tiempo extra (`+00:01`, `+00:02`...) con color distintivo (ámbar/dorado), garantizando que todo el tiempo se sume íntegramente a `exercise_time_ms`.
+4. **Ciclo de Descanso Estructurado:**
+   - Al presionar *"Descanso"* (`toggle_break`), se activa automáticamente el conteo regresivo del descanso asignado (ej. 5 minutos).
+   - Al terminar el descanso, se emite una notificación invitando a retomar el próximo bloque de enfoque.
+5. **Sinergia con el Mezclador de Ambientación:**
+   - La alternancia de estados de enfoque y descanso dispara automáticamente las transiciones y modulación de volumen del motor multicanal (`AmbienceEngine`), cambiando de la escena de Estudio a la escena de Descanso sin requerir clics adicionales.
+
+##### Cambios técnicos proyectados por capa
+- **`domain/models.py`:**
+  - Dataclass `PomodoroConfig(focus_minutes: int = 25, break_minutes: int = 5, long_break_minutes: int = 15, cycles_before_long: int = 4, auto_start_breaks: bool = False)`.
+- **`domain/timer_service.py`:**
+  - Incorporar soporte para modo de visualización regresiva y target de bloque:
+    - Métodos para consultar tiempo restante del bloque: `get_block_remaining_ms(target_ms: int) -> int` y `is_in_overtime(target_ms: int) -> bool`.
+    - Garantizar que la monotonía de `_sync()` y `time.perf_counter()` se mantenga inalterada y determinista.
+- **`application/application_service.py`:**
+  - Almacenar configuración activa de Pomodoro en sesión o preferencias.
+  - Notificar eventos de hito de bloque cumplido para disparar efectos sonoros.
+- **`presentation/home_view.py`:**
+  - Agregar barra de alternancia Modo Libre / Modo Pomodoro.
+  - Renderizar en el reloj principal el formato regresivo / overtime en modo Pomodoro.
+  - Conectar señal acústica al completar el bloque.
+- **`tests/test_pomodoro_timer.py` [NEW]:**
+  - Pruebas unitarias de cuenta regresiva, tiempo extra (overtime), cálculo de intervalos y no regresión de la acumulación de tiempos netos.
+
+##### Criterios de aceptación
+- [ ] El usuario puede alternar entre modo libre y modo pomodoro en cualquier momento.
+- [ ] En modo Pomodoro, el reloj muestra la cuenta regresiva hacia el intervalo configurado (25m, 50m o personalizado).
+- [ ] Al cumplirse el intervalo, se emite aviso acústico y el reloj pasa a contar tiempo extra (overtime) sumando al tiempo neto sin detenerse.
+- [ ] El descanso programado se activa al pulsar toggle_break calculando el intervalo de pausa.
+- [ ] La integración con el motor de audio (`AmbienceEngine`) modula fluidamente las escenas al alternar fases.
+- [ ] La suite completa de pruebas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-011
+#### Visión Global de la Carrera: Dashboard Multidisciplinar y Calendario Unificado de Exámenes
+
+- **Tipo:** ✨ Feature  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[?] En revisión`  
+- **Capas afectadas:** `infrastructure/`, `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Consolidar la actividad académica de todas las materias del estudiante en una vista panorámica unificada. Actualmente cada materia (`Record`) reside en un archivo `.json` independiente en `data/records/`. Esta tarea introduce un panel global (accesible desde la barra de herramientas o el diálogo de bienvenida) que escanea los archivos de materias para presentar:
+1. **Distribución de Esfuerzo Multidisciplinar:** Visualización comparativa de horas netas dedicadas por materia (semana actual vs. histórica) para balancear la carga de estudio.
+2. **Calendario Unificado de Exámenes:** Cronograma consolidado con todos los hitos evaluativos (`planner_schedule.milestones`) de todas las materias cargadas, ordenados por inminencia con cuenta regresiva unificada (*"En 4 días: 1er Parcial Álgebra · En 11 días: 1er Parcial Física"*).
+3. **Selector y Tarjetas Rápidas de Materia:** Vista rápida del % de avance global de cada materia y acceso en 1 clic para abrir y conmutar el archivo activo.
+
+##### Casos de uso y flujo de interacción
+1. **Acceso:** Botón *"🌐 Panorama Global"* en la barra de herramientas o acceso desde el diálogo inicial `WelcomeDialog`.
+2. **Exploración:**
+   - Tarjetas por materia con horas estudiadas, cantidad de ejercicios completados y próximo examen.
+   - Gráfico de barras o dona con distribución de horas de estudio en los últimos 7 y 30 días.
+   - Lista cronológica transversal de exámenes con insignias de tipo (🎯 Parcial, 🔄 Recuperatorio, 🏁 Final).
+3. **Navegación Fluida:** Al hacer clic en *"Abrir materia"* sobre una tarjeta, se carga dicho registro sin fricción en la ventana principal.
+
+##### Cambios técnicos proyectados por capa
+- **`infrastructure/storage_service.py`:**
+  - Método `scan_all_records(records_dir: Path) -> list[RecordMetadataSummary]` que extrae metadatos ligeros (nombre, fecha de actualización, tiempo neto acumulado, hitos próximos) sin retener la totalidad de los objetos en memoria.
+- **`application/global_dashboard_service.py` [NEW]:**
+  - Lógica de consolidación: agregación de horas semanales por materia y ordenamiento temporal transversal de hitos de examen.
+- **`presentation/global_dashboard_dialog.py` [NEW]:**
+  - Diálogo modal maximizable con tarjetas de materia, gráfico de distribución y lista de próximos exámenes con tokens del tema activo.
+- **`presentation/main_window.py`:**
+  - Botón en toolbar para desplegar el panorama global y sincronización al cambiar de materia activa.
+- **`tests/test_global_dashboard.py` [NEW]:**
+  - Pruebas de escaneo tolerante ante archivos ajenos/corruptos, agregación correcta de horas y ordenamiento de hitos.
+
+##### Criterios de aceptación
+- [ ] Escaneo de todos los `.json` válidos en `data/records/` sin fallos si un archivo está dañado.
+- [ ] Listado consolidado de exámenes ordenado por fecha con días restantes.
+- [ ] Desglose de horas netas estudiadas por materia en la última semana.
+- [ ] Conmutación inmediata a cualquier materia haciendo clic en su tarjeta.
+- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-012
+#### Motor de Audio Procedural: Generador de Ruido Sintetizado y Temporizador de Apagado Progresivo
+
+- **Tipo:** ✨ Feature  
+- **Prioridad:** 🟢 Baja  
+- **Estado:** `[?] En revisión`  
+- **Capas afectadas:** `infrastructure/`, `presentation/`, `tests/`  
+- **Dependencias:** `TASK-004`  
+
+##### Descripción funcional
+Evolucionar la pestaña de **Ambientación** incorporando síntesis matemática de ruido en tiempo real (eliminando la dependencia estricta de archivos locales de audio para sonidos base) y gestión inteligente de energía/silencio ante pausas prolongadas:
+1. **Generador Procedural de Ruido (0 MB en disco):**
+   - Algoritmo de síntesis para **Ruido Blanco** (distribución uniforme/gaussiana), **Ruido Rosa** (filtro $1/f$) y **Ruido Marrón** ($1/f^2$ mediante integración browniana).
+   - Generación continua en streaming hacia `QAudioSink` de `PySide6.QtMultimedia`.
+   - Control de ecualización básico: deslizador de filtro pasa-bajos para calibrar la calidez del sonido acústico.
+2. **Temporizador de Apagado Progresivo (*Sleep / Idle Fade-out Timer*):**
+   - Si el cronómetro permanece pausado o inactivo más allá de un tiempo configurable (ej. 15, 30 o 45 min), el motor ejecuta un *fade-out* gradual hasta silenciarse por completo para cuidar los oídos del estudiante y evitar consumo de batería.
+
+##### Casos de uso y flujo de interacción
+1. En la pestaña de Ambientación, sección *"Sintetizador de Ruido"* junto a la lista de pistas locales.
+2. Posibilidad de activar Ruido Blanco, Rosa o Marrón en cualquiera de las 3 escenas (Estudio, Descanso, Espera) con volumen individual regulable.
+3. Selector de tiempo de apagado en la barra superior de la pestaña (`Desactivado`, `15 min`, `30 min`, `45 min`).
+
+##### Cambios técnicos proyectados por capa
+- **`infrastructure/procedural_audio.py` [NEW]:**
+  - Generador matemático de búferes PCM flotantes/enteros para ruido blanco, rosa y marrón con filtro IIR.
+- **`infrastructure/audio_mixer_engine.py`:**
+  - Integración de pistas procedurales con el mezclador maestro y detección de inactividad para activar el temporizador de apagado.
+- **`presentation/ambience_view.py`:**
+  - Controles de selección de ruido sintetizado y selector de tiempo de *Sleep Timer*.
+- **`tests/test_procedural_audio.py` [NEW]:**
+  - Pruebas matemáticas de generación de muestras de audio, no saturación (*clipping*) y lógica de desvanecimiento por inactividad.
+
+##### Criterios de aceptación
+- [ ] Generación continua de ruido blanco, rosa y marrón sin chasquidos ni caídas de rendimiento.
+- [ ] Integración completa con el volumen master y perfiles de escena (Estudio/Descanso/Espera).
+- [ ] El temporizador de apagado reduce el volumen progresivamente ante pausas prolongadas.
+- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-013
+#### Respaldo Automático y Sincronización Segura: Snapshots Rotativos y Exportación a Flashcards
+
+- **Tipo:** 🛡️ Seguridad / ✨ Feature  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[?] En revisión`  
+- **Capas afectadas:** `infrastructure/`, `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Proteger la integridad de los datos de estudio frente a sobrescrituras accidentales o problemas de sincronización en la nube (Google Drive, Dropbox, OneDrive) y ofrecer interoperabilidad con plataformas de repaso espaciado:
+1. **Snapshots Rotativos Automáticos (*Auto-backup*):**
+   - Antes de cada guardado con modificaciones, se genera un snapshot fechado en `data/backups/<materia>_<timestamp>.json`.
+   - Límite de retención rotativo configurable (últimos 10 a 20 respaldos por materia con deduplicación por hash SHA-256).
+   - Diálogo modal *"Restaurar versión anterior..."* accesible desde el menú Archivo para volver a un punto en el tiempo en 1 clic.
+2. **Exportación a Flashcards (Anki / TSV):**
+   - Exportación de ejercicios con etiquetas críticas (*"Rehacer"*, *"Duda para clase"*) o con notas cargadas a formato TSV compatible con Anki:
+     - Anverso: Identificador de Guía, Ejercicio, Inciso, Estado y Etiquetas.
+     - Reverso: Apuntes y notas tomadas por el estudiante + Tiempo neto invertido.
+
+##### Casos de uso y flujo de interacción
+1. Si un usuario sobrescribe o corrompe un intento por error, abre *"Archivo > Restaurar copia de respaldo..."*, examina las marcas temporales y presiona *"Restaurar"*.
+2. Para repasar en el celular, presiona *"Exportar a Flashcards (Anki)"*, filtra por la etiqueta *"Rehacer"* y genera el archivo para importar en AnkiWeb.
+
+##### Cambios técnicos proyectados por capa
+- **`infrastructure/backup_service.py` [NEW]:**
+  - Lógica atómica de snapshot, cálculo de hash SHA-256 para omitir duplicados y depuración FIFO según cuota máxima.
+- **`infrastructure/storage_service.py`:**
+  - Delegación a `backup_service` antes de sobrescribir el archivo JSON destino.
+- **`infrastructure/anki_export_service.py` [NEW]:**
+  - Formateo de archivo de texto delimitado por tabulaciones (TSV) con mapeo anverso/reverso.
+- **`presentation/backup_dialog.py` [NEW]:**
+  - Diálogo modal para listar copias de seguridad con fecha, tamaño, conteo de registros y botón de restauración.
+- **`tests/test_backup_service.py` [NEW]:**
+  - Pruebas de guardado, rotación de archivos antiguos, detección de duplicados y restauración exitosa.
+
+##### Criterios de aceptación
+- [ ] Se crean snapshots en `data/backups/` antes de cada guardado con cambios reales.
+- [ ] La rotación mantiene el límite fijado eliminando los respaldos más antiguos.
+- [ ] El diálogo de restauración recupera la versión seleccionada sin pérdida de consistencia.
+- [ ] La exportación a Anki genera un archivo TSV válido y legible por la plataforma de flashcards.
+- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-014
+#### Rediseño integral del Cronómetro: Récord personal, KPIs diarios, Activity Strip 24h y controles jerárquicos
+
+- **Tipo:** 🔨 Enhancement / ✨ Feature  
+- **Prioridad:** 🔴 Alta  
+- **Estado:** `[ ] Pendiente`  
+- **Capas afectadas:** `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Modernizar y enriquecer la pestaña principal del Cronómetro (`HomeViewWidget`) para transformar la experiencia cotidiana de estudio en un centro de comando dinámico, motivador y libre de ruido visual:
+1. **Tiempo Récord del Ejercicio (*Personal Best*):** Insignia contextual que exhibe al instante el menor tiempo neto completado con éxito (`completed == True`) registrado históricamente para el ejercicio e inciso seleccionado (`🏆 Récord: 04:12`), o `🏆 Primer intento` si no cuenta con marcas previas. Se actualiza de inmediato al modificar los selectores de ubicación.
+2. **Doble Bloque de KPIs Diarios:** Desglose independiente en la cabecera entre el tiempo neto acumulado (`⏱️ Estudiado hoy`), la cantidad de ejercicios únicos resueltos con éxito (`🎯 X resueltos`) y el volumen total de intentos registrados (`⚡ Y intentos`).
+3. **Cinta de Actividad Diaria (*Today's Activity Strip / Heatmap 24h*):** Franja horizontal compacta ubicada en la parte superior con 24 segmentos horarios (de 00:00 a 23:00 hs). Cada celda refleja el tiempo estudiado en dicha hora con una escala de intensidad en verde/esmeralda, destacando visualmente la hora actual y ofreciendo tooltips detallados al pasar el cursor.
+4. **Optimización de Titulares y Lenguaje Visual:** Depuración de titulares redundantes (`"CONTROLES DE SESIÓN"`, `"UBICACIÓN ACTUAL"`), simplificación de etiquetas de relojes (`"TIEMPO EJERCICIO"` pasa a `"ENFOQUE"`, `"RECESO ACUMULADO"` pasa a `"DESCANSO"`) y sustitución del texto técnico de cabecera por el nombre contextual de la materia activa.
+5. **Ergonomía y Jerarquía de Controles en 2 Niveles:**
+   - **Nivel 1 — Motor de Tiempo (Fila Hero, 46px):** `[ ▶ INICIAR / ⏸ PAUSAR ]` (botón dominante de 46px con color de estado dinámico) y `[ ☕ TOMAR DESCANSO / ⚡ REANUDAR ]` para transiciones de pausa inmediatas.
+   - **Nivel 2 — Resolución y Contexto (Fila Secundaria, 38px):** `[ ✓ COMPLETADO ]` (verde éxito), `[ ✗ INCOMPLETO ]` (rojo tenue), `[ ■ DETENER ]` (estilo outline/ghost), `[ 📝 APUNTES ]` y `[ 🏷️ MARCADORES ]` con indicadores reactivos de contenido existente.
+
+##### Casos de uso y flujo de interacción
+1. **Selección y Feedback Inmediato:** El estudiante selecciona *"Guía 2 · Ejercicio 5"*; la interfaz actualiza reactivamente el badge de récord personal (`🏆 Récord: 06:15`) y los indicadores de notas/etiquetas previas.
+2. **Ciclo de Concentración y Descanso:** El estudiante presiona `INICIAR ENFOQUE` (botón grande verde). Al requerir una pausa, presiona `TOMAR DESCANSO` con 1 solo clic; el mezclador de audio ambiental modula automáticamente el volumen y el reloj pasa a contar el descanso.
+3. **Cierre de Intento:** Al finalizar, presiona `COMPLETADO` en la fila secundaria; el intento se guarda, se refresca el récord personal si se batió la marca y se ilumina el bloque de la hora actual en el Activity Strip superior.
+
+##### Cambios técnicos proyectados por capa
+- **`application/statistics_service.py`:**
+  - `compute_exercise_personal_best_ms(record: Record, section_type: str, section_number: int, exercise: int, inciso: int | None) -> int | None`: consulta determinista en memoria del mínimo tiempo neto en items completados.
+  - `compute_today_timeline_buckets(record: Record, reference_date: date | None = None) -> list[dict]`: buckets horarios de 0 a 23 con milisegundos netos, conteo de intentos y flag de actividad.
+  - `compute_today_summary_metrics(record: Record, reference_date: date | None = None) -> dict`: retorna horas de estudio, ejercicios únicos completados y total de intentos de la jornada.
+- **`application/application_service.py`:**
+  - Métodos `get_current_personal_best()`, `get_today_activity_strip_data()` y `get_today_summary_metrics()`.
+- **`presentation/today_activity_strip_widget.py` [NEW]:**
+  - Componente gráfico nativo con 24 celdas horarias, colores adaptativos a tema claro/oscuro, halo de hora activa y tooltips informativos.
+- **`presentation/home_view.py`:**
+  - Integración del Activity Strip en la zona superior.
+  - Reestructuración de la cabecera con tarjetas independientes de KPIs del día.
+  - Badge dinámico de tiempo récord en la tarjeta de ubicación.
+  - Reorganización de la botonera en dos niveles jerárquicos (Hero y Resolución/Contexto).
+- **`presentation/theme.py` & `presentation/theme_tokens.py`:**
+  - Tokens para intensidades del Activity Strip y estilos diferenciados para botones primarios y secundarios.
+- **`tests/test_home_analytics.py` [NEW]:**
+  - Pruebas unitarias de cálculo de récord personal, métricas diarias divididas y buckets de actividad horaria.
+- **`tests/test_home_view_redesign.py` [NEW]:**
+  - Pruebas de integración visual de la vista rediseñada.
+
+##### Criterios de aceptación
+- [ ] El récord personal se actualiza dinámicamente al cambiar de ejercicio o inciso, mostrando el menor tiempo completado o "Primer intento".
+- [ ] La cabecera muestra en bloques separados el tiempo neto de hoy, la cantidad de ejercicios únicos resueltos y los intentos totales.
+- [ ] El Activity Strip de 24 horas refleja con exactitud los lapsos estudiados hoy en la franja horaria correspondiente.
+- [ ] El panel de botones organiza el inicio/descanso en la fila primaria grande y las acciones de cierre/apuntes en la fila secundaria.
+- [ ] Los titulares depurados eliminan redundancias ("UBICACIÓN ACTUAL", "CONTROLES DE SESIÓN", etc.).
+- [ ] La suite automatizada de pruebas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
 ## 4. Backlog de Futuras Mejoras (Ideas en Evaluación)
 
 ### 🎯 Metas, Ritmo y Estimaciones
@@ -576,21 +886,20 @@ La optimización resuelve integralmente este cuello de botella desacoplando el c
 - [ ] Exportar y compartir plantillas de planificación (estructura de guías sin tiempos privados).
 
 ### 🛡️ Seguridad y Respaldo de Datos
-- [ ] Copias de seguridad automáticas rotativas (*Auto-backup*) en `data/backups/`.
+- [?] Copias de seguridad automáticas rotativas (*Auto-backup*) y exportación a flashcards (Anki) — *En revisión en [TASK-013](#task-013)*.
 - [ ] Detección preventiva de modificaciones externas del archivo JSON (sincronización con nubes tipo Google Drive/OneDrive).
 
 ### 🎧 Ambientación Avanzada
-- [ ] Generador de ruido procedural matemático (blanco, rosa, marrón) sin dependencia de archivos locales.
-- [ ] Temporizador de apagado progresivo (*Sleep/Fade-out Timer*) ante inactividad prolongada en pausa.
+- [?] Generador de ruido procedural matemático (blanco, rosa, marrón) y temporizador de apagado progresivo — *En revisión en [TASK-012](#task-012)*.
 
 ### 📊 Registros y Reportes
-- [ ] Heatmap global de constancia multidisciplinar (escaneo agregado de todas las materias en `data/records/`).
-- [ ] Exportación de registros y estadísticas a formatos externos (CSV, Excel `.xlsx`, PDF).
+- [?] Heatmap global y dashboard de constancia multidisciplinar (todas las materias) — *En revisión en [TASK-011](#task-011)*.
+- [x] Exportación de registros y estadísticas a formatos externos (CSV / Excel) — *Especificada formalmente en [TASK-009](#task-009)*.
 - [ ] Comparativa de rendimiento histórico entre diferentes guías o materias.
 
 ### ⏱️ Cronómetro y Sesión
 - [ ] Atajos de teclado globales configurables para iniciar/pausar/descanso desde cualquier vista o ventana secundaria.
-- [ ] Temporizador tipo Pomodoro configurable con avisos sonoros y visuales.
+- [?] Temporizador tipo Pomodoro configurable con avisos sonoros y visuales — *En revisión en [TASK-010](#task-010)*.
 
 ### 🎨 UI / UX y Configuración
 - [ ] Personalización avanzada de paleta de colores y selección de fuentes.
