@@ -198,8 +198,10 @@ class MainWindow(QMainWindow):
             ("fa5s.tasks", "Planificador"),
             ("fa5s.headphones", "Ambientación"),
         ]
+        active_color = "#10b981" if self.is_dark_mode else "#059669"
+        inactive_color = "#94a3b8" if self.is_dark_mode else "#64748b"
         for i, (icon_name, _title) in enumerate(icons):
-            color = "#bef264" if i == index else "#94a3b8"
+            color = active_color if i == index else inactive_color
             self.tabs.setTabIcon(i, qta.icon(icon_name, color=color))
 
         if index == 1:
@@ -289,12 +291,18 @@ class MainWindow(QMainWindow):
 
     def update_theme_icons(self) -> None:
         self.toolbar.update_theme_icons(self.is_dark_mode)
+        if hasattr(self, "tabs"):
+            self._on_tab_changed(self.tabs.currentIndex())
 
     # --- Delegaciones a vistas para compatibilidad 100% con tests y callers ---
 
     @property
     def table(self):
         return self.records_view.table
+
+    @property
+    def planner_view(self) -> PlannerWidget:
+        return self.planner
 
     @property
     def column_sort_states(self) -> dict[str, str]:

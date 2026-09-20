@@ -83,15 +83,15 @@ class TrackCardWidget(QFrame):
         top_row.addStretch()
 
         self.status_badge = QLabel("Pausado")
-        self.status_badge.setStyleSheet(
-            "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(100, 116, 139, 0.2); color: #94a3b8;"
-        )
+        self._last_status = "paused"
+        self._apply_status_badge_style("paused")
         top_row.addWidget(self.status_badge)
 
         self.mute_btn = QPushButton()
+        self.mute_btn.setObjectName("trackMuteBtn")
         self.mute_btn.setFixedSize(28, 28)
-        self.mute_btn.setIcon(qta.icon("fa5s.volume-up", color="#94a3b8"))
         self.mute_btn.setToolTip("Silenciar esta pista")
+        self._update_mute_icon()
         self.mute_btn.clicked.connect(self._on_mute_clicked)
         top_row.addWidget(self.mute_btn)
 
@@ -124,38 +124,62 @@ class TrackCardWidget(QFrame):
         self.slider.blockSignals(False)
         self.vol_label.setText(f"{int_val}%")
 
+    def _apply_status_badge_style(self, status: str | None = None) -> None:
+        if status is None:
+            status = getattr(self, "_last_status", "paused")
+        if status == "playing":
+            self.status_badge.setText("● En reproducción")
+            if self.is_dark:
+                self.status_badge.setStyleSheet(
+                    "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight: bold;"
+                )
+            else:
+                self.status_badge.setStyleSheet(
+                    "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #e7f4ec; border: 1px solid #b6e1c6; color: #047857; font-weight: bold;"
+                )
+        elif status == "error":
+            self.status_badge.setText("⚠️ Error de archivo")
+            if self.is_dark:
+                self.status_badge.setStyleSheet(
+                    "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: #f87171;"
+                )
+            else:
+                self.status_badge.setStyleSheet(
+                    "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #fae9e9; border: 1px solid #f4bcbc; color: #dc2626;"
+                )
+        else:
+            self.status_badge.setText("Pausado")
+            if self.is_dark:
+                self.status_badge.setStyleSheet(
+                    "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(100, 116, 139, 0.2); color: #94a3b8;"
+                )
+            else:
+                self.status_badge.setStyleSheet(
+                    "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #ede8dd; border: 1px solid #d5cdbf; color: #57534e;"
+                )
+
     def set_playback_status(self, status: str) -> None:
         """Actualiza el indicador visual de estado ('playing', 'paused', 'error')."""
         if getattr(self, "_last_status", None) == status:
             return
         self._last_status = status
-        if status == "playing":
-            self.status_badge.setText("● En reproducción")
-            self.status_badge.setStyleSheet(
-                "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(5, 150, 105, 0.2); color: #10b981; font-weight: bold;"
-            )
-        elif status == "error":
-            self.status_badge.setText("⚠️ Error de archivo")
-            self.status_badge.setStyleSheet(
-                "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: #ef4444;"
-            )
-        else:
-            self.status_badge.setText("Pausado")
-            self.status_badge.setStyleSheet(
-                "font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(100, 116, 139, 0.2); color: #94a3b8;"
-            )
+        self._apply_status_badge_style(status)
 
     def _on_slider_changed(self, value: int) -> None:
         vol = value / 100.0
         self.vol_label.setText(f"{value}%")
         self.volume_changed.emit(self.filename, vol)
 
-    def _on_mute_clicked(self) -> None:
-        self.is_muted = not self.is_muted
+    def _update_mute_icon(self) -> None:
         if self.is_muted:
             self.mute_btn.setIcon(qta.icon("fa5s.volume-mute", color="#ef4444"))
         else:
-            self.mute_btn.setIcon(qta.icon("fa5s.volume-up", color="#94a3b8"))
+            color = "#94a3b8" if self.is_dark else "#78716c"
+            self.mute_btn.setIcon(qta.icon("fa5s.volume-up", color=color))
+
+    def _on_mute_clicked(self) -> None:
+        self.is_muted = not self.is_muted
+        self._update_mute_icon()
         self.mute_toggled.emit(self.filename, self.is_muted)
 
     def update_theme(self, is_dark: bool) -> None:
@@ -163,6 +187,8 @@ class TrackCardWidget(QFrame):
         self.is_dark = is_dark
         icon_color = "#38bdf8" if self.is_dark else "#0284c7"
         self.icon_lbl.setPixmap(qta.icon(self._icon_name, color=icon_color).pixmap(20, 20))
+        self._apply_status_badge_style()
+        self._update_mute_icon()
 
 
 class AmbienceViewWidget(QWidget):
@@ -194,6 +220,9 @@ class AmbienceViewWidget(QWidget):
         for card in self.cards.values():
             card.update_theme(self.is_dark)
         self._update_scene_buttons()
+        if not self.engine.is_master_muted:
+            color = "#10b981" if self.is_dark else "#059669"
+            self.master_mute_btn.setIcon(qta.icon("fa5s.volume-up", color=color))
 
     def _build_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -386,10 +415,13 @@ class AmbienceViewWidget(QWidget):
 
         # 4. Scroll Area con lista de tarjetas de pistas
         self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("ambienceScroll")
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.viewport().setStyleSheet("background: transparent;")
 
         self.tracks_container = QWidget()
+        self.tracks_container.setObjectName("ambienceContainer")
         self.tracks_layout = QVBoxLayout(self.tracks_container)
         self.tracks_layout.setContentsMargins(0, 0, 0, 0)
         self.tracks_layout.setSpacing(10)
@@ -603,7 +635,8 @@ class AmbienceViewWidget(QWidget):
         if is_muted:
             self.master_mute_btn.setIcon(qta.icon("fa5s.volume-mute", color="#ef4444"))
         else:
-            self.master_mute_btn.setIcon(qta.icon("fa5s.volume-up", color="#10b981"))
+            color = "#10b981" if self.is_dark else "#059669"
+            self.master_mute_btn.setIcon(qta.icon("fa5s.volume-up", color=color))
 
     def _on_fade_in_slider_changed(self, value: int) -> None:
         sec = value / 10.0

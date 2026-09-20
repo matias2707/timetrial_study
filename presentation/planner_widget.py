@@ -282,6 +282,7 @@ class ExerciseCellButton(QPushButton):
         font_size = "11px" if len(self.node.display_label) >= 4 else "12px"
         font_weight = "700" if status != STATUS_PENDING else "600"
 
+        hover_border = "#10b981" if self.is_dark else "#059669"
         self.setStyleSheet(
             f"""
             QPushButton {{
@@ -295,7 +296,7 @@ class ExerciseCellButton(QPushButton):
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
-                border-color: #bef264;
+                border-color: {hover_border};
             }}
             """
         )
@@ -617,21 +618,7 @@ class PlannerWidget(QWidget):
         top_bar.addWidget(self.btn_sync)
 
         self.btn_add_section = QPushButton("Nueva Sección / Guía")
-        self.btn_add_section.setIcon(qta.icon("fa5s.plus-circle", color="#0f172a" if not is_dark_mode else "#0f172a"))
-        self.btn_add_section.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #bef264;
-                color: #0f172a;
-                font-weight: 700;
-                padding: 7px 14px;
-                border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: #a3e635;
-            }
-            """
-        )
+        self._update_btn_add_section_style()
         self.btn_add_section.clicked.connect(self._on_add_section)
         top_bar.addWidget(self.btn_add_section)
 
@@ -643,8 +630,8 @@ class PlannerWidget(QWidget):
         self.summary_frame.setStyleSheet(
             f"""
             QFrame#planner_summary_frame {{
-                background-color: {"#0f172a" if is_dark_mode else "#ffffff"};
-                border: 1px solid {"#1e293b" if is_dark_mode else "#e2e8f0"};
+                background-color: {"#111827" if is_dark_mode else "#fdfcf7"};
+                border: 1px solid {"#1e293b" if is_dark_mode else "#e4ded4"};
                 border-radius: 12px;
                 padding: 12px 16px;
             }}
@@ -653,10 +640,10 @@ class PlannerWidget(QWidget):
         sum_layout = QHBoxLayout(self.summary_frame)
         sum_layout.setSpacing(20)
 
-        self.lbl_card_total = self._make_stat_badge("Total Planificado", "0", "#38bdf8")
-        self.lbl_card_completed = self._make_stat_badge("Hechos", "0", "#bef264")
-        self.lbl_card_failed = self._make_stat_badge("En Dificultad", "0", "#ef4444")
-        self.lbl_card_pending = self._make_stat_badge("Pendientes", "0", "#94a3b8")
+        self.lbl_card_total = self._make_stat_badge("Total Planificado", "0", "total_planificado")
+        self.lbl_card_completed = self._make_stat_badge("Hechos", "0", "hechos")
+        self.lbl_card_failed = self._make_stat_badge("En Dificultad", "0", "en_dificultad")
+        self.lbl_card_pending = self._make_stat_badge("Pendientes", "0", "pendientes")
 
         sum_layout.addLayout(self.lbl_card_total)
         sum_layout.addLayout(self.lbl_card_completed)
@@ -704,31 +691,96 @@ class PlannerWidget(QWidget):
 
         self.refresh_view()
 
-    def _make_stat_badge(self, title: str, value: str, color_hex: str) -> QVBoxLayout:
+    def _update_btn_add_section_style(self) -> None:
+        if self.is_dark:
+            self.btn_add_section.setIcon(qta.icon("fa5s.plus-circle", color="#0b0f17"))
+            self.btn_add_section.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: #10b981;
+                    color: #0b0f17;
+                    font-weight: 700;
+                    padding: 7px 14px;
+                    border-radius: 8px;
+                    border: 1px solid #10b981;
+                }
+                QPushButton:hover {
+                    background-color: #059669;
+                    border-color: #059669;
+                }
+                """
+            )
+        else:
+            self.btn_add_section.setIcon(qta.icon("fa5s.plus-circle", color="#ffffff"))
+            self.btn_add_section.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: #059669;
+                    color: #ffffff;
+                    font-weight: 700;
+                    padding: 7px 14px;
+                    border-radius: 8px;
+                    border: 1px solid #047857;
+                }
+                QPushButton:hover {
+                    background-color: #047857;
+                    border-color: #047857;
+                }
+                """
+            )
+
+    def _get_badge_color(self, key: str) -> str:
+        colors = {
+            "total_planificado": "#38bdf8" if self.is_dark else "#0284c7",
+            "hechos": "#10b981" if self.is_dark else "#059669",
+            "en_dificultad": "#f87171" if self.is_dark else "#dc2626",
+            "pendientes": "#cbd5e1" if self.is_dark else "#57534e",
+        }
+        return colors.get(key, "#10b981" if self.is_dark else "#059669")
+
+    def _make_stat_badge(self, title: str, value: str, key: str) -> QVBoxLayout:
         v = QVBoxLayout()
         v.setSpacing(1)
         t_lbl = QLabel(title)
-        t_lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+        t_lbl.setObjectName(f"stat_title_{key}")
+        t_lbl.setStyleSheet(f"color: {'#94a3b8' if self.is_dark else '#78716c'}; font-size: 11px; font-weight: 600;")
         v_lbl = QLabel(value)
-        v_lbl.setObjectName(f"stat_val_{title.lower().replace(' ', '_')}")
-        v_lbl.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {color_hex};")
+        v_lbl.setObjectName(f"stat_val_{key}")
+        color = self._get_badge_color(key)
+        v_lbl.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {color};")
         v.addWidget(t_lbl)
         v.addWidget(v_lbl)
         return v
+
+    def _update_stat_badge_styles(self) -> None:
+        muted = "#94a3b8" if self.is_dark else "#78716c"
+        for key in ("total_planificado", "hechos", "en_dificultad", "pendientes"):
+            color = self._get_badge_color(key)
+            w_val = self.summary_frame.findChild(QLabel, f"stat_val_{key}")
+            if w_val:
+                w_val.setStyleSheet(f"font-size: 18px; font-weight: 800; color: {color};")
+            w_title = self.summary_frame.findChild(QLabel, f"stat_title_{key}")
+            if w_title:
+                w_title.setStyleSheet(f"color: {muted}; font-size: 11px; font-weight: 600;")
 
     def set_dark_mode(self, is_dark: bool) -> None:
         self.is_dark = is_dark
         self.summary_frame.setStyleSheet(
             f"""
             QFrame#planner_summary_frame {{
-                background-color: {"#0f172a" if is_dark else "#ffffff"};
-                border: 1px solid {"#1e293b" if is_dark else "#e2e8f0"};
+                background-color: {"#111827" if is_dark else "#fdfcf7"};
+                border: 1px solid {"#1e293b" if is_dark else "#e4ded4"};
                 border-radius: 12px;
                 padding: 12px 16px;
             }}
             """
         )
         self.global_progress_bar.set_dark_mode(is_dark)
+        if hasattr(self, "btn_add_section"):
+            self._update_btn_add_section_style()
+        self._update_stat_badge_styles()
+        if self.app_service.is_record_open:
+            self.refresh_view()
     def set_empty_state(self, is_empty: bool) -> None:
         """Habilita o deshabilita acciones de planificación según si hay proyecto activo."""
         self.btn_sync.setEnabled(not is_empty)

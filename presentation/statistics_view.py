@@ -51,11 +51,60 @@ class StatisticsViewWidget(QWidget):
 
         self._build_ui()
 
+    def _get_toggle_button_style(self, is_dark: bool) -> str:
+        if is_dark:
+            return """
+                QPushButton {
+                    background-color: transparent;
+                    border: 1px solid #334155;
+                    border-radius: 6px;
+                    color: #94a3b8;
+                    padding: 4px 12px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: rgba(255, 255, 255, 0.05);
+                    color: #f8fafc;
+                }
+                QPushButton:checked {
+                    background-color: #065f46;
+                    border-color: #10b981;
+                    color: #ecfdf5;
+                    font-weight: 700;
+                }
+            """
+        return """
+            QPushButton {
+                background-color: #fdfcf7;
+                border: 1px solid #d5cdbf;
+                border-radius: 6px;
+                color: #57534e;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #f5f1e8;
+                color: #1c1917;
+            }
+            QPushButton:checked {
+                background-color: #e7f4ec;
+                border-color: #059669;
+                color: #047857;
+                font-weight: 700;
+            }
+        """
+
     def set_dark_mode(self, is_dark: bool) -> None:
         self._is_dark_mode = is_dark
         self.weekly_chart.set_dark_mode(is_dark)
         self.course_heatmap.set_dark_mode(is_dark)
         self.hourly_chart.set_dark_mode(is_dark)
+        if hasattr(self, "btn_view_heatmap") and hasattr(self, "btn_view_weekly"):
+            st = self._get_toggle_button_style(is_dark)
+            self.btn_view_heatmap.setStyleSheet(st)
+            self.btn_view_weekly.setStyleSheet(st)
 
     def _build_ui(self) -> None:
         page_layout = QVBoxLayout(self)
@@ -99,27 +148,7 @@ class StatisticsViewWidget(QWidget):
         hero_top.addStretch()
 
         # Botones de alternancia de vista
-        toggle_style = """
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #334155;
-                border-radius: 6px;
-                color: #94a3b8;
-                padding: 4px 12px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.05);
-                color: #f8fafc;
-            }
-            QPushButton:checked {
-                background-color: #065f46;
-                border-color: #059669;
-                color: #ecfdf5;
-                font-weight: 700;
-            }
-        """
+        toggle_style = self._get_toggle_button_style(self._is_dark_mode)
 
         self.btn_view_heatmap = QPushButton("📅 Cronograma de Cursada")
         self.btn_view_heatmap.setCheckable(True)

@@ -162,7 +162,7 @@ class CourseHeatmapCanvas(QWidget):
             return
 
         left_m, top_m, bottom_m, cell_sz, sp = self._calc_geometry()
-        text_muted = QColor("#94a3b8" if self.is_dark else "#64748b")
+        text_muted = QColor("#94a3b8" if self.is_dark else "#78716c")
         font_labels = QFont("Segoe UI", 8, QFont.Weight.DemiBold)
         painter.setFont(font_labels)
 
@@ -224,18 +224,18 @@ class CourseHeatmapCanvas(QWidget):
 
         if is_past or (is_today and ex_ms > 0):
             if ex_ms == 0:
-                bg_color = QColor("#1e293b" if self.is_dark else "#e2e8f0")
+                bg_color = QColor("#1e293b" if self.is_dark else "#ede8dd")
             elif ex_ms < 3_600_000:  # < 1h
-                bg_color = QColor("#365314" if self.is_dark else "#d9f99d")
+                bg_color = QColor("#064e3b" if self.is_dark else "#bbf7d0")
             elif ex_ms < 7_200_000:  # 1-2h
-                bg_color = QColor("#4d7c0f" if self.is_dark else "#a3e635")
+                bg_color = QColor("#047857" if self.is_dark else "#4ade80")
             elif ex_ms < 10_800_000:  # 2-3h
-                bg_color = QColor("#65a30d" if self.is_dark else "#84cc16")
+                bg_color = QColor("#059669" if self.is_dark else "#16a34a")
             else:  # >= 3h
-                bg_color = QColor("#84cc16" if self.is_dark else "#4d7c0f")
+                bg_color = QColor("#10b981" if self.is_dark else "#15803d")
         else:
-            # Días futuros: silueta tenue
-            bg_color = QColor("#0f172a" if self.is_dark else "#f8fafc")
+            # Días futuros: silueta tenue tono papel
+            bg_color = QColor("#0f172a" if self.is_dark else "#f7f4ed")
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(bg_color))
@@ -243,7 +243,7 @@ class CourseHeatmapCanvas(QWidget):
 
         # Borde para días futuros dentro de la cursada
         if is_future:
-            border_pen = QPen(QColor("#334155" if self.is_dark else "#cbd5e1"), 1.0, Qt.PenStyle.DashLine)
+            border_pen = QPen(QColor("#334155" if self.is_dark else "#d5cdbf"), 1.0, Qt.PenStyle.DashLine)
             painter.setPen(border_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 3.0, 3.0)
@@ -325,20 +325,7 @@ class CourseHeatmapWidget(QWidget):
         b_layout.addStretch()
 
         self.btn_config_schedule = QPushButton("📅 Configurar Cronograma")
-        self.btn_config_schedule.setStyleSheet("""
-            QPushButton {
-                font-size: 11px;
-                font-weight: 600;
-                padding: 3px 10px;
-                border-radius: 6px;
-                background-color: rgba(56, 189, 248, 0.15);
-                color: #38bdf8;
-                border: 1px solid rgba(56, 189, 248, 0.3);
-            }
-            QPushButton:hover {
-                background-color: rgba(56, 189, 248, 0.25);
-            }
-        """)
+        self._update_schedule_btn_style()
         self.btn_config_schedule.clicked.connect(self.request_configure_schedule.emit)
         b_layout.addWidget(self.btn_config_schedule)
 
@@ -366,23 +353,67 @@ class CourseHeatmapWidget(QWidget):
         leg_layout.setContentsMargins(4, 2, 4, 2)
         leg_layout.setSpacing(14)
 
-        leg_text = QLabel(
-            "<span style='color: #94a3b8;'>Intensidad de estudio:</span> "
-            "<span style='color: #1e293b;'>■</span> "
-            "<span style='color: #365314;'>■</span> "
-            "<span style='color: #4d7c0f;'>■</span> "
-            "<span style='color: #84cc16;'>■</span> "
-            "&nbsp;&nbsp;·&nbsp;&nbsp;"
-            "<span style='color: #38bdf8;'>⭕ Hoy</span> "
-            "&nbsp;&nbsp;·&nbsp;&nbsp;"
-            "<span style='color: #ef4444;'>●</span> "
-            "<span style='color: #f59e0b;'>●</span> "
-            "<span style='color: #a855f7;'>● Hitos y exámenes</span>"
-        )
-        leg_text.setStyleSheet("font-size: 11px;")
-        leg_layout.addWidget(leg_text)
+        self.leg_text = QLabel()
+        self.leg_text.setStyleSheet("font-size: 11px;")
+        self._update_legend_text()
+        leg_layout.addWidget(self.leg_text)
         leg_layout.addStretch()
         layout.addWidget(self.legend_widget)
+
+    def _update_schedule_btn_style(self) -> None:
+        if self.is_dark:
+            self.btn_config_schedule.setStyleSheet("""
+                QPushButton {
+                    font-size: 11px;
+                    font-weight: 600;
+                    padding: 3px 10px;
+                    border-radius: 6px;
+                    background-color: rgba(56, 189, 248, 0.15);
+                    color: #38bdf8;
+                    border: 1px solid rgba(56, 189, 248, 0.3);
+                }
+                QPushButton:hover {
+                    background-color: rgba(56, 189, 248, 0.25);
+                }
+            """)
+        else:
+            self.btn_config_schedule.setStyleSheet("""
+                QPushButton {
+                    font-size: 11px;
+                    font-weight: 600;
+                    padding: 3px 10px;
+                    border-radius: 6px;
+                    background-color: #f0f9ff;
+                    color: #0284c7;
+                    border: 1px solid #bae6fd;
+                }
+                QPushButton:hover {
+                    background-color: #e0f2fe;
+                }
+            """)
+
+    def _update_legend_text(self) -> None:
+        muted = "#94a3b8" if self.is_dark else "#78716c"
+        c0 = "#1e293b" if self.is_dark else "#ede8dd"
+        c1 = "#064e3b" if self.is_dark else "#bbf7d0"
+        c2 = "#047857" if self.is_dark else "#4ade80"
+        c3 = "#059669" if self.is_dark else "#16a34a"
+        c4 = "#10b981" if self.is_dark else "#15803d"
+        today_c = "#38bdf8" if self.is_dark else "#0284c7"
+        self.leg_text.setText(
+            f"<span style='color: {muted};'>Intensidad de estudio:</span> "
+            f"<span style='color: {c0};'>■</span> "
+            f"<span style='color: {c1};'>■</span> "
+            f"<span style='color: {c2};'>■</span> "
+            f"<span style='color: {c3};'>■</span> "
+            f"<span style='color: {c4};'>■</span> "
+            f"&nbsp;&nbsp;·&nbsp;&nbsp;"
+            f"<span style='color: {today_c};'>⭕ Hoy</span> "
+            f"&nbsp;&nbsp;·&nbsp;&nbsp;"
+            f"<span style='color: #ef4444;'>●</span> "
+            f"<span style='color: #f59e0b;'>●</span> "
+            f"<span style='color: #a855f7;'>● Hitos y exámenes</span>"
+        )
 
     def sizeHint(self) -> QSize:
         canvas_h = self.canvas.get_required_height() if hasattr(self, "canvas") else 220
@@ -391,6 +422,10 @@ class CourseHeatmapWidget(QWidget):
     def set_dark_mode(self, is_dark: bool) -> None:
         self.is_dark = is_dark
         self.canvas.set_dark_mode(is_dark)
+        if hasattr(self, "btn_config_schedule"):
+            self._update_schedule_btn_style()
+        if hasattr(self, "leg_text"):
+            self._update_legend_text()
 
     def set_heatmap_data(self, data: dict[str, Any]) -> None:
         """Actualiza todos los subcomponentes con los datos calculados de cursada."""

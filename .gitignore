@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 .venv-*/
 desactivar_telemetria.bat
+
+data/records/*.json
+data/*.json

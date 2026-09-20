@@ -69,6 +69,14 @@ class HomeViewWidget(QWidget):
         self._is_dark_mode = bool(value)
         if hasattr(self, "empty_state_widget"):
             self.empty_state_widget.set_dark_mode(self._is_dark_mode)
+        if hasattr(self, "session_button"):
+            self.update_session_button()
+        if hasattr(self, "stop_button"):
+            self.stop_button.setIcon(qta.icon("fa5s.stop", color="#fca5a5" if self._is_dark_mode else "#b91c1c"))
+        if hasattr(self, "incomplete_button"):
+            self.incomplete_button.setIcon(qta.icon("fa5s.times-circle", color="#fca5a5" if self._is_dark_mode else "#b91c1c"))
+        if hasattr(self, "update_tags_visual_state"):
+            self.update_tags_visual_state()
         self.update_timer_visual_state()
 
     def _build_ui(self) -> None:
@@ -510,11 +518,11 @@ class HomeViewWidget(QWidget):
             self.session_button.setObjectName("hero_start")
         elif self.application.mode is TimerMode.PLAY:
             self.session_button.setText("  RECESO")
-            self.session_button.setIcon(qta.icon("fa5s.pause", color="#b45309"))
+            self.session_button.setIcon(qta.icon("fa5s.pause", color="#fde68a" if self.is_dark_mode else "#b45309"))
             self.session_button.setObjectName("hero_pause")
         elif self.application.mode is TimerMode.BREAK:
             self.session_button.setText("  CONTINUAR")
-            self.session_button.setIcon(qta.icon("fa5s.forward", color="#047857"))
+            self.session_button.setIcon(qta.icon("fa5s.forward", color="#a7f3d0" if self.is_dark_mode else "#047857"))
             self.session_button.setObjectName("hero_resume")
 
         self.session_button.style().unpolish(self.session_button)
@@ -811,23 +819,23 @@ class HomeViewWidget(QWidget):
         if self.application.is_timer_paused:
             state = "paused"
             pill_text = " ⏸  PAUSADO"
-            ex_color = "#94a3b8"
-            br_color = "#64748b"
+            ex_color = "#94a3b8" if is_dark else "#78716c"
+            br_color = "#64748b" if is_dark else "#a8a29e"
         elif self.application.mode is TimerMode.PLAY:
             state = "play"
             pill_text = " ●  SESIÓN EN CURSO"
-            ex_color = "#34d399"
-            br_color = "#64748b"
+            ex_color = "#34d399" if is_dark else "#047857"
+            br_color = "#64748b" if is_dark else "#a8a29e"
         elif self.application.mode is TimerMode.BREAK:
             state = "break"
             pill_text = " ●  RECESO EN CURSO"
-            ex_color = "#64748b"
-            br_color = "#fbbf24"
+            ex_color = "#64748b" if is_dark else "#a8a29e"
+            br_color = "#fbbf24" if is_dark else "#b45309"
         else:
             state = "waiting"
             pill_text = " ●  LISTO PARA COMENZAR"
-            ex_color = "#e2e8f0" if is_dark else "#0f172a"
-            br_color = "#64748b"
+            ex_color = "#f1f5f9" if is_dark else "#1c1917"
+            br_color = "#64748b" if is_dark else "#78716c"
 
         ex_card_style, br_card_style = get_timer_cards_style(state, is_dark)
         if hasattr(self, "exercise_card"):

@@ -33,6 +33,10 @@ class Hourly24hChartWidget(QWidget):
         self.is_dark = is_dark
         self.update()
 
+    @property
+    def dark_mode(self) -> bool:
+        return self.is_dark
+
     def _calc_geometry(self) -> tuple[float, float, float, float, float]:
         width = float(self.width())
         height = float(self.height())
@@ -92,11 +96,11 @@ class Hourly24hChartWidget(QWidget):
 
         max_ms = max(list(self.hourly_data.values()) + [3_600_000])
 
-        bg_track_color = QColor("#1e293b" if self.is_dark else "#f1f5f9")
-        bar_fill_color = QColor("#0284c7" if self.is_dark else "#0369a1")
-        peak_fill_color = QColor("#059669" if self.is_dark else "#047857")
-        text_muted = QColor("#94a3b8" if self.is_dark else "#64748b")
-        text_highlight = QColor("#ffffff" if self.is_dark else "#0f172a")
+        bg_track_color = QColor("#1e293b" if self.is_dark else "#ede8dd")
+        bar_fill_color = QColor("#38bdf8" if self.is_dark else "#0284c7")
+        peak_fill_color = QColor("#10b981" if self.is_dark else "#059669")
+        text_muted = QColor("#94a3b8" if self.is_dark else "#78716c")
+        text_highlight = QColor("#f1f5f9" if self.is_dark else "#1c1917")
 
         peak_hour = max(self.hourly_data, key=self.hourly_data.get) if max(self.hourly_data.values()) > 0 else -1
 

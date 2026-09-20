@@ -25,7 +25,7 @@ class ThemeTests(unittest.TestCase):
     def test_dialog_stylesheets_generated(self) -> None:
         light_dialog = get_dialog_stylesheet(THEME_LIGHT)
         dark_dialog = get_dialog_stylesheet(THEME_DARK)
-        self.assertIn("#f8fafc", light_dialog)
+        self.assertIn("#f7f4ed", light_dialog)
         self.assertIn("#0f172a", dark_dialog)
 
     def test_main_window_toolbar_config_menu(self) -> None:
@@ -97,7 +97,7 @@ class ThemeTests(unittest.TestCase):
         window.set_theme(THEME_LIGHT)
         window.update_timer_visual_state()
         self.assertIn("LISTO PARA COMENZAR", window.status_pill.text())
-        self.assertIn("#f1f5f9", window.status_pill.styleSheet())
+        self.assertIn("#ede8dd", window.status_pill.styleSheet())
 
         # Idle state in dark mode
         window.set_theme(THEME_DARK)
@@ -159,6 +159,58 @@ class ThemeTests(unittest.TestCase):
         window._arrange_session_controls(compact=False, very_compact=False)
         window._arrange_session_controls(compact=True, very_compact=False)
         window._arrange_session_controls(compact=True, very_compact=True)
+
+    def test_theme_tokens_and_timer_cards_style(self) -> None:
+        from presentation.theme_tokens import LIGHT_TOKENS, DARK_TOKENS
+        from presentation.theme import get_timer_cards_style
+
+        # Anti-glare warm paper light canvas, anti-halation dark canvas
+        self.assertEqual(LIGHT_TOKENS.bg_app, "#f7f4ed")
+        self.assertEqual(DARK_TOKENS.bg_app, "#0b0f17")
+
+        # Clock card backgrounds
+        self.assertEqual(LIGHT_TOKENS.bg_clock_card, "#fdfcf7")
+        self.assertEqual(DARK_TOKENS.bg_clock_card, "#162032")
+
+        # Tab bar backgrounds
+        self.assertEqual(LIGHT_TOKENS.bg_tab_bar, "#ede8dd")
+        self.assertEqual(DARK_TOKENS.bg_tab_bar, "#080c14")
+
+        # Check get_timer_cards_style
+        light_ex_style, light_br_style = get_timer_cards_style("idle", is_dark=False)
+        dark_ex_style, dark_br_style = get_timer_cards_style("idle", is_dark=True)
+        self.assertNotIn("#090d16", light_ex_style)
+        self.assertIn("#fdfcf7", light_ex_style)
+        self.assertIn("#162032", dark_ex_style)
+
+    def test_deep_theme_propagation_across_views(self) -> None:
+        window = MainWindow()
+
+        # Switch to Light Mode
+        window.set_theme(THEME_LIGHT)
+        self.assertFalse(window.is_dark_mode)
+        self.assertFalse(window.planner_view.is_dark)
+        self.assertFalse(window.statistics_view.course_heatmap.is_dark)
+        self.assertFalse(window.statistics_view.hourly_chart.dark_mode)
+        self.assertFalse(window.statistics_view.weekly_chart.dark_mode)
+        self.assertFalse(window.ambience_view.is_dark)
+
+        # Verify home timer clocks contrast in light mode
+        window.home_view.update_timer_visual_state()
+        self.assertIn("#1c1917", window.home_view.exercise_clock.styleSheet())
+
+        # Switch to Dark Mode
+        window.set_theme(THEME_DARK)
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.planner_view.is_dark)
+        self.assertTrue(window.statistics_view.course_heatmap.is_dark)
+        self.assertTrue(window.statistics_view.hourly_chart.dark_mode)
+        self.assertTrue(window.statistics_view.weekly_chart.dark_mode)
+        self.assertTrue(window.ambience_view.is_dark)
+
+        # Verify home timer clocks contrast in dark mode
+        window.home_view.update_timer_visual_state()
+        self.assertIn("#f1f5f9", window.home_view.exercise_clock.styleSheet())
 
 
 if __name__ == "__main__":

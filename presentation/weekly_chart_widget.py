@@ -55,10 +55,11 @@ class WeeklyChartWidget(QWidget):
         bottom_margin = 46.0
         available_bar_height = height - top_margin - bottom_margin
 
-        bar_bg_color = QColor("#1e293b" if self.dark_mode else "#edf3ed")
-        text_primary = QColor("#f8fafc" if self.dark_mode else "#0f172a")
-        text_muted = QColor("#94a3b8" if self.dark_mode else "#64748b")
-        text_zero = QColor("#64748b" if self.dark_mode else "#94a3b8")
+        bar_bg_color = QColor("#1e293b" if self.dark_mode else "#ede8dd")
+        bar_active_color = QColor("#10b981" if self.dark_mode else "#059669")
+        text_primary = QColor("#f1f5f9" if self.dark_mode else "#1c1917")
+        text_muted = QColor("#94a3b8" if self.dark_mode else "#78716c")
+        text_zero = QColor("#64748b" if self.dark_mode else "#a8a29e")
 
         for i, stat in enumerate(self.daily_stats):
             center_x = i * col_width + (col_width / 2.0)
@@ -74,7 +75,7 @@ class WeeklyChartWidget(QWidget):
                 bar_h = max(8.0, ratio * available_bar_height)
                 bar_y = height - bottom_margin - bar_h
                 bar_rect = QRectF(bar_x, bar_y, bar_width, bar_h)
-                painter.setBrush(QBrush(QColor("#059669")))
+                painter.setBrush(QBrush(bar_active_color))
                 painter.drawRoundedRect(bar_rect, 6.0, 6.0)
 
             time_text = format_hh_mm(stat.exercise_time_ms)

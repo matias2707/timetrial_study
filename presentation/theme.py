@@ -135,7 +135,7 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
         QTabBar::tab:selected {{
             color: {t.tab_text_selected};
             background: {t.bg_tab_active};
-            border-bottom: 3px solid #bef264;
+            border-bottom: 3px solid {t.tab_text_selected};
         }}
         QTabBar::tab:hover:!selected {{
             color: {t.text_primary};
@@ -143,11 +143,16 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
         }}
 
         /* Scroll containers */
-        QScrollArea#homeScroll, QScrollArea#statsScroll {{
+        QScrollArea#homeScroll, QScrollArea#statsScroll, QScrollArea#ambienceScroll {{
             background: transparent;
             border: none;
         }}
-        QWidget#homeContainer, QWidget#statsContainer {{
+        QScrollArea#homeScroll > QWidget > QWidget,
+        QScrollArea#statsScroll > QWidget > QWidget,
+        QScrollArea#ambienceScroll > QWidget > QWidget {{
+            background: transparent;
+        }}
+        QWidget#homeContainer, QWidget#statsContainer, QWidget#ambienceContainer {{
             background: transparent;
         }}
 
@@ -606,6 +611,59 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             width: 0px;
         }}
 
+        /* Sliders (Audio volume & controls) */
+        QSlider {{
+            background: transparent;
+            min-height: 22px;
+        }}
+        QSlider::groove:horizontal {{
+            height: 6px;
+            background: {t.bg_card_inner};
+            border: 1px solid {t.border_subtle};
+            border-radius: 3px;
+        }}
+        QSlider::sub-page:horizontal {{
+            background: {t.toolbar_primary_bg};
+            border: 1px solid {t.toolbar_primary_bg};
+            border-radius: 3px;
+        }}
+        QSlider::add-page:horizontal {{
+            background: {t.bg_card_inner};
+            border: 1px solid {t.border_subtle};
+            border-radius: 3px;
+        }}
+        QSlider::handle:horizontal {{
+            background: {t.bg_surface};
+            border: 2px solid {t.toolbar_primary_bg};
+            width: 14px;
+            margin-top: -5px;
+            margin-bottom: -5px;
+            border-radius: 8px;
+        }}
+        QSlider::handle:horizontal:hover {{
+            background: {t.toolbar_primary_hover_bg};
+            border: 2px solid {t.border_focus};
+        }}
+        QSlider::handle:horizontal:disabled {{
+            background: {t.border_disabled};
+            border: 2px solid {t.border_disabled};
+        }}
+
+        /* Track Card Mute Button */
+        QPushButton#trackMuteBtn {{
+            background: {t.bg_button};
+            border: 1px solid {t.border_subtle};
+            border-radius: 6px;
+            padding: 4px;
+        }}
+        QPushButton#trackMuteBtn:hover {{
+            background: {t.bg_button_hover};
+            border-color: {t.border_focus};
+        }}
+        QPushButton#trackMuteBtn:pressed {{
+            background: {t.bg_button_pressed};
+        }}
+
         /* Dialogs and Lists */
         QListWidget {{
             background: {t.bg_list};
@@ -763,41 +821,41 @@ def get_dialog_stylesheet(theme: str) -> str:
             QLabel#subtitle { color: #94a3b8; font-size: 13px; }
             QLabel#recent_header { color: #cbd5e1; font-size: 13px; font-weight: 700; }
             QLabel#version { color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-            QListWidget { background: #090d16; color: #f8fafc; border: 1px solid #1e293b; border-radius: 8px; min-height: 120px; font-size: 12px; }
+            QListWidget { background: #0b0f17; color: #f8fafc; border: 1px solid #1e293b; border-radius: 8px; min-height: 120px; font-size: 12px; }
             QListWidget::item { padding: 6px 8px; border-radius: 6px; }
             QListWidget::item:hover { background: #1e293b; }
-            QListWidget::item:selected { background: #1e293b; color: #bef264; font-weight: 700; }
+            QListWidget::item:selected { background: #1e293b; color: #34d399; font-weight: 700; }
             QCheckBox { color: #cbd5e1; font-size: 12px; font-weight: 500; spacing: 8px; }
-            QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #334155; background: #090d16; }
-            QCheckBox::indicator:checked { background: #bef264; border-color: #bef264; }
+            QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #334155; background: #0b0f17; }
+            QCheckBox::indicator:checked { background: #10b981; border-color: #10b981; }
             QPushButton { min-height: 38px; min-width: 140px; border-radius: 9px; font-size: 12px; font-weight: 700; }
-            QPushButton#primary { background: #bef264; color: #090d16; border: 1px solid #bef264; font-weight: 800; }
-            QPushButton#primary:hover { background: #d9f99d; }
+            QPushButton#primary { background: #10b981; color: #0b0f17; border: 1px solid #10b981; font-weight: 800; }
+            QPushButton#primary:hover { background: #059669; }
             QPushButton#secondary { background: #1e293b; color: #f1f5f9; border: 1px solid #334155; }
-            QPushButton#secondary:hover { background: #273549; border-color: #bef264; }
+            QPushButton#secondary:hover { background: #283548; border-color: #10b981; }
             QPushButton#ghost { background: transparent; color: #94a3b8; border: 1px solid #1e293b; }
             QPushButton#ghost:hover { background: #1e293b; color: #f8fafc; }
         """
     return """
-        QDialog { background: #f8fafc; }
-        QLabel#title { color: #0f172a; font-size: 22px; font-weight: 800; }
-        QLabel#subtitle { color: #64748b; font-size: 13px; }
-        QLabel#recent_header { color: #334155; font-size: 13px; font-weight: 700; }
-        QLabel#version { color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-        QListWidget { background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 8px; min-height: 120px; font-size: 12px; }
+        QDialog { background: #f7f4ed; }
+        QLabel#title { color: #1c1917; font-size: 22px; font-weight: 800; }
+        QLabel#subtitle { color: #78716c; font-size: 13px; }
+        QLabel#recent_header { color: #44403c; font-size: 13px; font-weight: 700; }
+        QLabel#version { color: #a8a29e; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+        QListWidget { background: #fdfcf7; color: #1c1917; border: 1px solid #e4ded4; border-radius: 8px; min-height: 120px; font-size: 12px; }
         QListWidget::item { padding: 6px 8px; border-radius: 6px; }
-        QListWidget::item:hover { background: #f1f5f9; }
-        QListWidget::item:selected { background: #f1f5f9; color: #0f172a; font-weight: 700; }
-        QCheckBox { color: #334155; font-size: 12px; font-weight: 500; spacing: 8px; }
-        QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #cbd5e1; background: #ffffff; }
-        QCheckBox::indicator:checked { background: #0f172a; border-color: #0f172a; }
+        QListWidget::item:hover { background: #f5f1e8; }
+        QListWidget::item:selected { background: #f1eadb; color: #047857; font-weight: 700; }
+        QCheckBox { color: #44403c; font-size: 12px; font-weight: 500; spacing: 8px; }
+        QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #d5cdbf; background: #fdfcf7; }
+        QCheckBox::indicator:checked { background: #059669; border-color: #059669; }
         QPushButton { min-height: 38px; min-width: 140px; border-radius: 9px; font-size: 12px; font-weight: 700; }
-        QPushButton#primary { background: #0f172a; color: #bef264; border: 1px solid #0f172a; font-weight: 800; }
-        QPushButton#primary:hover { background: #1e293b; }
-        QPushButton#secondary { background: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; }
-        QPushButton#secondary:hover { background: #f8fafc; border-color: #84cc16; }
-        QPushButton#ghost { background: transparent; color: #64748b; border: 1px solid #e2e8f0; }
-        QPushButton#ghost:hover { background: #f1f5f9; }
+        QPushButton#primary { background: #059669; color: #ffffff; border: 1px solid #047857; font-weight: 800; }
+        QPushButton#primary:hover { background: #047857; }
+        QPushButton#secondary { background: #fdfcf7; color: #292524; border: 1px solid #d5cdbf; }
+        QPushButton#secondary:hover { background: #f5f1e8; border-color: #059669; }
+        QPushButton#ghost { background: transparent; color: #78716c; border: 1px solid #e4ded4; }
+        QPushButton#ghost:hover { background: #ede8dd; }
     """
 
 
@@ -811,19 +869,19 @@ def get_status_pill_style(state: str, is_dark: bool) -> str:
     if state == "paused":
         if is_dark:
             return "background: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #ede8dd; color: #44403c; border: 1px solid #d5cdbf; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
     elif state == "play":
         if is_dark:
             return "background: #064e3b; color: #6ee7b7; border: 1px solid #059669; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #e7f4ec; color: #047857; border: 1px solid #b6e1c6; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
     elif state == "break":
         if is_dark:
             return "background: #451a03; color: #fde68a; border: 1px solid #78350f; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #fffbeb; color: #b45309; border: 1px solid #fde68a; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #fbf4dc; color: #b45309; border: 1px solid #f2dd9b; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
     else:  # waiting / idle
         if is_dark:
             return "background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return "background: #ede8dd; color: #57534e; border: 1px solid #d5cdbf; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
 
 
 def get_timer_cards_style(state: str, is_dark: bool) -> tuple[str, str]:
@@ -833,27 +891,51 @@ def get_timer_cards_style(state: str, is_dark: bool) -> tuple[str, str]:
         state: 'paused', 'play', 'break', o 'waiting'.
         is_dark: True si el tema activo es oscuro.
     """
-    card_bg = "#050811" if is_dark else "#090d16"
-    card_border = "#1e293b"
+    if is_dark:
+        card_bg = "#162032"
+        card_border = "#1e293b"
 
-    if state == "paused":
-        border = "#334155" if is_dark else "#475569"
-        return (
-            f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {border}; border-radius: 14px; }}",
-            f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {border}; border-radius: 14px; }}",
-        )
-    elif state == "play":
-        return (
-            f"QFrame#exerciseCard {{ background: #071510; border: 2px solid #10b981; border-radius: 14px; }}",
-            f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-        )
-    elif state == "break":
-        return (
-            f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-            f"QFrame#breakCard {{ background: #191408; border: 2px solid #f59e0b; border-radius: 14px; }}",
-        )
-    else:  # waiting
-        return (
-            f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-            f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-        )
+        if state == "paused":
+            return (
+                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1.5px solid #475569; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: {card_bg}; border: 1.5px solid #475569; border-radius: 14px; }}",
+            )
+        elif state == "play":
+            return (
+                f"QFrame#exerciseCard {{ background: #081d16; border: 2px solid #10b981; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+            )
+        elif state == "break":
+            return (
+                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: #231805; border: 2px solid #f59e0b; border-radius: 14px; }}",
+            )
+        else:  # waiting
+            return (
+                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+            )
+    else:
+        card_bg = "#fdfcf7"
+        card_border = "#e4ded4"
+
+        if state == "paused":
+            return (
+                f"QFrame#exerciseCard {{ background: #f5f1e8; border: 1.5px solid #d5cdbf; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: #f5f1e8; border: 1.5px solid #d5cdbf; border-radius: 14px; }}",
+            )
+        elif state == "play":
+            return (
+                f"QFrame#exerciseCard {{ background: #eaf5ee; border: 2px solid #059669; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+            )
+        elif state == "break":
+            return (
+                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: #fbf4dc; border: 2px solid #d97706; border-radius: 14px; }}",
+            )
+        else:  # waiting
+            return (
+                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+            )
