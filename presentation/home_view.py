@@ -30,6 +30,7 @@ from presentation.audio_service import AudioService
 from presentation.empty_state_widget import EmptyStateWidget
 from presentation.presentation_formatters import format_hh_mm_ss, timer_markup
 from presentation.theme import get_status_pill_style, get_timer_cards_style
+from presentation.today_activity_strip_widget import TodayActivityStripWidget
 
 if TYPE_CHECKING:
     from presentation.main_window import MainWindow
@@ -69,6 +70,8 @@ class HomeViewWidget(QWidget):
         self._is_dark_mode = bool(value)
         if hasattr(self, "empty_state_widget"):
             self.empty_state_widget.set_dark_mode(self._is_dark_mode)
+        if hasattr(self, "activity_strip"):
+            self.activity_strip.is_dark_mode = self._is_dark_mode
         if hasattr(self, "session_button"):
             self.update_session_button()
         if hasattr(self, "stop_button"):
@@ -77,6 +80,8 @@ class HomeViewWidget(QWidget):
             self.incomplete_button.setIcon(qta.icon("fa5s.times-circle", color="#fca5a5" if self._is_dark_mode else "#b91c1c"))
         if hasattr(self, "update_tags_visual_state"):
             self.update_tags_visual_state()
+        if hasattr(self, "update_personal_best_badge"):
+            self.update_personal_best_badge()
         self.update_timer_visual_state()
 
     def _build_ui(self) -> None:
@@ -93,7 +98,7 @@ class HomeViewWidget(QWidget):
         outer.setContentsMargins(40, 24, 40, 32)
         outer.setSpacing(16)
 
-        # Top Bar: App/Record title + Today card
+        # Top Bar: Nombre de la materia activa + Tríada de KPIs Diarios
         top = QHBoxLayout()
         top.setSpacing(12)
 
@@ -101,38 +106,89 @@ class HomeViewWidget(QWidget):
         title_box.setSpacing(2)
         self.home_title = QLabel(APP_TITLE)
         self.home_title.setObjectName("brand")
-        record_meta = QLabel("REGISTRO LOCAL  ·  SIN SERVIDOR")
-        record_meta.setObjectName("record_meta")
         title_box.addWidget(self.home_title)
-        title_box.addWidget(record_meta)
         top.addLayout(title_box)
         top.addStretch()
 
-        today_card = QFrame()
-        today_card.setObjectName("todayCard")
-        today_layout = QHBoxLayout(today_card)
-        today_layout.setContentsMargins(14, 8, 16, 8)
-        today_layout.setSpacing(12)
+        # KPI Triad (3 micro-tarjetas: Intentos, Resueltos, Enfoque hoy)
+        kpis_layout = QHBoxLayout()
+        kpis_layout.setSpacing(10)
 
-        today_icon = QLabel()
-        today_icon.setPixmap(qta.icon("fa5s.stopwatch", color="#10b981").pixmap(20, 20))
-        today_icon.setObjectName("today_icon")
-        today_layout.addWidget(today_icon)
+        # KPI: Intentos (a la izquierda)
+        self.kpi_today_attempts = QFrame()
+        self.kpi_today_attempts.setObjectName("kpiCardToday")
+        kpi_att_layout = QHBoxLayout(self.kpi_today_attempts)
+        kpi_att_layout.setContentsMargins(12, 6, 14, 6)
+        kpi_att_layout.setSpacing(8)
 
-        today_text_layout = QVBoxLayout()
-        today_text_layout.setContentsMargins(0, 0, 0, 0)
-        today_text_layout.setSpacing(1)
+        kpi_att_icon = QLabel()
+        kpi_att_icon.setPixmap(qta.icon("fa5s.bolt", color="#fbbf24").pixmap(18, 18))
+        kpi_att_layout.addWidget(kpi_att_icon)
 
-        today_title = QLabel("ESTUDIADO HOY")
-        today_title.setObjectName("today_label")
+        kpi_att_text = QVBoxLayout()
+        kpi_att_text.setContentsMargins(0, 0, 0, 0)
+        kpi_att_text.setSpacing(1)
+        kpi_att_label = QLabel("INTENTOS")
+        kpi_att_label.setObjectName("kpiTodayLabel")
+        self.today_attempts_label = QLabel("0")
+        self.today_attempts_label.setObjectName("kpiTodayValue")
+        kpi_att_text.addWidget(kpi_att_label)
+        kpi_att_text.addWidget(self.today_attempts_label)
+        kpi_att_layout.addLayout(kpi_att_text)
+        kpis_layout.addWidget(self.kpi_today_attempts)
+
+        # KPI: Resueltos (en el centro, sin 'ej.')
+        self.kpi_today_completed = QFrame()
+        self.kpi_today_completed.setObjectName("kpiCardToday")
+        kpi_comp_layout = QHBoxLayout(self.kpi_today_completed)
+        kpi_comp_layout.setContentsMargins(12, 6, 14, 6)
+        kpi_comp_layout.setSpacing(8)
+
+        kpi_comp_icon = QLabel()
+        kpi_comp_icon.setPixmap(qta.icon("fa5s.check-circle", color="#34d399").pixmap(18, 18))
+        kpi_comp_layout.addWidget(kpi_comp_icon)
+
+        kpi_comp_text = QVBoxLayout()
+        kpi_comp_text.setContentsMargins(0, 0, 0, 0)
+        kpi_comp_text.setSpacing(1)
+        kpi_comp_label = QLabel("RESUELTOS")
+        kpi_comp_label.setObjectName("kpiTodayLabel")
+        self.today_completed_label = QLabel("0")
+        self.today_completed_label.setObjectName("kpiTodayValue")
+        kpi_comp_text.addWidget(kpi_comp_label)
+        kpi_comp_text.addWidget(self.today_completed_label)
+        kpi_comp_layout.addLayout(kpi_comp_text)
+        kpis_layout.addWidget(self.kpi_today_completed)
+
+        # KPI: Tiempo de estudio (a la derecha)
+        self.kpi_today_study = QFrame()
+        self.kpi_today_study.setObjectName("kpiCardToday")
+        kpi_study_layout = QHBoxLayout(self.kpi_today_study)
+        kpi_study_layout.setContentsMargins(12, 6, 14, 6)
+        kpi_study_layout.setSpacing(8)
+
+        kpi_study_icon = QLabel()
+        kpi_study_icon.setPixmap(qta.icon("fa5s.stopwatch", color="#10b981").pixmap(18, 18))
+        kpi_study_layout.addWidget(kpi_study_icon)
+
+        kpi_study_text = QVBoxLayout()
+        kpi_study_text.setContentsMargins(0, 0, 0, 0)
+        kpi_study_text.setSpacing(1)
+        kpi_study_label = QLabel("ENFOQUE HOY")
+        kpi_study_label.setObjectName("kpiTodayLabel")
         self.today_study_label = QLabel("00:00:00")
-        self.today_study_label.setObjectName("today_value")
-        today_text_layout.addWidget(today_title)
-        today_text_layout.addWidget(self.today_study_label)
-        today_layout.addLayout(today_text_layout)
+        self.today_study_label.setObjectName("kpiTodayValue")
+        kpi_study_text.addWidget(kpi_study_label)
+        kpi_study_text.addWidget(self.today_study_label)
+        kpi_study_layout.addLayout(kpi_study_text)
+        kpis_layout.addWidget(self.kpi_today_study)
 
-        top.addWidget(today_card)
+        top.addLayout(kpis_layout)
         outer.addLayout(top)
+
+        # Activity Strip de 24 Horas
+        self.activity_strip = TodayActivityStripWidget(is_dark_mode=self.is_dark_mode, parent=self)
+        outer.addWidget(self.activity_strip)
 
         # Banner contextual de modo continuación
         self.continuation_banner = QFrame()
@@ -159,29 +215,30 @@ class HomeViewWidget(QWidget):
 
         outer.addWidget(self.continuation_banner)
 
-        # Hero Card: Ubicación
+        # Hero Card: Ubicación y Récord Personal
         self.hero_card = QFrame()
         hero = self.hero_card
         hero.setObjectName("heroCard")
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(24, 20, 24, 20)
-        hero_layout.setSpacing(14)
+        hero_layout.setContentsMargins(24, 18, 24, 18)
+        hero_layout.setSpacing(12)
 
-        hero_header = QHBoxLayout()
+        hero_top = QHBoxLayout()
         hero_icon = QLabel()
         hero_icon.setPixmap(qta.icon("fa5s.map-marker-alt", color="#84cc16").pixmap(14, 14))
-        hero_header.addWidget(hero_icon)
-        eyebrow = QLabel("UBICACIÓN ACTUAL")
-        eyebrow.setObjectName("eyebrow")
-        hero_header.addWidget(eyebrow)
-        hero_header.addStretch()
-        hero_layout.addLayout(hero_header)
+        hero_top.addWidget(hero_icon)
 
         self.location_label = QLabel()
         self.location_label.setObjectName("location_badge")
-        self.location_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.location_label.setWordWrap(True)
-        hero_layout.addWidget(self.location_label)
+        hero_top.addWidget(self.location_label)
+
+        hero_top.addStretch()
+
+        self.personal_best_badge = QLabel("🏆 Récord: --:--")
+        self.personal_best_badge.setObjectName("personal_best_badge")
+        hero_top.addWidget(self.personal_best_badge)
+
+        hero_layout.addLayout(hero_top)
 
         selectors = QGridLayout()
         selectors.setHorizontalSpacing(12)
@@ -247,7 +304,7 @@ class HomeViewWidget(QWidget):
         ex_icon = QLabel()
         ex_icon.setPixmap(qta.icon("fa5s.stopwatch", color="#34d399").pixmap(14, 14))
         ex_top.addWidget(ex_icon)
-        exercise_label = QLabel("TIEMPO EJERCICIO")
+        exercise_label = QLabel("ENFOQUE")
         exercise_label.setObjectName("eyebrow")
         ex_top.addWidget(exercise_label)
         ex_top.addStretch()
@@ -267,7 +324,7 @@ class HomeViewWidget(QWidget):
         br_icon = QLabel()
         br_icon.setPixmap(qta.icon("fa5s.coffee", color="#fbbf24").pixmap(14, 14))
         br_top.addWidget(br_icon)
-        break_label = QLabel("RECESO ACUMULADO")
+        break_label = QLabel("DESCANSO")
         break_label.setObjectName("eyebrow")
         br_top.addWidget(break_label)
         br_top.addStretch()
@@ -283,49 +340,64 @@ class HomeViewWidget(QWidget):
         controls_card = self.controls_card
         controls_card.setObjectName("sectionCard")
         controls_layout = QVBoxLayout(controls_card)
-        controls_layout.setContentsMargins(22, 18, 22, 20)
-        controls_layout.setSpacing(14)
+        controls_layout.setContentsMargins(22, 16, 22, 18)
+        controls_layout.setSpacing(12)
 
         controls_header = QHBoxLayout()
-        controls_icon = QLabel()
-        controls_icon.setPixmap(qta.icon("fa5s.play-circle", color="#84cc16").pixmap(14, 14))
-        controls_header.addWidget(controls_icon)
-        controls_title = QLabel("CONTROLES DE SESIÓN")
-        controls_title.setObjectName("eyebrow")
-        controls_header.addWidget(controls_title)
         controls_header.addStretch()
         self.status_pill = QLabel(" ●  LISTO PARA COMENZAR")
         self.status_pill.setObjectName("status_badge")
         controls_header.addWidget(self.status_pill)
         controls_layout.addLayout(controls_header)
 
-        # Primary Controls Grid
+        # Primary Controls Grid (con ancho ergonómico no expandido)
         self.primary_controls = QGridLayout()
+        self.primary_controls.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.primary_controls.setHorizontalSpacing(10)
         self.primary_controls.setVerticalSpacing(10)
 
-        self.session_button = QPushButton("  INICIAR")
+        # Botón Enfoque y Descanso (unificado, como estaba antes)
+        self.session_button = QPushButton("  INICIAR ENFOQUE")
         self.session_button.setObjectName("hero_start")
+        self.session_button.setFixedHeight(44)
+        self.session_button.setMinimumWidth(180)
+        self.session_button.setMaximumWidth(240)
         self.session_button.setIcon(qta.icon("fa5s.play", color="#6ee7b7" if self.is_dark_mode else "#ffffff"))
         self.session_button.clicked.connect(self.toggle_session)
 
-        self.stop_button = QPushButton("  DETENER")
-        self.stop_button.setObjectName("stop")
-        self.stop_button.setIcon(qta.icon("fa5s.stop", color="#fca5a5" if self.is_dark_mode else "#b91c1c"))
-        self.stop_button.clicked.connect(self.stop_timer)
+        # Alias para mantener compatibilidad
+        self.break_button = self.session_button
 
+        # Acciones Secundarias (38px, ancho ergonómico no expandido)
         self.complete_button = QPushButton("  COMPLETO")
         self.complete_button.setObjectName("complete")
+        self.complete_button.setFixedHeight(38)
+        self.complete_button.setMinimumWidth(110)
+        self.complete_button.setMaximumWidth(150)
         self.complete_button.setIcon(qta.icon("fa5s.check-circle", color="#ffffff"))
         self.complete_button.clicked.connect(lambda: self.finish_item(True, keep_location=True))
 
         self.incomplete_button = QPushButton("  INCOMPLETO")
         self.incomplete_button.setObjectName("danger")
+        self.incomplete_button.setFixedHeight(38)
+        self.incomplete_button.setMinimumWidth(110)
+        self.incomplete_button.setMaximumWidth(150)
         self.incomplete_button.setIcon(qta.icon("fa5s.times-circle", color="#fca5a5" if self.is_dark_mode else "#b91c1c"))
         self.incomplete_button.clicked.connect(lambda: self.finish_item(False, keep_location=True))
 
+        self.stop_button = QPushButton("  DETENER")
+        self.stop_button.setObjectName("stop")
+        self.stop_button.setFixedHeight(38)
+        self.stop_button.setMinimumWidth(100)
+        self.stop_button.setMaximumWidth(130)
+        self.stop_button.setIcon(qta.icon("fa5s.stop", color="#fca5a5" if self.is_dark_mode else "#b91c1c"))
+        self.stop_button.clicked.connect(self.stop_timer)
+
         self.comment_button = QPushButton("  APUNTES")
         self.comment_button.setObjectName("comment_action")
+        self.comment_button.setFixedHeight(38)
+        self.comment_button.setMinimumWidth(110)
+        self.comment_button.setMaximumWidth(160)
         self.comment_button.setIcon(qta.icon("fa5s.sticky-note", color="#475569"))
         self.comment_button.setToolTip("Ver o editar apuntes / notas para este ejercicio")
         self.comment_button.clicked.connect(self.add_home_comment)
@@ -333,20 +405,21 @@ class HomeViewWidget(QWidget):
 
         self.tags_button = QPushButton("  MARCADORES")
         self.tags_button.setObjectName("tags_action")
+        self.tags_button.setFixedHeight(38)
+        self.tags_button.setMinimumWidth(110)
+        self.tags_button.setMaximumWidth(160)
         self.tags_button.setIcon(qta.icon("fa5s.tags", color="#475569"))
         self.tags_button.setToolTip("Asignar o editar marcadores para este ejercicio")
         self.tags_button.clicked.connect(self.manage_home_tags)
 
         self.primary_buttons = (
             self.session_button,
+            self.complete_button,
+            self.incomplete_button,
             self.stop_button,
             self.comment_button,
             self.tags_button,
-            self.complete_button,
-            self.incomplete_button,
         )
-        for button in self.primary_buttons:
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         controls_layout.addLayout(self.primary_controls)
         self._arrange_session_controls(compact=False, very_compact=False)
@@ -374,6 +447,8 @@ class HomeViewWidget(QWidget):
     def set_empty_state(self, is_empty: bool) -> None:
         """Alterna la visualización del estado vacío protegiendo los controles de sesión."""
         self.empty_state_widget.setVisible(is_empty)
+        if hasattr(self, "activity_strip"):
+            self.activity_strip.setVisible(not is_empty)
         if hasattr(self, "hero_card"):
             self.hero_card.setVisible(not is_empty)
         if hasattr(self, "controls_card"):
@@ -385,6 +460,8 @@ class HomeViewWidget(QWidget):
 
         self.set_locked(is_empty)
         self.session_button.setEnabled(not is_empty)
+        if hasattr(self, "break_button") and self.break_button is not self.session_button:
+            self.break_button.setEnabled(not is_empty and self.application.mode is not TimerMode.WAITING)
         self.comment_button.setEnabled(not is_empty)
         if hasattr(self, "tags_button"):
             self.tags_button.setEnabled(not is_empty)
@@ -395,9 +472,13 @@ class HomeViewWidget(QWidget):
         if is_empty:
             self.status_pill.setText(" ●  SIN PROYECTO ACTIVO")
             self.status_label.setText("Ningún proyecto abierto")
+            if hasattr(self, "personal_best_badge"):
+                self.personal_best_badge.setText("🏆 Récord: --:--")
         else:
             self.update_timer_visual_state()
             self.update_tags_visual_state()
+            self.update_personal_best_badge()
+            self.update_activity_strip()
             self.status_label.setText("Listo para comenzar")
 
     def _create_stepper(self, spinbox: QSpinBox, tooltip_prefix: str) -> QWidget:
@@ -437,26 +518,33 @@ class HomeViewWidget(QWidget):
         while self.primary_controls.count():
             self.primary_controls.takeAt(0)
 
-        for col in range(4):
-            self.primary_controls.setColumnStretch(col, 1)
+        self.primary_controls.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.primary_controls.setHorizontalSpacing(10)
+        self.primary_controls.setVerticalSpacing(10)
 
         if very_compact:
-            for idx, btn in enumerate(self.primary_buttons):
-                self.primary_controls.addWidget(btn, idx, 0)
+            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 2, Qt.AlignmentFlag.AlignCenter)
+            self.primary_controls.addWidget(self.complete_button, 1, 0)
+            self.primary_controls.addWidget(self.incomplete_button, 1, 1)
+            self.primary_controls.addWidget(self.stop_button, 2, 0, 1, 2)
+            self.primary_controls.addWidget(self.comment_button, 3, 0)
+            self.primary_controls.addWidget(self.tags_button, 3, 1)
         elif compact:
-            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 2)
-            self.primary_controls.addWidget(self.stop_button, 1, 0)
-            self.primary_controls.addWidget(self.comment_button, 1, 1)
-            self.primary_controls.addWidget(self.tags_button, 2, 0, 1, 2)
-            self.primary_controls.addWidget(self.complete_button, 3, 0)
-            self.primary_controls.addWidget(self.incomplete_button, 3, 1)
+            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 3, Qt.AlignmentFlag.AlignCenter)
+            self.primary_controls.addWidget(self.complete_button, 1, 0)
+            self.primary_controls.addWidget(self.incomplete_button, 1, 1)
+            self.primary_controls.addWidget(self.stop_button, 1, 2)
+            self.primary_controls.addWidget(self.comment_button, 2, 0)
+            self.primary_controls.addWidget(self.tags_button, 2, 1)
         else:
-            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 2)
-            self.primary_controls.addWidget(self.comment_button, 0, 2)
-            self.primary_controls.addWidget(self.tags_button, 0, 3)
-            self.primary_controls.addWidget(self.complete_button, 1, 0, 1, 2)
-            self.primary_controls.addWidget(self.incomplete_button, 1, 2)
-            self.primary_controls.addWidget(self.stop_button, 1, 3)
+            # Fila Hero: Enfoque y Descanso unificado, centrado
+            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 5, Qt.AlignmentFlag.AlignCenter)
+            # Fila Secundaria: Acciones compactas
+            self.primary_controls.addWidget(self.complete_button, 1, 0)
+            self.primary_controls.addWidget(self.incomplete_button, 1, 1)
+            self.primary_controls.addWidget(self.stop_button, 1, 2)
+            self.primary_controls.addWidget(self.comment_button, 1, 3)
+            self.primary_controls.addWidget(self.tags_button, 1, 4)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -486,6 +574,33 @@ class HomeViewWidget(QWidget):
         self.location_label.setText(text)
         self.update_tags_visual_state()
         self.update_notes_visual_state()
+        self.update_personal_best_badge()
+
+    def update_personal_best_badge(self) -> None:
+        if not hasattr(self, "personal_best_badge"):
+            return
+        if not self.application.is_record_open:
+            self.personal_best_badge.setText("🏆 Récord: --:--")
+            self.personal_best_badge.setToolTip("Sin proyecto activo")
+            return
+
+        loc = self.application.location
+        pb_ms = self.application.get_exercise_personal_best_ms(
+            loc.section_type, loc.section_number, loc.exercise, loc.inciso
+        )
+        if pb_ms is not None:
+            pb_str = format_hh_mm_ss(pb_ms)
+            self.personal_best_badge.setText(f"🏆 Récord: {pb_str}")
+            self.personal_best_badge.setToolTip(f"Menor tiempo neto completado históricamente: {pb_str}")
+        else:
+            self.personal_best_badge.setText("🏆 Primer intento")
+            self.personal_best_badge.setToolTip("Aún no se registran intentos completados para este ejercicio")
+
+    def update_activity_strip(self) -> None:
+        if not hasattr(self, "activity_strip"):
+            return
+        buckets = self.application.get_today_timeline_buckets()
+        self.activity_strip.update_buckets(buckets)
 
     def set_locked(self, locked: bool) -> None:
         for widget in (self.section_input, self.section_number_input, self.exercise_input, self.inciso_input):
@@ -510,19 +625,26 @@ class HomeViewWidget(QWidget):
         self.set_locked(True)
         self.update_session_button()
         self.update_timer_visual_state()
+        self.refresh_clock()
+
+    def toggle_break(self) -> None:
+        self.toggle_session()
 
     def update_session_button(self) -> None:
-        if self.application.mode is TimerMode.WAITING:
-            self.session_button.setText("  INICIAR")
-            self.session_button.setIcon(qta.icon("fa5s.play", color="#6ee7b7" if self.is_dark_mode else "#ffffff"))
+        is_dark = self.is_dark_mode
+        mode = self.application.mode
+
+        if mode is TimerMode.WAITING:
+            self.session_button.setText("  INICIAR ENFOQUE")
+            self.session_button.setIcon(qta.icon("fa5s.play", color="#6ee7b7" if is_dark else "#ffffff"))
             self.session_button.setObjectName("hero_start")
-        elif self.application.mode is TimerMode.PLAY:
-            self.session_button.setText("  RECESO")
-            self.session_button.setIcon(qta.icon("fa5s.pause", color="#fde68a" if self.is_dark_mode else "#b45309"))
+        elif mode is TimerMode.PLAY:
+            self.session_button.setText("  TOMAR DESCANSO")
+            self.session_button.setIcon(qta.icon("fa5s.coffee", color="#fbbf24" if is_dark else "#b45309"))
             self.session_button.setObjectName("hero_pause")
-        elif self.application.mode is TimerMode.BREAK:
-            self.session_button.setText("  CONTINUAR")
-            self.session_button.setIcon(qta.icon("fa5s.forward", color="#a7f3d0" if self.is_dark_mode else "#047857"))
+        elif mode is TimerMode.BREAK:
+            self.session_button.setText("  CONTINUAR ENFOQUE")
+            self.session_button.setIcon(qta.icon("fa5s.forward", color="#a7f3d0" if is_dark else "#047857"))
             self.session_button.setObjectName("hero_resume")
 
         self.session_button.style().unpolish(self.session_button)
@@ -591,6 +713,7 @@ class HomeViewWidget(QWidget):
         self.update_session_button()
         self.update_timer_visual_state()
         self.update_notes_visual_state()
+        self.update_personal_best_badge()
         self.status_label.setText("Listo para comenzar")
 
     def _prompt_inciso_gap_dialog(
@@ -702,6 +825,8 @@ class HomeViewWidget(QWidget):
         if not keep_location and not stop:
             self.sync_location()
 
+        self.update_personal_best_badge()
+        self.update_activity_strip()
         self.refresh_clock()
         self.item_finished.emit(completed)
 
@@ -810,6 +935,16 @@ class HomeViewWidget(QWidget):
         today_ms = self.application.get_today_study_time_ms(include_current=True)
         self.today_study_label.setText(format_hh_mm_ss(today_ms))
 
+        metrics = self.application.get_today_summary_metrics()
+        if hasattr(self, "today_completed_label"):
+            self.today_completed_label.setText(str(metrics["completed_unique_count"]))
+        if hasattr(self, "today_attempts_label"):
+            self.today_attempts_label.setText(str(metrics["total_attempts"]))
+
+        self._strip_counter = getattr(self, "_strip_counter", 0) + 1
+        if self._strip_counter % 20 == 0:
+            self.update_activity_strip()
+
     def update_timer_visual_state(self) -> None:
         compact = self.width() < 1000
         clock_size = 38 if compact else 48
@@ -823,12 +958,12 @@ class HomeViewWidget(QWidget):
             br_color = "#64748b" if is_dark else "#a8a29e"
         elif self.application.mode is TimerMode.PLAY:
             state = "play"
-            pill_text = " ●  SESIÓN EN CURSO"
+            pill_text = " ●  ENFOQUE EN CURSO"
             ex_color = "#34d399" if is_dark else "#047857"
             br_color = "#64748b" if is_dark else "#a8a29e"
         elif self.application.mode is TimerMode.BREAK:
             state = "break"
-            pill_text = " ●  RECESO EN CURSO"
+            pill_text = " ●  DESCANSO EN CURSO"
             ex_color = "#64748b" if is_dark else "#a8a29e"
             br_color = "#fbbf24" if is_dark else "#b45309"
         else:

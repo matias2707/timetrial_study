@@ -13,8 +13,11 @@ from pathlib import Path
 from application.planner_service import PlannerOverview, PlannerService
 from application.statistics_service import (
     RecordStatistics,
+    compute_exercise_personal_best_ms,
     compute_statistics,
     compute_today_study_time_ms,
+    compute_today_summary_metrics,
+    compute_today_timeline_buckets,
     get_24h_hourly_distribution,
     get_course_heatmap_data,
     get_top_effort_exercises,
@@ -531,3 +534,49 @@ class StudyApplicationService:
         if not self.is_record_open:
             return {h: 0 for h in range(24)}
         return get_24h_hourly_distribution(self.record)
+
+    def get_exercise_personal_best_ms(
+        self,
+        section_type: str | None = None,
+        section_number: int | None = None,
+        exercise: int | None = None,
+        inciso: int | None = None,
+    ) -> int | None:
+        """Devuelve el menor tiempo neto completado para la ubicación especificada o actual."""
+        if not self.is_record_open:
+            return None
+        sec_type = section_type if section_type is not None else self.location.section_type
+        sec_num = section_number if section_number is not None else self.location.section_number
+        ex = exercise if exercise is not None else self.location.exercise
+        inc = inciso if inciso is not None else self.location.inciso
+        return compute_exercise_personal_best_ms(self.record, sec_type, sec_num, ex, inc)
+
+    def get_today_timeline_buckets(
+        self, reference_date: date | None = None
+    ) -> list[dict[str, Any]]:
+        """Devuelve 24 buckets horarios con actividad y nivel de intensidad para hoy."""
+        if not self.is_record_open:
+            return [
+                {
+                    "hour": h,
+                    "exercise_time_ms": 0,
+                    "attempts_count": 0,
+                    "intensity_level": 0,
+                    "is_current_hour": False,
+                }
+                for h in range(24)
+            ]
+        return compute_today_timeline_buckets(self.record, reference_date=reference_date)
+
+    def get_today_summary_metrics(
+        self, reference_date: date | None = None
+    ) -> dict[str, Any]:
+        """Devuelve las métricas consolidadas del día de hoy."""
+        if not self.is_record_open:
+            return {
+                "study_time_ms": 0,
+                "break_time_ms": 0,
+                "completed_unique_count": 0,
+                "total_attempts": 0,
+            }
+        return compute_today_summary_metrics(self.record, reference_date=reference_date)

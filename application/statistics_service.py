@@ -706,3 +706,115 @@ def get_24h_hourly_distribution(record: Record) -> HourlyDistribution:
         peak_hour=peak_hour,
         peak_count=peak_count,
     )
+
+
+def compute_exercise_personal_best_ms(
+    record: Record,
+    section_type: str,
+    section_number: int,
+    exercise: int,
+    inciso: int | None = None,
+) -> int | None:
+    """Calcula el menor tiempo neto completado (completed=True) para un ejercicio e inciso específico."""
+    norm_sec = section_type.strip().lower()
+    matching_times = [
+        item.exercise_time_ms
+        for item in record.items
+        if item.section_type.strip().lower() == norm_sec
+        and item.section_number == section_number
+        and item.exercise == exercise
+        and item.inciso == inciso
+        and item.completed
+    ]
+    if not matching_times:
+        return None
+    return min(matching_times)
+
+
+def compute_today_timeline_buckets(
+    record: Record,
+    reference_date: date | None = None,
+) -> list[dict[str, Any]]:
+    """Genera 24 franjas horarias (0 a 23 hs) para la fecha de referencia con métricas de actividad."""
+    target_date = reference_date or date.today()
+    hourly_time: dict[int, int] = {h: 0 for h in range(24)}
+    hourly_attempts: dict[int, int] = {h: 0 for h in range(24)}
+
+    for item in record.items:
+        if not item.created_at:
+            continue
+        try:
+            dt = datetime.fromisoformat(item.created_at)
+            if dt.date() == target_date:
+                h = dt.hour
+                if 0 <= h <= 23:
+                    hourly_time[h] += item.exercise_time_ms
+                    hourly_attempts[h] += 1
+        except (ValueError, TypeError):
+            continue
+
+    is_today = target_date == date.today()
+    now_hour = datetime.now().hour if is_today else -1
+
+    buckets: list[dict[str, Any]] = []
+    for h in range(24):
+        time_ms = hourly_time[h]
+        minutes = time_ms / 60_000
+        if time_ms == 0:
+            level = 0
+        elif minutes <= 15:
+            level = 1
+        elif minutes <= 30:
+            level = 2
+        elif minutes <= 45:
+            level = 3
+        else:
+            level = 4
+
+        buckets.append(
+            {
+                "hour": h,
+                "exercise_time_ms": time_ms,
+                "attempts_count": hourly_attempts[h],
+                "intensity_level": level,
+                "is_current_hour": (h == now_hour),
+            }
+        )
+
+    return buckets
+
+
+def compute_today_summary_metrics(
+    record: Record,
+    reference_date: date | None = None,
+) -> dict[str, Any]:
+    """Calcula las métricas consolidadas de la jornada: tiempo de estudio, ejercicios únicos y total intentos."""
+    target_date = reference_date or date.today()
+    study_time_ms = 0
+    break_time_ms = 0
+    total_attempts = 0
+    completed_unique_exercises: set[tuple[str, int, int, int | None]] = set()
+
+    for item in record.items:
+        item_date = _parse_item_date(item.created_at)
+        if item_date == target_date:
+            study_time_ms += item.exercise_time_ms
+            break_time_ms += item.break_time_ms
+            total_attempts += 1
+            if item.completed:
+                completed_unique_exercises.add(
+                    (
+                        item.section_type.strip().lower(),
+                        item.section_number,
+                        item.exercise,
+                        item.inciso,
+                    )
+                )
+
+    return {
+        "study_time_ms": study_time_ms,
+        "break_time_ms": break_time_ms,
+        "completed_unique_count": len(completed_unique_exercises),
+        "total_attempts": total_attempts,
+    }
+

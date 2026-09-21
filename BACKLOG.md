@@ -1,7 +1,7 @@
 # Product Backlog y Hoja de Ruta — Study Timetrial
 
 **Fecha de creación:** 2026-09-13  
-**Última actualización:** 2026-09-19  
+**Última actualización:** 2026-09-21  
 **Estado general:** En desarrollo activo  
 **Audiencia / Destino:** Desarrolladores humanos y Agentes Autónomos de IA  
 
@@ -62,7 +62,8 @@
 | [TASK-011](#task-011) | ✨ Feature | Visión Global de la Carrera: Dashboard Multidisciplinar y Calendario Unificado de Exámenes | 🟡 Media | `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
 | [TASK-012](#task-012) | ✨ Feature | Motor de Audio Procedural: Generador de Ruido Sintetizado y Temporizador de Apagado Progresivo | 🟢 Baja | `infrastructure`, `presentation`, `tests` | `TASK-004` | `[?] En revisión` |
 | [TASK-013](#task-013) | 🛡️ Seguridad | Respaldo Automático y Sincronización Segura: Snapshots Rotativos y Exportación a Flashcards | 🟡 Media | `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
-| [TASK-014](#task-014) | 🔨 Enhancement | Rediseño integral del Cronómetro: Récord personal, KPIs diarios, Activity Strip 24h y controles jerárquicos | 🔴 Alta | `application`, `presentation`, `tests` | Ninguna | `[ ]` |
+| [TASK-014](#task-014) | 🔨 Enhancement | Rediseño integral del Cronómetro: Récord personal, KPIs diarios, Activity Strip 24h y controles jerárquicos | 🔴 Alta | `application`, `presentation`, `tests` | Ninguna | `[x]` |
+| [TASK-015](#task-015) | ✨ Feature | Modo Sesión Intensiva: Sprint por tiempo (hh:mm) o ejercicios con barra de progreso, modal de resumen y persistencia dedicada | 🟡 Media | `domain`, `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
 
 ---
 
@@ -820,7 +821,7 @@ Proteger la integridad de los datos de estudio frente a sobrescrituras accidenta
 
 - **Tipo:** 🔨 Enhancement / ✨ Feature  
 - **Prioridad:** 🔴 Alta  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Capas afectadas:** `application/`, `presentation/`, `tests/`  
 - **Dependencias:** Ninguna  
 
@@ -861,12 +862,132 @@ Modernizar y enriquecer la pestaña principal del Cronómetro (`HomeViewWidget`)
   - Pruebas de integración visual de la vista rediseñada.
 
 ##### Criterios de aceptación
-- [ ] El récord personal se actualiza dinámicamente al cambiar de ejercicio o inciso, mostrando el menor tiempo completado o "Primer intento".
-- [ ] La cabecera muestra en bloques separados el tiempo neto de hoy, la cantidad de ejercicios únicos resueltos y los intentos totales.
-- [ ] El Activity Strip de 24 horas refleja con exactitud los lapsos estudiados hoy en la franja horaria correspondiente.
-- [ ] El panel de botones organiza el inicio/descanso en la fila primaria grande y las acciones de cierre/apuntes en la fila secundaria.
-- [ ] Los titulares depurados eliminan redundancias ("UBICACIÓN ACTUAL", "CONTROLES DE SESIÓN", etc.).
-- [ ] La suite automatizada de pruebas pasa al 100% (`python -m unittest discover -s tests -v`).
+- [x] El récord personal se actualiza dinámicamente al cambiar de ejercicio o inciso, mostrando el menor tiempo completado o "Primer intento".
+- [x] La cabecera muestra en bloques separados el tiempo neto de hoy, la cantidad de ejercicios únicos resueltos y los intentos totales.
+- [x] El Activity Strip de 24 horas refleja con exactitud los lapsos estudiados hoy en la franja horaria correspondiente.
+- [x] El panel de botones organiza el inicio/descanso en la fila primaria grande y las acciones de cierre/apuntes en la fila secundaria.
+- [x] Los titulares depurados eliminan redundancias ("UBICACIÓN ACTUAL", "CONTROLES DE SESIÓN", etc.).
+- [x] La suite automatizada de pruebas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-015
+#### Modo Sesión Intensiva: Sprint de enfoque por tiempo (hh:mm) o ejercicios con barra de progreso, cola del planificador, modal de resumen y persistencia dedicada
+
+- **Tipo:** ✨ Feature  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[?] En revisión`  
+- **Capas afectadas:** `domain/`, `infrastructure/`, `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Incorporar la modalidad de **Sesión Intensiva** (*Focus Sprint / Deep Work Session*) directamente en la vista principal del cronómetro (`HomeViewWidget`), orientada a bloques de estudio estructurados donde el usuario se compromete con un objetivo cuantitativo cerrado antes de comenzar:
+1. **Definición de Meta (Configuración Explícita por el Usuario):**
+   - **Por Tiempo de Sesión (Ingreso Explícito `hh:mm`):** El usuario ingresa de forma manual y explícita la duración objetivo en horas y minutos (`hh:mm`) mediante un selector temporal interactivo, sin presets obligatorios ni valores predeterminados forzados.
+   - **Por Cantidad de Ejercicios:** El usuario especifica la cantidad numérica exacta de ejercicios a concretar.
+   - **Cola de Ejercicios desde la Planificación:** En la configuración por ejercicios (o mixta), el usuario puede vincular una serie de ejercicios seleccionados desde la pestaña de **Planificación** (ej. Guía 3: ejercicios 4 al 8). Al presionar `COMPLETO`, los selectores de ubicación avanzan automáticamente al siguiente ejercicio de la cola sin requerir ajuste manual.
+2. **Contador Continuo ("Un solo disparo"):**
+   - La sesión intensiva arranca con un único disparo/inicio y corre de forma global e ininterrumpida a nivel de sesión.
+   - El acumulador maestro de la sesión totaliza continuamente tiempo neto de **Enfoque** o tiempo de **Receso / Descanso** según el modo activo (`PLAY` o `BREAK`), preservando la continuidad del bloque de trabajo entre ejercicios.
+3. **Manejo de Tiempo Extra (*Overtime* Elástico):**
+   - Al alcanzarse el tiempo límite `hh:mm`, la sesión **no se interrumpe de manera forzosa**. La barra de progreso alcanza el 100%, se habilita el botón *"Finalizar sesión"* y el contador continúa en tiempo extra destacado en color ámbar/dorado (formato `+hh:mm:ss`), permitiendo al estudiante concluir su razonamiento y registrando el lapso excedente como `overtime_ms`.
+4. **Alertas Acústicas y Visuales de Hito Cumplido:**
+   - En el instante exacto en que se alcanza la meta (tiempo transcurrido $\ge$ tiempo configurado o cantidad de ejercicios resueltos cumplida), se emite una campanada o señal sonora sutil (`AudioService`) y un pulso visual dinámico en la barra de progreso (glow verde esmeralda/dorado), notificando que la meta ha sido alcanzada y el botón *"Finalizar sesión"* se ha desbloqueado.
+5. **Modo Concentración Visual ("Zen Mode" / Interfaz de Foco):**
+   - Durante la sesión intensiva, la interfaz del cronómetro adopta un modo de foco visual: se ocultan o colapsan selectores secundarios y elementos no esenciales, centrando la vista exclusivamente en la barra de progreso, la leyenda de avance, los relojes digitales de tiempo y la botonera operativa.
+6. **Adaptación de la Botonera del Cronómetro:**
+   - **Eliminación de `Detener`:** El botón tradicional `[ ■ DETENER ]` se oculta/inhabilita durante toda la sesión intensiva, evitando detenciones involuntarias o reseteos que rompan la inercia del bloque de estudio.
+   - **Botón "Finalizar sesión":** Se ubica de forma destacada en la botonera principal, pero permanece **deshabilitado / inactivo** hasta que se haya concretado efectivamente la meta (tiempo transcurrido $\ge$ tiempo fijado, o ejercicios completados $\ge$ meta fijada). Una vez cumplida la meta, se desbloquea con estilo verde éxito para permitir el cierre formal.
+   - **Botón "Cancelar sesión":** Permite al usuario abortar o interrumpir anticipadamente la sesión intensiva en cualquier momento mediante un diálogo de confirmación de seguridad (`QMessageBox`), finalizando el modo intensivo sin descartar los ejercicios ya guardados.
+   - **Comportamiento idéntico del resto de controles:** Los botones `INICIAR / PAUSAR ENFOQUE`, `TOMAR DESCANSO`, `COMPLETO`, `INCOMPLETO`, `APUNTES` y `MARCADORES` conservan su comportamiento operativo estándar, guardando cada ejercicio de manera individual en el historial de la materia activa.
+7. **Nueva Sección Visual de Sesión (`SessionProgressWidget`):**
+   - Panel visual destacado ubicado en la zona superior de los controles del cronómetro:
+     - **Barra de Progreso Dinámica (`QProgressBar`):** Representación porcentual fluida del avance hacia la meta.
+     - **Leyenda contextual adaptativa:**
+       - *Si se configuró por tiempo:* Exhibe el tiempo transcurrido respecto al tiempo máximo objetivo y el tiempo restante o extra (ej. `01:15:00 / 02:00:00 — Restante: 45:00 (62.5%)` o `02:05:12 / 02:00:00 — Tiempo Extra: +05:12 (100%)`).
+       - *Si se configuró por ejercicios:* Exhibe la cantidad de ejercicios concretados respecto a la meta (ej. `3 de 5 ejercicios concretados (60.0%)`).
+8. **Modal de Resumen y Métricas Post-Sesión (*Session Recap Modal*):**
+   - Al presionar *"Finalizar sesión"*, se despliega un diálogo modal estilizado con el balance analítico de la sesión:
+     - Tiempo total de sesión y desglose Enfoque vs. Descanso (Ratio de Concentración, ej. *82% Enfoque / 18% Descanso*).
+     - Ejercicios completados con éxito vs. marcados incompletos.
+     - Tiempo extra acumulado (*overtime*), en caso de haber excedido el tiempo fijado.
+     - Récords personales (*Personal Bests*) batidos durante la sesión.
+     - Tiempo promedio invertido por ejercicio.
+     - Campo de notas/conclusiones para la sesión intensiva.
+9. **Persistencia en JSON con Sección Dedicada (`intensive_sessions`):**
+   - Las sesiones intensivas se guardan de forma permanente en el archivo JSON de la materia activa bajo una sección propia de primer nivel: `intensive_sessions: list[dict]`.
+   - **Invarianza del esquema:** Los registros históricos de ejercicios (`items`) permanecen completamente limpios e inalterados (sin inyección de tags ni acoplamiento de trazabilidad intrusiva).
+   - Cada entidad de sesión intensiva almacena:
+     - `id`: Identificador UUID de la sesión.
+     - `created_at`: Marca temporal ISO de inicio.
+     - `finished_at`: Marca temporal ISO de finalización.
+     - `target_type`: `"time"` o `"exercises"`.
+     - `target_value`: Valor objetivo (milisegundos para `hh:mm`, o entero para cantidad de ejercicios).
+     - `total_exercise_time_ms`: Tiempo neto total de estudio.
+     - `total_break_time_ms`: Tiempo total de receso/descanso.
+     - `overtime_ms`: Tiempo extra acumulado tras alcanzar el objetivo.
+     - `completed_exercises`: Cantidad de ejercicios concluidos.
+     - `notes`: Conclusiones o notas registradas en el modal de cierre.
+     - `was_cancelled`: Booleano que indica si la sesión concluyó con éxito o fue cancelada anticipadamente.
+
+##### Casos de uso y flujo de interacción
+1. **Configuración y Arranque:**
+   - En `HomeViewWidget`, el usuario selecciona `[ ⚡ Sesión Intensiva ]`.
+   - Se abre el diálogo modal de configuración:
+     - Si selecciona **Por Tiempo**, ingresa explícitamente horas y minutos en un selector `hh:mm` (sin defaults predefinidos).
+     - Si selecciona **Por Ejercicios**, ingresa la cantidad de ejercicios y opcionalmente selecciona una secuencia desde la pestaña de Planificación.
+   - Al presionar *"Comenzar Sesión"*, la interfaz adopta el modo de concentración visual: el botón `DETENER` se oculta, se inserta `SessionProgressWidget` con su barra y leyenda, y se muestran `Finalizar sesión` (deshabilitado) y `Cancelar sesión`.
+2. **Desarrollo y Registro Continuo:**
+   - El contador maestro de sesión acumula enfoque y descansos.
+   - El estudiante resuelve ejercicios y presiona `COMPLETO`. El intento se guarda en `items` normalmente y, si hay una cola planificada activa, el sistema salta automáticamente al siguiente ejercicio.
+   - Si la meta es por ejercicios, la barra avanza proporcionalmente. Si es por tiempo, la barra progresa en tiempo real cada segundo.
+3. **Hito Cumplido y Overtime:**
+   - Al alcanzar la meta, suena la alerta sonora y la barra titila en verde esmeralda/oro. El botón `Finalizar sesión` se desbloquea.
+   - Si el estudiante sigue trabajando, el tiempo extra se acumula como overtime sin interrupciones ni bloqueos de pantalla.
+4. **Cierre y Guardado:**
+   - Al presionar `Finalizar sesión`, se abre el *Session Recap Modal* con las métricas consolidadas. Al confirmar, los datos se guardan atómicamente en la sección `intensive_sessions` del archivo JSON y la interfaz regresa al modo habitual.
+   - Si se presiona `Cancelar sesión`, se solicita confirmación modal (`QMessageBox`). De confirmarse, la sesión se aborta registrando el estado cancelado en `intensive_sessions` sin afectar los ejercicios ya guardados en `items`.
+
+##### Cambios técnicos proyectados por capa
+- **`domain/models.py`:**
+  - Dataclass `IntensiveSessionRecord`: modelo serializable con `id`, `created_at`, `finished_at`, `target_type`, `target_value`, `total_exercise_time_ms`, `total_break_time_ms`, `overtime_ms`, `completed_exercises`, `notes`, `was_cancelled`.
+  - Ampliación de la entidad `Record` para incluir `intensive_sessions: list[IntensiveSessionRecord] = field(default_factory=list)`, con soporte completo de backward compatibility en `from_dict()` y `to_dict()`.
+- **`domain/timer_service.py`:**
+  - Métodos y acumuladores de sesión intensiva:
+    - `start_intensive_session(target_type: str, target_value: int, exercise_queue: list[dict] | None = None) -> None`
+    - `get_intensive_session_progress() -> tuple[float, bool, int]` (porcentaje 0.0 a 1.0, booleano `goal_reached`, milisegundos de overtime).
+    - `finish_intensive_session(notes: str = "") -> IntensiveSessionRecord`
+    - `cancel_intensive_session() -> None`
+- **`infrastructure/storage_service.py`:**
+  - Persistencia segura y atómica del campo `intensive_sessions` en el esquema JSON sin modificar la estructura de `items`.
+- **`application/application_service.py`:**
+  - Coordinación de inicio, avance de cola de ejercicios planificados, registro de hito acústico/visual, finalización y persistencia de sesión intensiva.
+- **`presentation/session_progress_widget.py` [NEW]:**
+  - Componente gráfico con barra de progreso dinámica, leyenda de tiempo/ejercicios, modo overtime en color ámbar y señal de hito cumplido.
+- **`presentation/session_summary_dialog.py` [NEW]:**
+  - Diálogo modal con métricas de ratio de enfoque vs. descanso, ejercicios resueltos, overtime, récords batidos y campo de texto para notas.
+- **`presentation/intensive_config_dialog.py` [NEW]:**
+  - Diálogo modal de inicio con input explícito de `hh:mm` (sin presets fijos), selector de cantidad de ejercicios y selector de cola de ejercicios desde la planificación.
+- **`presentation/home_view.py`:**
+  - Conmutación al modo concentración visual (ocultar selectores no esenciales y botón `stop_button`).
+  - Integración de `session_progress_widget`, `finish_session_button` y `cancel_session_button`.
+  - Conexión de alerta sonora (`AudioService`) al emitirse la señal de meta alcanzada.
+- **`presentation/theme.py` & `presentation/theme_tokens.py`:**
+  - Tokens estilísticos para la barra de progreso, overtime, indicadores de meta y botones de control de sesión intensiva.
+- **`tests/test_intensive_session.py` [NEW]:**
+  - Pruebas unitarias de serialización JSON de `intensive_sessions`, validación de entrada `hh:mm`, cálculo de overtime, disparo de alertas al cumplir meta, cola secuencial de ejercicios y avance condicional de "Finalizar sesión".
+
+##### Criterios de aceptación
+- [ ] La configuración por tiempo permite ingresar explícitamente horas y minutos (`hh:mm`) por el usuario sin defaults obligatorios.
+- [ ] La configuración por ejercicios permite ingresar la cantidad y opcionalmente definir una cola de ejercicios desde la planificación que avanza automáticamente.
+- [ ] Durante la sesión intensiva, el botón "Detener" está oculto y se activa el modo concentración visual.
+- [ ] El botón "Finalizar sesión" permanece deshabilitado hasta que se cumple el tiempo ingresado o la meta de ejercicios.
+- [ ] Al cumplirse la meta, se emite una alerta acústica y visual en la barra de progreso, habilitando "Finalizar sesión".
+- [ ] Si la sesión excede el tiempo fijado, el cronómetro entra en tiempo extra (overtime) sumando normalmente sin cortar la sesión.
+- [ ] "Cancelar sesión" requiere confirmación del usuario y finaliza la sesión sin perder los ejercicios ya guardados en `items`.
+- [ ] Al presionar "Finalizar sesión", se despliega el modal de resumen con métricas (ratio enfoque/descanso, ejercicios, overtime y notas).
+- [ ] Las sesiones finalizadas se guardan en el archivo JSON dentro de una sección dedicada `intensive_sessions`, sin alterar la estructura de `items`.
+- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 
@@ -882,6 +1003,7 @@ Modernizar y enriquecer la pestaña principal del Cronómetro (`HomeViewWidget`)
 - [ ] Buscador Rápido Global (*Spotlight / Ctrl + K*): búsqueda instantánea por título de guía, ejercicio o nota desde cualquier pestaña.
 
 ### 📋 Planificador y Trabajo con Guías
+- [ ] Panel rápido de visualización de guía en pantalla Home: Drawer o panel lateral colapsable en la vista principal para explorar la estructura completa de la guía activa (ejercicios, incisos, estados, notas y etiquetas) y seleccionar cualquier ejercicio con 1 clic sin cambiar a la pestaña de Planificación.
 - [ ] Importador de guías desde texto plano o Markdown para generación rápida de universos de estudio.
 - [ ] Exportar y compartir plantillas de planificación (estructura de guías sin tiempos privados).
 
@@ -893,13 +1015,21 @@ Modernizar y enriquecer la pestaña principal del Cronómetro (`HomeViewWidget`)
 - [?] Generador de ruido procedural matemático (blanco, rosa, marrón) y temporizador de apagado progresivo — *En revisión en [TASK-012](#task-012)*.
 
 ### 📊 Registros y Reportes
+- [ ] Panel de métricas de volumen diario en Estadísticas (Resueltos vs. Intentados con histórico de 7 días): Apartado analítico en la pestaña de Estadísticas que contabiliza la cantidad diaria de ejercicios resueltos con éxito frente al total de intentos efectuados, complementado con una visualización de tendencia/gráfico de los últimos 7 días (*rolling 7 days*) para fomentar la toma de conciencia del progreso, la tasa de efectividad y el ritmo de estudio cotidiano.
+- [ ] Sección / Pestaña de Análisis de Sesiones: Módulo analítico dedicado para explorar y comparar el historial de sesiones completadas (intensivas, pomodoro, campeonato), con visualización gráfica del ratio de concentración (enfoque vs. descanso), tiempos extra (overtime), evolución del ritmo de estudio y notas de cierre.
 - [?] Heatmap global y dashboard de constancia multidisciplinar (todas las materias) — *En revisión en [TASK-011](#task-011)*.
 - [x] Exportación de registros y estadísticas a formatos externos (CSV / Excel) — *Especificada formalmente en [TASK-009](#task-009)*.
 - [ ] Comparativa de rendimiento histórico entre diferentes guías o materias.
 
 ### ⏱️ Cronómetro y Sesión
+- [ ] Sistema unificado de modalidades de sesión: Interfaz para alternar fluidamente en el cronómetro entre 4 dinámicas de trabajo:
+  - **Sesión Libre (actual):** Cronometraje continuo tradicional sin límites ni restricciones prefijadas.
+  - **Sesión Intensiva:** Sprint por tiempo explícito (`hh:mm`) o cantidad de ejercicios con barra de progreso, cola planificada y persistencia dedicada (*En revisión en [TASK-015](#task-015)*).
+  - **Sesión Pomodoro:** Bloques estructurados de enfoque e intervalos de descanso con avisos acústicos (*En revisión en [TASK-010](#task-010)*).
+  - **Sesión Campeonato (*Time Attack*):** Modo competitivo contra el reloj o récords personales previos (*Personal Bests*), con metas exigentes por ejercicio y ranking de ritmo.
 - [ ] Atajos de teclado globales configurables para iniciar/pausar/descanso desde cualquier vista o ventana secundaria.
 - [?] Temporizador tipo Pomodoro configurable con avisos sonoros y visuales — *En revisión en [TASK-010](#task-010)*.
+- [?] Modo Sesión Intensiva (Sprint de enfoque por tiempo o por cantidad de ejercicios) — *En revisión en [TASK-015](#task-015)*.
 
 ### 🎨 UI / UX y Configuración
 - [ ] Personalización avanzada de paleta de colores y selección de fuentes.

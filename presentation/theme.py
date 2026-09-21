@@ -251,7 +251,7 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             background: rgba(239, 68, 68, 0.12);
         }}
 
-        /* Header today card */
+        /* Header today card & KPIs */
         QFrame#todayCard {{
             background: {t.bg_card};
             border: 1px solid {t.card_border};
@@ -266,6 +266,33 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
         QLabel#today_value {{
             color: {t.text_heading};
             font-size: 16px;
+            font-weight: 800;
+            font-family: 'Consolas', monospace;
+        }}
+        QFrame#kpiCardToday {{
+            background: {t.bg_card};
+            border: 1px solid {t.card_border};
+            border-radius: 10px;
+        }}
+        QLabel#kpiTodayLabel {{
+            color: {t.text_muted};
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+        }}
+        QLabel#kpiTodayValue {{
+            color: {t.text_heading};
+            font-size: 15px;
+            font-weight: 800;
+            font-family: 'Consolas', monospace;
+        }}
+        QLabel#personal_best_badge {{
+            background: {"#27272a" if t.is_dark else "#fef3c7"};
+            color: {"#fde047" if t.is_dark else "#b45309"};
+            border: 1px solid {"#854d0e" if t.is_dark else "#fde68a"};
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 11px;
             font-weight: 800;
             font-family: 'Consolas', monospace;
         }}
@@ -383,6 +410,19 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
         QPushButton#hero_resume:hover {{
             background: {t.hero_resume_hover_bg};
             border-color: {t.hero_resume_hover_border};
+        }}
+        QPushButton#hero_break {{
+            background: {t.hero_pause_bg};
+            color: {t.hero_pause_fg};
+            border: 1.5px solid {t.hero_pause_border};
+            font-size: 13px;
+            font-weight: 800;
+            padding: 10px 18px;
+            border-radius: 10px;
+        }}
+        QPushButton#hero_break:hover {{
+            background: {t.hero_pause_hover_bg};
+            border-color: {t.hero_pause_hover_border};
         }}
 
         QPushButton#stop {{
