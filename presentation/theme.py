@@ -169,6 +169,12 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             font-weight: 800;
             letter-spacing: 1.2px;
         }}
+        QLabel#location_selector_label {{
+            color: {t.text_muted};
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+        }}
         QLabel#record_meta {{
             color: {t.text_faint};
             font-size: 12px;
@@ -200,13 +206,21 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
         }}
 
         /* Cards */
-        QFrame#heroCard, QFrame#metricCard, QFrame#sectionCard, QFrame#panelCard, QFrame#kpiCard {{
+        QFrame#heroCard, QFrame#metricCard, QFrame#sectionCard, QFrame#panelCard, QFrame#kpiCard, QFrame#notesCard {{
             background: {t.bg_card};
             border: 1px solid {t.card_border};
             border-radius: 14px;
         }}
         QFrame#heroCard {{
             border-top: 3px solid {t.hero_card_top};
+        }}
+        QTextBrowser#notes_browser {{
+            background: {t.bg_input};
+            border: 1px solid {t.border_subtle};
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: {t.text_primary};
+            font-size: 12px;
         }}
 
         /* Clocks */
@@ -350,6 +364,15 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             color: {t.text_disabled};
             border-color: {t.border_disabled};
         }}
+        QLineEdit#location_selector_input, QSpinBox#location_selector_input {{
+            font-size: 16px;
+            font-weight: 700;
+            min-height: 26px;
+            padding: 4px 10px;
+        }}
+        QLineEdit#location_selector_input:focus, QSpinBox#location_selector_input:focus {{
+            padding: 3px 9px;
+        }}
 
         /* Buttons */
         QPushButton {{
@@ -465,7 +488,7 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             background: {t.danger_hover_bg};
         }}
 
-        QPushButton#comment_action {{
+        QPushButton#comment_action, QPushButton#tags_action {{
             background: {t.comment_action_bg};
             color: {t.comment_action_fg};
             border: 1px solid {t.comment_action_border};
@@ -474,7 +497,7 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             font-size: 12px;
             font-weight: 700;
         }}
-        QPushButton#comment_action:hover {{
+        QPushButton#comment_action:hover, QPushButton#tags_action:hover {{
             background: {t.comment_action_hover_bg};
             border-color: {t.comment_action_hover_border};
             color: {t.comment_action_hover_fg};
@@ -486,10 +509,10 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             color: {t.toolbar_btn_fg};
             border: 1px solid {t.toolbar_btn_border};
             border-radius: 8px;
-            min-width: 32px;
-            max-width: 32px;
-            min-height: 32px;
-            max-height: 32px;
+            min-width: 36px;
+            max-width: 36px;
+            min-height: 36px;
+            max-height: 36px;
             padding: 0px;
         }}
         QPushButton#stepper_button:hover {{

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import qtawesome as qta
 from PySide6.QtCore import QDate, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -394,16 +396,13 @@ class ExerciseDetailPopup(QDialog):
         if not current_note and node.note:
             current_note = node.note
 
-        self.notes_edit = QPlainTextEdit()
-        self.notes_edit.setPlaceholderText(
-            "Escribe notas, fórmulas clave, advertencias o dudas sobre este ejercicio..."
-        )
-        self.notes_edit.setPlainText(current_note)
-        self.notes_edit.setMinimumHeight(65)
-        self.notes_edit.setMaximumHeight(100)
-        self.notes_edit.setStyleSheet(
+        # Visor Markdown y Editor
+        self.notes_browser = QTextBrowser()
+        self.notes_browser.setMinimumHeight(65)
+        self.notes_browser.setMaximumHeight(110)
+        self.notes_browser.setStyleSheet(
             f"""
-            QPlainTextEdit {{
+            QTextBrowser {{
                 background-color: {"#0f172a" if is_dark else "#f8fafc"};
                 color: {"#f1f5f9" if is_dark else "#0f172a"};
                 border: 1px solid {"#334155" if is_dark else "#cbd5e1"};
@@ -411,11 +410,23 @@ class ExerciseDetailPopup(QDialog):
                 padding: 6px;
                 font-size: 12px;
             }}
-            QPlainTextEdit:focus {{
-                border-color: #38bdf8;
-            }}
             """
         )
+        if current_note:
+            self.notes_browser.setMarkdown(current_note)
+        else:
+            self.notes_browser.setHtml(
+                "<p style='color: #64748b; font-style: italic; font-size: 11px;'>Sin notas registradas para este ejercicio.</p>"
+            )
+        notes_layout.addWidget(self.notes_browser)
+
+        # Editor rápido para compatibilidad
+        self.notes_edit = QPlainTextEdit()
+        self.notes_edit.setPlaceholderText(
+            "Escribe notas, fórmulas clave, advertencias o dudas sobre este ejercicio..."
+        )
+        self.notes_edit.setPlainText(current_note)
+        self.notes_edit.setVisible(False)
         notes_layout.addWidget(self.notes_edit)
 
         notes_bar = QHBoxLayout()
@@ -424,8 +435,8 @@ class ExerciseDetailPopup(QDialog):
         notes_bar.addWidget(self.notes_feedback_label)
         notes_bar.addStretch()
 
-        btn_save_note = QPushButton("💾 Guardar Apunte")
-        btn_save_note.setStyleSheet(
+        btn_edit_markdown = QPushButton("✏️ Editar con Formato (Markdown)")
+        btn_edit_markdown.setStyleSheet(
             """
             QPushButton {
                 background-color: #0284c7;
@@ -440,6 +451,23 @@ class ExerciseDetailPopup(QDialog):
             }
             """
         )
+        btn_edit_markdown.clicked.connect(self._on_open_markdown_editor)
+        notes_bar.addWidget(btn_edit_markdown)
+
+        btn_save_note = QPushButton("💾 Guardar Apunte")
+        btn_save_note.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #334155;
+                color: #f8fafc;
+                font-weight: 600;
+                padding: 4px 12px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            """
+        )
+        btn_save_note.setVisible(False)
         btn_save_note.clicked.connect(self._on_save_note)
         notes_bar.addWidget(btn_save_note)
         notes_layout.addLayout(notes_bar)
@@ -494,6 +522,36 @@ class ExerciseDetailPopup(QDialog):
 
         layout.addLayout(actions_layout)
 
+    def _on_open_markdown_editor(self) -> None:
+        if not self.app_service:
+            return
+        dlg = ExerciseNoteDialog(
+            parent=self,
+            app_service=self.app_service,
+            section_type=self.node.section_type,
+            section_number=self.node.section_number,
+            exercise=self.node.exercise,
+            inciso=self.node.inciso,
+            is_dark=self.is_dark,
+        )
+        if dlg.exec() == ExerciseNoteDialog.DialogCode.Accepted:
+            updated = self.app_service.get_exercise_note(
+                self.node.section_type,
+                self.node.section_number,
+                self.node.exercise,
+                self.node.inciso,
+            )
+            self.notes_edit.setPlainText(updated)
+            if updated.strip():
+                self.notes_browser.setMarkdown(updated)
+            else:
+                self.notes_browser.setHtml(
+                    "<p style='color: #64748b; font-style: italic; font-size: 11px;'>Sin notas registradas para este ejercicio.</p>"
+                )
+            self.node.note = updated
+            self.node.has_note = bool(updated.strip())
+            self.notes_feedback_label.setText("✓ Apunte guardado")
+
     def _on_save_note(self) -> None:
         if not self.app_service:
             return
@@ -507,6 +565,12 @@ class ExerciseDetailPopup(QDialog):
         )
         self.node.note = text
         self.node.has_note = bool(text)
+        if text:
+            self.notes_browser.setMarkdown(text)
+        else:
+            self.notes_browser.setHtml(
+                "<p style='color: #64748b; font-style: italic; font-size: 11px;'>Sin notas registradas para este ejercicio.</p>"
+            )
         self.notes_feedback_label.setText("✓ Apunte guardado")
 
     def _render_detail_tags(self) -> None:
@@ -825,7 +889,7 @@ class TagSelectionDialog(QDialog):
 
 
 class ExerciseNoteDialog(QDialog):
-    """Diálogo modal para editar el bloc de notas / apuntes de un ejercicio o inciso."""
+    """Diálogo modal para editar el bloc de notas / apuntes de un ejercicio o inciso con soporte Markdown."""
 
     def __init__(
         self,
@@ -850,7 +914,7 @@ class ExerciseNoteDialog(QDialog):
             label_target += f".{inciso}"
 
         self.setWindowTitle(f"Notas · {label_target}")
-        self.resize(460, 320)
+        self.resize(540, 440)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -860,9 +924,103 @@ class ExerciseNoteDialog(QDialog):
         lbl_desc.setStyleSheet("font-size: 14px;")
         layout.addWidget(lbl_desc)
 
+        # Pestañas: Editor y Vista Previa
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("markdown_note_tabs")
+
+        # --- Pestaña 1: Editor con Barra de Herramientas ---
+        tab_edit = QWidget()
+        edit_layout = QVBoxLayout(tab_edit)
+        edit_layout.setContentsMargins(8, 8, 8, 8)
+        edit_layout.setSpacing(6)
+
+        # Barra de herramientas Markdown
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(4)
+
+        tb_style = f"""
+            QPushButton {{
+                background-color: {"#1e293b" if is_dark else "#f1f5f9"};
+                color: {"#f1f5f9" if is_dark else "#1e293b"};
+                border: 1px solid {"#334155" if is_dark else "#cbd5e1"};
+                border-radius: 4px;
+                font-size: 12px;
+                min-width: 28px;
+                max-width: 32px;
+                height: 26px;
+                padding: 0px 2px;
+            }}
+            QPushButton:hover {{
+                background-color: {"#334155" if is_dark else "#e2e8f0"};
+                border-color: #38bdf8;
+            }}
+        """
+
+        self.btn_h = QPushButton("H")
+        self.btn_h.setToolTip("Encabezado / Título (### )")
+        self.btn_h.setStyleSheet(tb_style + "QPushButton { font-weight: 800; }")
+        self.btn_h.clicked.connect(lambda: self._apply_line_prefix("### "))
+        toolbar.addWidget(self.btn_h)
+
+        self.btn_bold = QPushButton("B")
+        self.btn_bold.setToolTip("Negrita (**texto**)")
+        self.btn_bold.setStyleSheet(tb_style + "QPushButton { font-weight: 800; }")
+        self.btn_bold.clicked.connect(lambda: self._apply_inline_format("**", "**", "texto en negrita"))
+        toolbar.addWidget(self.btn_bold)
+
+        self.btn_italic = QPushButton("I")
+        self.btn_italic.setToolTip("Cursiva (*texto*)")
+        self.btn_italic.setStyleSheet(tb_style + "QPushButton { font-style: italic; font-weight: 700; }")
+        self.btn_italic.clicked.connect(lambda: self._apply_inline_format("*", "*", "texto en cursiva"))
+        toolbar.addWidget(self.btn_italic)
+
+        self.btn_strike = QPushButton("S")
+        self.btn_strike.setToolTip("Tachado (~~texto~~)")
+        self.btn_strike.setStyleSheet(tb_style)
+        self.btn_strike.clicked.connect(lambda: self._apply_inline_format("~~", "~~", "texto tachado"))
+        toolbar.addWidget(self.btn_strike)
+
+        toolbar.addSpacing(6)
+
+        self.btn_bullet = QPushButton("•")
+        self.btn_bullet.setToolTip("Lista con viñetas (- )")
+        self.btn_bullet.setStyleSheet(tb_style + "QPushButton { font-size: 14px; font-weight: 800; }")
+        self.btn_bullet.clicked.connect(lambda: self._apply_line_prefix("- "))
+        toolbar.addWidget(self.btn_bullet)
+
+        self.btn_number = QPushButton("1.")
+        self.btn_number.setToolTip("Lista numerada (1. )")
+        self.btn_number.setStyleSheet(tb_style + "QPushButton { font-weight: 700; }")
+        self.btn_number.clicked.connect(lambda: self._apply_line_prefix("1. "))
+        toolbar.addWidget(self.btn_number)
+
+        self.btn_quote = QPushButton(">")
+        self.btn_quote.setToolTip("Cita / Destacado (> )")
+        self.btn_quote.setStyleSheet(tb_style + "QPushButton { font-weight: 800; }")
+        self.btn_quote.clicked.connect(lambda: self._apply_line_prefix("> "))
+        toolbar.addWidget(self.btn_quote)
+
+        toolbar.addSpacing(6)
+
+        self.btn_code = QPushButton("</>")
+        self.btn_code.setToolTip("Código inline (`código`) o bloque de código")
+        self.btn_code.setStyleSheet(tb_style + "QPushButton { font-weight: 700; }")
+        self.btn_code.clicked.connect(self._apply_code_format)
+        toolbar.addWidget(self.btn_code)
+
+        self.btn_hr = QPushButton("—")
+        self.btn_hr.setToolTip("Separador horizontal (---)")
+        self.btn_hr.setStyleSheet(tb_style)
+        self.btn_hr.clicked.connect(self._insert_hr)
+        toolbar.addWidget(self.btn_hr)
+
+        toolbar.addStretch()
+        edit_layout.addLayout(toolbar)
+
         self.editor = QPlainTextEdit()
         self.editor.setPlaceholderText(
-            "Escribe notas, fórmulas, recordatorios o dudas para este ejercicio..."
+            "Escribe notas, fórmulas, recordatorios o dudas en Markdown...\n"
+            "Usa la barra de herramientas para aplicar títulos, negrita, listas o código."
         )
         existing = ""
         if self.app_service:
@@ -879,13 +1037,40 @@ class ExerciseNoteDialog(QDialog):
                 border-radius: 8px;
                 padding: 8px;
                 font-size: 13px;
+                font-family: 'Consolas', 'Courier New', monospace;
             }}
             QPlainTextEdit:focus {{
                 border-color: #38bdf8;
             }}
             """
         )
-        layout.addWidget(self.editor, 1)
+        edit_layout.addWidget(self.editor, 1)
+        self.tabs.addTab(tab_edit, "✏️ Redactar")
+
+        # --- Pestaña 2: Vista Previa Markdown ---
+        tab_preview = QWidget()
+        preview_layout = QVBoxLayout(tab_preview)
+        preview_layout.setContentsMargins(8, 8, 8, 8)
+
+        self.preview_browser = QTextBrowser()
+        self.preview_browser.setOpenExternalLinks(True)
+        self.preview_browser.setStyleSheet(
+            f"""
+            QTextBrowser {{
+                background-color: {"#0f172a" if is_dark else "#f8fafc"};
+                color: {"#f1f5f9" if is_dark else "#0f172a"};
+                border: 1.5px solid {"#334155" if is_dark else "#cbd5e1"};
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 13px;
+            }}
+            """
+        )
+        preview_layout.addWidget(self.preview_browser, 1)
+        self.tabs.addTab(tab_preview, "👁️ Vista previa")
+
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        layout.addWidget(self.tabs, 1)
 
         btn_lay = QHBoxLayout()
         btn_lay.addStretch()
@@ -913,6 +1098,53 @@ class ExerciseNoteDialog(QDialog):
         btn_lay.addWidget(btn_save)
 
         layout.addLayout(btn_lay)
+
+    def _apply_inline_format(self, prefix: str, suffix: str, placeholder: str = "texto") -> None:
+        cursor = self.editor.textCursor()
+        if cursor.hasSelection():
+            selected = cursor.selectedText()
+            cursor.insertText(f"{prefix}{selected}{suffix}")
+        else:
+            pos = cursor.position()
+            cursor.insertText(f"{prefix}{placeholder}{suffix}")
+            cursor.setPosition(pos + len(prefix))
+            cursor.setPosition(pos + len(prefix) + len(placeholder), QTextCursor.MoveMode.KeepAnchor)
+            self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+
+    def _apply_line_prefix(self, prefix: str) -> None:
+        cursor = self.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
+        cursor.insertText(prefix)
+        self.editor.setFocus()
+
+    def _apply_code_format(self) -> None:
+        cursor = self.editor.textCursor()
+        if cursor.hasSelection():
+            selected = cursor.selectedText()
+            if "\n" in selected or "\u2029" in selected:
+                cursor.insertText(f"```\n{selected}\n```\n")
+            else:
+                cursor.insertText(f"`{selected}`")
+        else:
+            self._apply_inline_format("`", "`", "código")
+        self.editor.setFocus()
+
+    def _insert_hr(self) -> None:
+        cursor = self.editor.textCursor()
+        cursor.insertText("\n---\n")
+        self.editor.setFocus()
+
+    def _on_tab_changed(self, index: int) -> None:
+        if index == 1:
+            raw = self.editor.toPlainText().strip()
+            if not raw:
+                self.preview_browser.setHtml(
+                    "<p style='color: #64748b; font-style: italic;'>Sin contenido para previsualizar. Escribe notas en la pestaña 'Redactar'.</p>"
+                )
+            else:
+                from infrastructure.compatibility import convert_plain_text_to_markdown
+                self.preview_browser.setMarkdown(convert_plain_text_to_markdown(raw))
 
     def _on_save(self) -> None:
         note_text = self.editor.toPlainText().strip()

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QBoxLayout,
+    QCheckBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -18,12 +19,18 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 import qtawesome as qta
 
 from application.application_service import SessionLocation, StudyApplicationService
+from application.planner_service import (
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_PENDING,
+)
 from domain.models import TimerItem
 from domain.timer_service import TimerMode
 from presentation.audio_service import AudioService
@@ -83,6 +90,10 @@ class HomeViewWidget(QWidget):
         if hasattr(self, "update_personal_best_badge"):
             self.update_personal_best_badge()
         self.update_timer_visual_state()
+        if hasattr(self, "_refresh_exercise_chips"):
+            self._refresh_exercise_chips()
+        if hasattr(self, "location_label") and hasattr(self, "sync_location"):
+            self.sync_location()
 
     def _build_ui(self) -> None:
         scroll = QScrollArea(self)
@@ -224,19 +235,41 @@ class HomeViewWidget(QWidget):
         hero_layout.setSpacing(12)
 
         hero_top = QHBoxLayout()
-        hero_icon = QLabel()
-        hero_icon.setPixmap(qta.icon("fa5s.map-marker-alt", color="#84cc16").pixmap(14, 14))
-        hero_top.addWidget(hero_icon)
+        hero_top.setSpacing(10)
 
         self.location_label = QLabel()
         self.location_label.setObjectName("location_badge")
-        hero_top.addWidget(self.location_label)
+        self.location_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.location_label.mousePressEvent = self._on_location_label_clicked
+        hero_top.addWidget(self.location_label, alignment=Qt.AlignmentFlag.AlignVCenter)
 
+        # Tira de 5 Chips de Ejercicios (el 3ro es el actual) inmediatamente a la derecha del título
+        chips_box = QHBoxLayout()
+        chips_box.setSpacing(6)
+        chips_box.setContentsMargins(6, 0, 0, 0)
+
+        self.exercise_chips: list[QPushButton] = []
+        for i in range(5):
+            btn = QPushButton()
+            btn.setObjectName(f"exercise_chip_{i}")
+            btn.setFixedSize(58, 32)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _, idx=i: self._on_chip_clicked(idx))
+            self.exercise_chips.append(btn)
+            chips_box.addWidget(btn)
+
+        hero_top.addLayout(chips_box)
         hero_top.addStretch()
+
+        self.auto_advance_checkbox = QCheckBox("Auto-avanzar al completar")
+        self.auto_advance_checkbox.setObjectName("auto_advance_toggle")
+        self.auto_advance_checkbox.setToolTip("Avanza automáticamente al siguiente ejercicio al completar con éxito")
+        self.auto_advance_checkbox.setChecked(True)
+        hero_top.addWidget(self.auto_advance_checkbox, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self.personal_best_badge = QLabel("🏆 Récord: --:--")
         self.personal_best_badge.setObjectName("personal_best_badge")
-        hero_top.addWidget(self.personal_best_badge)
+        hero_top.addWidget(self.personal_best_badge, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         hero_layout.addLayout(hero_top)
 
@@ -244,14 +277,18 @@ class HomeViewWidget(QWidget):
         selectors.setHorizontalSpacing(12)
         selectors.setVerticalSpacing(6)
         self.section_input = QLineEdit(DEFAULT_SECTION_TYPE)
+        self.section_input.setObjectName("location_selector_input")
         self.section_input.setPlaceholderText("Tipo de sección")
         self.section_number_input = QSpinBox()
+        self.section_number_input.setObjectName("location_selector_input")
         self.section_number_input.setRange(1, MAX_VALUE)
         self.section_number_input.setValue(1)
         self.exercise_input = QSpinBox()
+        self.exercise_input.setObjectName("location_selector_input")
         self.exercise_input.setRange(1, MAX_VALUE)
         self.exercise_input.setValue(1)
         self.inciso_input = QSpinBox()
+        self.inciso_input.setObjectName("location_selector_input")
         self.inciso_input.setRange(0, MAX_VALUE)
         self.inciso_input.setSpecialValueText("Sin inciso")
 
@@ -271,7 +308,7 @@ class HomeViewWidget(QWidget):
             ("Inciso", inciso_stepper),
         )):
             field_label = QLabel(label.upper())
-            field_label.setObjectName("eyebrow")
+            field_label.setObjectName("location_selector_label")
             selectors.addWidget(field_label, 0, column)
             selectors.addWidget(widget, 1, column)
         selectors.setColumnStretch(0, 2)
@@ -280,6 +317,65 @@ class HomeViewWidget(QWidget):
         selectors.setColumnStretch(3, 1)
         hero_layout.addLayout(selectors)
         outer.addWidget(hero)
+
+        # Independent section for Notes and Tags (between selectors and clocks)
+        self.notes_card = QFrame()
+        self.notes_card.setObjectName("notesCard")
+        notes_card_layout = QVBoxLayout(self.notes_card)
+        notes_card_layout.setContentsMargins(20, 12, 20, 12)
+        notes_card_layout.setSpacing(8)
+
+        notes_header = QHBoxLayout()
+        notes_header.setSpacing(8)
+        notes_icon = QLabel()
+        notes_icon.setPixmap(qta.icon("fa5s.sticky-note", color="#38bdf8").pixmap(14, 14))
+        notes_header.addWidget(notes_icon)
+
+        notes_title = QLabel("APUNTES Y MARCADORES")
+        notes_title.setObjectName("eyebrow")
+        notes_header.addWidget(notes_title)
+        notes_header.addStretch()
+
+        self.comment_button = QPushButton("  APUNTES")
+        self.comment_button.setObjectName("comment_action")
+        self.comment_button.setFixedHeight(32)
+        self.comment_button.setMinimumWidth(100)
+        self.comment_button.setMaximumWidth(140)
+        self.comment_button.setIcon(qta.icon("fa5s.sticky-note", color="#475569"))
+        self.comment_button.setToolTip("Ver o redactar apuntes con formato Markdown")
+        self.comment_button.clicked.connect(self.add_home_comment)
+        self.notes_button = self.comment_button
+
+        self.tags_button = QPushButton("  MARCADORES")
+        self.tags_button.setObjectName("tags_action")
+        self.tags_button.setFixedHeight(32)
+        self.tags_button.setMinimumWidth(110)
+        self.tags_button.setMaximumWidth(150)
+        self.tags_button.setIcon(qta.icon("fa5s.tags", color="#475569"))
+        self.tags_button.setToolTip("Asignar o editar marcadores para este ejercicio")
+        self.tags_button.clicked.connect(self.manage_home_tags)
+
+        notes_header.addWidget(self.comment_button)
+        notes_header.addWidget(self.tags_button)
+        notes_card_layout.addLayout(notes_header)
+
+        self.notes_browser = QTextBrowser()
+        self.notes_browser.setObjectName("notes_browser")
+        self.notes_browser.setOpenExternalLinks(True)
+        self.notes_browser.setMinimumHeight(44)
+        self.notes_browser.setMaximumHeight(115)
+        self.notes_browser.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.notes_browser.setToolTip("Doble clic o pulsa «APUNTES» para redactar o editar")
+        self.notes_browser.mouseDoubleClickEvent = lambda _event: self.add_home_comment()
+        placeholder_color = "#64748b" if self.is_dark_mode else "#94a3b8"
+        self.notes_browser.setHtml(
+            f"<p style='color: {placeholder_color}; font-style: italic; font-size: 11px; margin: 0;'>"
+            "Sin apuntes para este ejercicio. Presiona «Apuntes» para redactar notas en Markdown."
+            "</p>"
+        )
+        notes_card_layout.addWidget(self.notes_browser)
+
+        outer.addWidget(self.notes_card)
 
         # Metrics Layout: Clocks
         metrics = QHBoxLayout()
@@ -375,7 +471,7 @@ class HomeViewWidget(QWidget):
         self.complete_button.setMinimumWidth(110)
         self.complete_button.setMaximumWidth(150)
         self.complete_button.setIcon(qta.icon("fa5s.check-circle", color="#ffffff"))
-        self.complete_button.clicked.connect(lambda: self.finish_item(True, keep_location=True))
+        self.complete_button.clicked.connect(lambda: self.finish_item(True, keep_location=False))
 
         self.incomplete_button = QPushButton("  INCOMPLETO")
         self.incomplete_button.setObjectName("danger")
@@ -392,25 +488,6 @@ class HomeViewWidget(QWidget):
         self.stop_button.setMaximumWidth(130)
         self.stop_button.setIcon(qta.icon("fa5s.stop", color="#fca5a5" if self.is_dark_mode else "#b91c1c"))
         self.stop_button.clicked.connect(self.stop_timer)
-
-        self.comment_button = QPushButton("  APUNTES")
-        self.comment_button.setObjectName("comment_action")
-        self.comment_button.setFixedHeight(38)
-        self.comment_button.setMinimumWidth(110)
-        self.comment_button.setMaximumWidth(160)
-        self.comment_button.setIcon(qta.icon("fa5s.sticky-note", color="#475569"))
-        self.comment_button.setToolTip("Ver o editar apuntes / notas para este ejercicio")
-        self.comment_button.clicked.connect(self.add_home_comment)
-        self.notes_button = self.comment_button
-
-        self.tags_button = QPushButton("  MARCADORES")
-        self.tags_button.setObjectName("tags_action")
-        self.tags_button.setFixedHeight(38)
-        self.tags_button.setMinimumWidth(110)
-        self.tags_button.setMaximumWidth(160)
-        self.tags_button.setIcon(qta.icon("fa5s.tags", color="#475569"))
-        self.tags_button.setToolTip("Asignar o editar marcadores para este ejercicio")
-        self.tags_button.clicked.connect(self.manage_home_tags)
 
         self.primary_buttons = (
             self.session_button,
@@ -451,6 +528,8 @@ class HomeViewWidget(QWidget):
             self.activity_strip.setVisible(not is_empty)
         if hasattr(self, "hero_card"):
             self.hero_card.setVisible(not is_empty)
+        if hasattr(self, "notes_card"):
+            self.notes_card.setVisible(not is_empty)
         if hasattr(self, "controls_card"):
             self.controls_card.setVisible(not is_empty)
         if hasattr(self, "exercise_card"):
@@ -474,11 +553,16 @@ class HomeViewWidget(QWidget):
             self.status_label.setText("Ningún proyecto abierto")
             if hasattr(self, "personal_best_badge"):
                 self.personal_best_badge.setText("🏆 Récord: --:--")
+            if hasattr(self, "_refresh_exercise_chips"):
+                self._refresh_exercise_chips()
         else:
             self.update_timer_visual_state()
             self.update_tags_visual_state()
+            self.update_notes_visual_state()
             self.update_personal_best_badge()
             self.update_activity_strip()
+            if hasattr(self, "_refresh_exercise_chips"):
+                self._refresh_exercise_chips()
             self.status_label.setText("Listo para comenzar")
 
     def _create_stepper(self, spinbox: QSpinBox, tooltip_prefix: str) -> QWidget:
@@ -494,6 +578,7 @@ class HomeViewWidget(QWidget):
         btn_minus.setToolTip(f"Decrementar {tooltip_prefix}")
         btn_minus.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_minus.setIcon(qta.icon("fa5s.minus", color=icon_color))
+        btn_minus.setIconSize(QSize(15, 15))
         btn_minus.clicked.connect(spinbox.stepDown)
 
         btn_plus = QPushButton()
@@ -501,6 +586,7 @@ class HomeViewWidget(QWidget):
         btn_plus.setToolTip(f"Incrementar {tooltip_prefix}")
         btn_plus.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_plus.setIcon(qta.icon("fa5s.plus", color=icon_color))
+        btn_plus.setIconSize(QSize(15, 15))
         btn_plus.clicked.connect(spinbox.stepUp)
 
         spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
@@ -511,6 +597,8 @@ class HomeViewWidget(QWidget):
         layout.addWidget(spinbox, 1)
         layout.addWidget(btn_plus)
 
+        btn_minus.setProperty("spinbox", spinbox)
+        btn_plus.setProperty("spinbox", spinbox)
         self.stepper_buttons.extend([btn_minus, btn_plus])
         return container
 
@@ -527,24 +615,18 @@ class HomeViewWidget(QWidget):
             self.primary_controls.addWidget(self.complete_button, 1, 0)
             self.primary_controls.addWidget(self.incomplete_button, 1, 1)
             self.primary_controls.addWidget(self.stop_button, 2, 0, 1, 2)
-            self.primary_controls.addWidget(self.comment_button, 3, 0)
-            self.primary_controls.addWidget(self.tags_button, 3, 1)
         elif compact:
             self.primary_controls.addWidget(self.session_button, 0, 0, 1, 3, Qt.AlignmentFlag.AlignCenter)
             self.primary_controls.addWidget(self.complete_button, 1, 0)
             self.primary_controls.addWidget(self.incomplete_button, 1, 1)
             self.primary_controls.addWidget(self.stop_button, 1, 2)
-            self.primary_controls.addWidget(self.comment_button, 2, 0)
-            self.primary_controls.addWidget(self.tags_button, 2, 1)
         else:
             # Fila Hero: Enfoque y Descanso unificado, centrado
-            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 5, Qt.AlignmentFlag.AlignCenter)
+            self.primary_controls.addWidget(self.session_button, 0, 0, 1, 3, Qt.AlignmentFlag.AlignCenter)
             # Fila Secundaria: Acciones compactas
             self.primary_controls.addWidget(self.complete_button, 1, 0)
             self.primary_controls.addWidget(self.incomplete_button, 1, 1)
             self.primary_controls.addWidget(self.stop_button, 1, 2)
-            self.primary_controls.addWidget(self.comment_button, 1, 3)
-            self.primary_controls.addWidget(self.tags_button, 1, 4)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -567,14 +649,63 @@ class HomeViewWidget(QWidget):
             exercise=self.exercise_input.value(),
             inciso=self.inciso_input.value() or None,
         )
-        self.application.set_location(location, force=force)
+        is_active = self.application.mode is not TimerMode.WAITING
+        self.application.set_location(location, force=force or is_active)
 
         suffix = f" · Inciso {location.inciso}" if location.inciso else ""
         text = f"{location.section_type} {location.section_number} · Ejercicio {location.exercise}{suffix}"
+
+        st = self.application.get_exercise_status(
+            location.section_type, location.section_number, location.exercise, location.inciso
+        )
+        is_dark = self.is_dark_mode
+        if st == STATUS_COMPLETED:
+            bg_col = "#064e3b" if is_dark else "#ecfdf5"
+            border_col = "#059669" if is_dark else "#a7f3d0"
+            text_col = "#6ee7b7" if is_dark else "#047857"
+            hover_bg = "#065f46" if is_dark else "#d1fae5"
+            status_desc = "Completado"
+        elif st == STATUS_FAILED:
+            bg_col = "#450a0a" if is_dark else "#fef2f2"
+            border_col = "#7f1d1d" if is_dark else "#fecaca"
+            text_col = "#fca5a5" if is_dark else "#b91c1c"
+            hover_bg = "#5c1010" if is_dark else "#fee2e2"
+            status_desc = "En dificultad"
+        else:
+            bg_col = "#1e293b" if is_dark else "#f1f5f9"
+            border_col = "#334155" if is_dark else "#cbd5e1"
+            text_col = "#94a3b8" if is_dark else "#64748b"
+            hover_bg = "#334155" if is_dark else "#e2e8f0"
+            status_desc = "Sin realizar"
+
         self.location_label.setText(text)
+        self.location_label.setToolTip(
+            f"{text} ({status_desc})\nHaz clic para ver detalles, notas o marcadores"
+        )
+        self.location_label.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.location_label.setStyleSheet(
+            f"""
+            QLabel#location_badge {{
+                background-color: {bg_col};
+                color: {text_col};
+                border: 2px solid {border_col};
+                border-radius: 10px;
+                font-size: 24px;
+                font-weight: 800;
+                padding: 8px 16px;
+            }}
+            QLabel#location_badge:hover {{
+                background-color: {hover_bg};
+            }}
+            """
+        )
+
         self.update_tags_visual_state()
         self.update_notes_visual_state()
         self.update_personal_best_badge()
+        if hasattr(self, "_refresh_exercise_chips"):
+            self._refresh_exercise_chips()
 
     def update_personal_best_badge(self) -> None:
         if not hasattr(self, "personal_best_badge"):
@@ -603,10 +734,37 @@ class HomeViewWidget(QWidget):
         self.activity_strip.update_buckets(buckets)
 
     def set_locked(self, locked: bool) -> None:
-        for widget in (self.section_input, self.section_number_input, self.exercise_input, self.inciso_input):
-            widget.setEnabled(not locked)
+        if not self.application.is_record_open:
+            for widget in (self.section_input, self.section_number_input, self.exercise_input, self.inciso_input):
+                widget.setEnabled(False)
+            for btn in self.stepper_buttons:
+                btn.setEnabled(False)
+            if hasattr(self, "exercise_chips"):
+                for chip in self.exercise_chips:
+                    chip.setEnabled(False)
+            if hasattr(self, "auto_advance_checkbox"):
+                self.auto_advance_checkbox.setEnabled(False)
+            return
+
+        is_continuation = self.application.is_editing
+        self.section_input.setEnabled(not locked and not is_continuation)
+        self.section_number_input.setEnabled(not locked and not is_continuation)
+
+        # En sesión normal, el ejercicio y el inciso permanecen editables para reasignación en caliente sin esperas
+        self.exercise_input.setEnabled(not is_continuation)
+        self.inciso_input.setEnabled(not is_continuation)
+        if hasattr(self, "auto_advance_checkbox"):
+            self.auto_advance_checkbox.setEnabled(not is_continuation)
+
         for btn in self.stepper_buttons:
-            btn.setEnabled(not locked)
+            target = btn.property("spinbox")
+            if target is self.section_number_input:
+                btn.setEnabled(not locked and not is_continuation)
+            else:
+                btn.setEnabled(not is_continuation)
+
+        if hasattr(self, "_refresh_exercise_chips"):
+            self._refresh_exercise_chips()
 
     def toggle_session(self) -> None:
         if not self.application.is_record_open:
@@ -659,12 +817,25 @@ class HomeViewWidget(QWidget):
         self.sync_location(force=True)
         self.set_locked(True)
 
-        if item.comment:
+        self.comment_button.setText("  APUNTES")
+        if item.comment and item.comment.strip():
             clean = item.comment.strip()
-            short = (clean[:25] + "…") if len(clean) > 25 else clean
-            self.comment_button.setText(f'  COMENTARIO: "{short}"')
+            self.comment_button.setIcon(qta.icon("fa5s.sticky-note", color="#38bdf8"))
+            self.comment_button.setToolTip(f"Apuntes para {item.section_type} {item.section_number} · Ej. {item.exercise}:\n{clean}")
+            if hasattr(self, "notes_browser"):
+                self.notes_browser.setMarkdown(clean)
         else:
-            self.comment_button.setText("  COMENTARIO")
+            self.comment_button.setIcon(
+                qta.icon("fa5s.sticky-note", color="#475569" if self.is_dark_mode else "#64748b")
+            )
+            self.comment_button.setToolTip("Ver o editar apuntes / notas para este ejercicio")
+            if hasattr(self, "notes_browser"):
+                placeholder_color = "#64748b" if self.is_dark_mode else "#94a3b8"
+                self.notes_browser.setHtml(
+                    f"<p style='color: {placeholder_color}; font-style: italic; font-size: 11px; margin: 0;'>"
+                    "Sin apuntes registrados para este ejercicio. Presiona «Apuntes» para redactar en Markdown."
+                    "</p>"
+                )
 
         inciso_str = f" · Inciso {item.inciso}" if item.inciso else ""
         time_str = format_hh_mm_ss(item.exercise_time_ms)
@@ -822,13 +993,197 @@ class HomeViewWidget(QWidget):
         self.status_label.setText(f"Intento {result}. Listo para comenzar")
         self.update_notes_visual_state()
 
-        if not keep_location and not stop:
+        if (
+            completed
+            and getattr(self, "auto_advance_checkbox", None)
+            and self.auto_advance_checkbox.isChecked()
+            and not keep_location
+            and not stop
+        ):
+            self._auto_advance_next_exercise()
+        else:
             self.sync_location()
 
         self.update_personal_best_badge()
         self.update_activity_strip()
         self.refresh_clock()
+        if hasattr(self, "_refresh_exercise_chips"):
+            self._refresh_exercise_chips()
         self.item_finished.emit(completed)
+
+    def _auto_advance_next_exercise(self) -> None:
+        """Avanza automáticamente al siguiente ejercicio o inciso planificado al completar con éxito."""
+        sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
+        sec_num = self.section_number_input.value()
+        curr_ex = self.exercise_input.value()
+        curr_inc = self.inciso_input.value()
+
+        max_incisos = self.application.get_max_incisos_for_exercise(sec_type, sec_num, curr_ex)
+
+        if max_incisos > 0:
+            if curr_inc < max_incisos:
+                self.inciso_input.setValue(curr_inc + 1)
+            else:
+                next_ex = curr_ex + 1
+                self.exercise_input.setValue(next_ex)
+                next_max = self.application.get_max_incisos_for_exercise(sec_type, sec_num, next_ex)
+                self.inciso_input.setValue(1 if next_max > 0 else 0)
+        else:
+            if curr_inc > 0:
+                self.inciso_input.setValue(curr_inc + 1)
+            else:
+                self.exercise_input.setValue(curr_ex + 1)
+
+        self.sync_location()
+
+    def _refresh_exercise_chips(self) -> None:
+        """Actualiza la tira de 5 chips (el 3° es el actual), sin iconos y con los colores oficiales."""
+        if not hasattr(self, "exercise_chips") or len(self.exercise_chips) < 5:
+            return
+
+        if not self.application.is_record_open:
+            for btn in self.exercise_chips:
+                btn.setText("—")
+                btn.setEnabled(False)
+                btn.setFixedSize(58, 32)
+                btn.setToolTip("Sin proyecto activo")
+                btn.setStyleSheet(
+                    "QPushButton { background-color: transparent; color: #64748b; border: 1px dashed #475569; border-radius: 6px; font-size: 13px; padding: 0px 2px; text-align: center; }"
+                )
+            return
+
+        current_ex = self.exercise_input.value()
+        sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
+        sec_num = self.section_number_input.value()
+        is_dark = self.is_dark_mode
+
+        # Índices relativos: [-2, -1, 0, 1, 2] -> el 3° chip (idx=2) es el ejercicio actual
+        for idx, offset in enumerate([-2, -1, 0, 1, 2]):
+            btn = self.exercise_chips[idx]
+            btn.setFixedSize(58, 32)
+            target_ex = current_ex + offset
+
+            if target_ex < 1:
+                btn.setText("—")
+                btn.setEnabled(False)
+                btn.setToolTip("")
+                bg = "#1e293b" if is_dark else "#f1f5f9"
+                border = "#334155" if is_dark else "#cbd5e1"
+                text_col = "#64748b" if is_dark else "#94a3b8"
+                btn.setStyleSheet(
+                    f"QPushButton {{ background-color: {bg}; color: {text_col}; border: 1.5px dashed {border}; border-radius: 6px; font-weight: 600; font-size: 13px; padding: 0px 2px; text-align: center; }}"
+                )
+            else:
+                btn.setText(str(target_ex))
+                btn.setEnabled(True)
+                st = self.application.get_exercise_status(sec_type, sec_num, target_ex)
+
+                if st == STATUS_COMPLETED:
+                    bg = "#064e3b" if is_dark else "#ecfdf5"
+                    border = "#059669" if is_dark else "#a7f3d0"
+                    text_col = "#6ee7b7" if is_dark else "#047857"
+                    hover_bg = "#065f46" if is_dark else "#d1fae5"
+                    st_name = "Completado"
+                elif st == STATUS_FAILED:
+                    bg = "#450a0a" if is_dark else "#fef2f2"
+                    border = "#7f1d1d" if is_dark else "#fecaca"
+                    text_col = "#fca5a5" if is_dark else "#b91c1c"
+                    hover_bg = "#5c1010" if is_dark else "#fee2e2"
+                    st_name = "En dificultad"
+                else:  # STATUS_PENDING
+                    bg = "#1e293b" if is_dark else "#f1f5f9"
+                    border = "#334155" if is_dark else "#cbd5e1"
+                    text_col = "#94a3b8" if is_dark else "#64748b"
+                    hover_bg = "#334155" if is_dark else "#e2e8f0"
+                    st_name = "Pendiente"
+
+                if offset == 0:
+                    # El 3° chip: Ejercicio Actual destacado
+                    active_border = "#38bdf8" if is_dark else "#0284c7"
+                    border_style = f"2.5px solid {active_border}"
+                    font_weight = "800"
+                    btn.setToolTip(
+                        f"Ejercicio {target_ex} (Actual · {st_name})\nHaz clic para ver detalles, notas o marcadores"
+                    )
+                else:
+                    border_style = f"1.5px solid {border}"
+                    font_weight = "700" if st != STATUS_PENDING else "600"
+                    btn.setToolTip(
+                        f"Ejercicio {target_ex} ({st_name})\nHaz clic para ver detalles o cargar en cronómetro"
+                    )
+
+                btn.setStyleSheet(
+                    f"""
+                    QPushButton {{
+                        background-color: {bg};
+                        color: {text_col};
+                        border: {border_style};
+                        border-radius: 6px;
+                        font-weight: {font_weight};
+                        font-size: 13px;
+                        padding: 0px 2px;
+                        text-align: center;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {hover_bg};
+                    }}
+                    """
+                )
+
+    def _on_location_label_clicked(self, event=None) -> None:
+        """Abre la ventana modal de detalle para el ejercicio actual (equivalente al 3° chip)."""
+        if event is not None and hasattr(event, "button"):
+            if event.button() != Qt.MouseButton.LeftButton:
+                return
+        self._on_chip_clicked(2)
+
+    def _on_chip_clicked(self, chip_idx: int) -> None:
+        """Abre la ventana modal de detalle (ExerciseDetailPopup) para el ejercicio clickeado."""
+        if not self.application.is_record_open:
+            return
+        current_ex = self.exercise_input.value()
+        target_ex = current_ex + (chip_idx - 2)
+        if target_ex < 1:
+            return
+
+        sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
+        sec_num = self.section_number_input.value()
+        inc = self.inciso_input.value() if (target_ex == current_ex and self.inciso_input.value() > 0) else None
+
+        from presentation.planner_dialogs import ExerciseDetailPopup
+
+        node = self.application.get_or_create_exercise_node(
+            sec_type, sec_num, target_ex, inc
+        )
+
+        was_active = self.application.mode is TimerMode.PLAY
+        if was_active:
+            self.application.pause_timer()
+            self.update_timer_visual_state()
+            self.refresh_clock()
+
+        try:
+            dlg = ExerciseDetailPopup(
+                parent=self.window(),
+                node=node,
+                app_service=self.application,
+                is_dark=self.is_dark_mode,
+            )
+            if dlg.exec() == ExerciseDetailPopup.DialogCode.Accepted:
+                if getattr(dlg, "chosen_action", None) == "load_timer":
+                    self.exercise_input.setValue(node.exercise)
+                    self.inciso_input.setValue(node.inciso or 0)
+                    self.sync_location(force=True)
+        finally:
+            if was_active:
+                self.application.resume_timer()
+                self.update_session_button()
+                self.update_timer_visual_state()
+                self.refresh_clock()
+
+        self.update_tags_visual_state()
+        self.update_notes_visual_state()
+        self._refresh_exercise_chips()
 
     def add_home_comment(self) -> None:
         if not self.application.is_record_open:
@@ -893,7 +1248,7 @@ class HomeViewWidget(QWidget):
             self.tags_button.setIcon(qta.icon("fa5s.tags", color="#475569" if self.is_dark_mode else "#64748b"))
 
     def update_notes_visual_state(self) -> None:
-        """Actualiza el aspecto del botón de notas según si el ejercicio actual tiene apuntes."""
+        """Actualiza el aspecto del botón de notas y el panel de apuntes según si el ejercicio actual tiene apuntes."""
         if not hasattr(self, "comment_button") or not self.application.is_record_open:
             return
         sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
@@ -913,18 +1268,27 @@ class HomeViewWidget(QWidget):
         ):
             note = self.application.pending_comment
 
+        self.comment_button.setText("  APUNTES")
         if note and note.strip():
             clean = note.strip()
-            short = (clean[:18] + "…") if len(clean) > 18 else clean
-            self.comment_button.setText(f'  APUNTES: "{short}"')
             self.comment_button.setIcon(qta.icon("fa5s.sticky-note", color="#38bdf8"))
             self.comment_button.setToolTip(f"Apuntes para {sec_type} {sec_num} · Ej. {ex}:\n{clean}")
+            if hasattr(self, "notes_browser"):
+                self.notes_browser.setMarkdown(clean)
+                self.notes_browser.setToolTip(f"Apuntes de {sec_type} {sec_num} · Ej. {ex}")
         else:
-            self.comment_button.setText("  APUNTES")
             self.comment_button.setIcon(
                 qta.icon("fa5s.sticky-note", color="#475569" if self.is_dark_mode else "#64748b")
             )
             self.comment_button.setToolTip("Ver o editar apuntes / notas para este ejercicio")
+            if hasattr(self, "notes_browser"):
+                placeholder_color = "#64748b" if self.is_dark_mode else "#94a3b8"
+                self.notes_browser.setHtml(
+                    f"<p style='color: {placeholder_color}; font-style: italic; font-size: 11px; margin: 0;'>"
+                    "Sin apuntes registrados para este ejercicio. Presiona «Apuntes» para redactar en Markdown."
+                    "</p>"
+                )
+                self.notes_browser.setToolTip("Sin notas para este ejercicio")
 
     def refresh_clock(self) -> None:
         exercise_ms, break_ms = self.application.timer.snapshot()

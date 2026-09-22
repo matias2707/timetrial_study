@@ -224,6 +224,8 @@ class MainWindow(QMainWindow):
         self.application.sync_planner_with_records()
         self.planner.refresh_view()
         self.refresh_statistics()
+        if hasattr(self, "home_view"):
+            self.home_view.sync_location()
 
     # --- Gestión de temas y sonidos ---
 

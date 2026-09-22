@@ -124,6 +124,9 @@ class StorageService:
         return record
 
     def read(self, path: Path) -> Record:
-        """Lee un registro sin cambiar el archivo activo."""
+        """Lee un registro sin cambiar el archivo activo y migra notas/comentarios a Markdown si es necesario."""
         data = json.loads(path.read_text(encoding="utf-8"))
-        return Record.from_dict(data)
+        record = Record.from_dict(data)
+        from infrastructure.compatibility import migrate_record_notes_to_markdown
+        migrate_record_notes_to_markdown(record)
+        return record

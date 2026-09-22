@@ -678,7 +678,9 @@ class PlannerService:
                 sec.total_exercises = exercise
             if inciso and inciso > sec.get_incisos_count(exercise):
                 sec.set_incisos_count(exercise, inciso)
-        sec.set_note(exercise, inciso, note)
+        from infrastructure.compatibility import convert_plain_text_to_markdown
+        formatted_note = convert_plain_text_to_markdown(note)
+        sec.set_note(exercise, inciso, formatted_note)
 
     @staticmethod
     def get_exercise_note(
@@ -696,4 +698,6 @@ class PlannerService:
         ]
         if not matched:
             return ""
-        return matched[0].get_note(exercise, inciso)
+        raw = matched[0].get_note(exercise, inciso)
+        from infrastructure.compatibility import convert_plain_text_to_markdown
+        return convert_plain_text_to_markdown(raw)

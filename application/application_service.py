@@ -10,7 +10,14 @@ from datetime import date
 from dataclasses import dataclass
 from pathlib import Path
 
-from application.planner_service import PlannerOverview, PlannerService
+from application.planner_service import (
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_PENDING,
+    ExerciseNodeStatus,
+    PlannerOverview,
+    PlannerService,
+)
 from application.statistics_service import (
     RecordStatistics,
     compute_exercise_personal_best_ms,
@@ -579,4 +586,116 @@ class StudyApplicationService:
                 "completed_unique_count": 0,
                 "total_attempts": 0,
             }
-        return compute_today_summary_metrics(self.record, reference_date=reference_date)
+        return compute_today_summary_metrics(self.record, reference_date=reference_date)
+
+    def get_exercise_status(
+        self,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None = None,
+    ) -> str:
+        """Devuelve el estado de un ejercicio: STATUS_COMPLETED, STATUS_FAILED o STATUS_PENDING.
+
+        Funciona tanto si el ejercicio está planificado como en modo estudio libre.
+        """
+        if not self.is_record_open:
+            return STATUS_PENDING
+
+        norm_type = section_type.strip().lower()
+        matching = [
+            it
+            for it in self.record.items
+            if it.section_type.strip().lower() == norm_type
+            and it.section_number == section_number
+            and it.exercise == exercise
+            and (inciso is None or it.inciso == inciso or (inciso == 1 and it.inciso is None))
+        ]
+        if not matching:
+            return STATUS_PENDING
+        if any(it.completed for it in matching):
+            return STATUS_COMPLETED
+        return STATUS_FAILED
+
+    def get_max_incisos_for_exercise(
+        self, section_type: str, section_number: int, exercise: int
+    ) -> int:
+        """Devuelve la cantidad de incisos configurada en la planificación para un ejercicio (0 si no tiene)."""
+        if not self.is_record_open:
+            return 0
+        norm_type = section_type.strip().lower()
+        for sec in self.record.planner_sections:
+            if (
+                sec.section_type.strip().lower() == norm_type
+                and sec.section_number == section_number
+            ):
+                return sec.get_incisos_count(exercise)
+        return 0
+
+    def get_or_create_exercise_node(
+        self,
+        section_type: str,
+        section_number: int,
+        exercise: int,
+        inciso: int | None = None,
+    ) -> ExerciseNodeStatus:
+        """Obtiene el ExerciseNodeStatus de la planificación o lo construye al vuelo si no hay plan."""
+        # 1. Si existe en la planificación, buscarlo
+        overview = self.get_planner_overview()
+        norm_type = section_type.strip().lower()
+        for sec in overview.sections:
+            if (
+                sec.section.section_type.strip().lower() == norm_type
+                and sec.section.section_number == section_number
+            ):
+                for node in sec.exercise_nodes:
+                    if node.exercise == exercise:
+                        if inciso is None:
+                            return node
+                        if node.has_incisos:
+                            for sub in node.incisos:
+                                if sub.inciso == inciso:
+                                    return sub
+                            return node
+                        return node
+
+        # 2. Si no hay planificación para esta sección/ejercicio, construirlo al vuelo con los datos reales
+        items = [
+            it
+            for it in self.record.items
+            if it.section_type.strip().lower() == norm_type
+            and it.section_number == section_number
+            and it.exercise == exercise
+            and (inciso is None or it.inciso == inciso or (inciso == 1 and it.inciso is None))
+        ]
+        tag_ids = self.get_exercise_tags(section_type, section_number, exercise, inciso)
+        tag_catalog = {t.id: t for t in self.get_tag_catalog()}
+        tags = [tag_catalog[tid] for tid in tag_ids if tid in tag_catalog]
+        note = self.get_exercise_note(section_type, section_number, exercise, inciso)
+        status = self.get_exercise_status(section_type, section_number, exercise, inciso)
+
+        ex_time = sum(it.exercise_time_ms for it in items)
+        br_time = sum(it.break_time_ms for it in items)
+        comp_attempts = sum(1 for it in items if it.completed)
+        failed_attempts = len(items) - comp_attempts
+        comments = [it.comment.strip() for it in items if it.comment and it.comment.strip()]
+
+        return ExerciseNodeStatus(
+            section_type=section_type,
+            section_number=section_number,
+            exercise=exercise,
+            inciso=inciso,
+            status=status,
+            attempts=len(items),
+            failed_attempts=failed_attempts,
+            completed_attempts=comp_attempts,
+            exercise_time_ms=ex_time,
+            break_time_ms=br_time,
+            comments=comments,
+            latest_comment=comments[-1] if comments else "",
+            has_incisos=False,
+            incisos=[],
+            tags=tags,
+            note=note,
+            has_note=bool(note.strip()),
+        )

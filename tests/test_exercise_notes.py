@@ -262,19 +262,24 @@ class TestExerciseNotesGUI(unittest.TestCase):
 
         self.assertTrue(hasattr(home, "comment_button"))
         self.assertTrue(hasattr(home, "notes_button"))
+        self.assertTrue(hasattr(home, "notes_browser"))
+        self.assertTrue(hasattr(home, "notes_card"))
         self.assertEqual(home.comment_button.text().strip(), "APUNTES")
 
         # Guardar nota para Guía 1 Ejercicio 1
         app.set_exercise_note("Guía", 1, 1, None, "Nota cargada en ejercicio 1")
         home.sync_location(force=True)
 
-        self.assertIn("APUNTES:", home.comment_button.text())
-        self.assertIn("Nota cargada", home.comment_button.text())
+        # El botón de apuntes permanece estático (no muestra el texto de la nota)
+        self.assertEqual(home.comment_button.text().strip(), "APUNTES")
+        # El contenido formateado aparece en el visor notes_browser
+        self.assertIn("Nota cargada en ejercicio 1", home.notes_browser.toPlainText())
 
         # Cambiar a Ejercicio 2 sin nota
         home.exercise_input.setValue(2)
         home.sync_location(force=True)
         self.assertEqual(home.comment_button.text().strip(), "APUNTES")
+        self.assertIn("Sin apuntes", home.notes_browser.toPlainText())
         home.close()
 
 

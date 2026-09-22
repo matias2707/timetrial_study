@@ -64,6 +64,7 @@
 | [TASK-013](#task-013) | 🛡️ Seguridad | Respaldo Automático y Sincronización Segura: Snapshots Rotativos y Exportación a Flashcards | 🟡 Media | `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
 | [TASK-014](#task-014) | 🔨 Enhancement | Rediseño integral del Cronómetro: Récord personal, KPIs diarios, Activity Strip 24h y controles jerárquicos | 🔴 Alta | `application`, `presentation`, `tests` | Ninguna | `[x]` |
 | [TASK-015](#task-015) | ✨ Feature | Modo Sesión Intensiva: Sprint por tiempo (hh:mm) o ejercicios con barra de progreso, modal de resumen y persistencia dedicada | 🟡 Media | `domain`, `infrastructure`, `application`, `presentation`, `tests` | Ninguna | `[?] En revisión` |
+| [TASK-016](#task-016) | 🧹 Refactor | Consolidación y Centralización de Retrocompatibilidad, Migraciones y Respaldos en infraestructura dedicada | 🟡 Media | `infrastructure`, `application`, `tests` | Ninguna | `[ ]` |
 
 ---
 
@@ -987,6 +988,38 @@ Incorporar la modalidad de **Sesión Intensiva** (*Focus Sprint / Deep Work Sess
 - [ ] "Cancelar sesión" requiere confirmación del usuario y finaliza la sesión sin perder los ejercicios ya guardados en `items`.
 - [ ] Al presionar "Finalizar sesión", se despliega el modal de resumen con métricas (ratio enfoque/descanso, ejercicios, overtime y notas).
 - [ ] Las sesiones finalizadas se guardan en el archivo JSON dentro de una sección dedicada `intensive_sessions`, sin alterar la estructura de `items`.
+- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+### TASK-016
+#### Consolidación y Centralización de Retrocompatibilidad, Migraciones de Datos y Respaldos en infraestructura dedicada (`infrastructure/compatibility/`)
+
+- **Tipo:** 🧹 Refactor / Tech Debt  
+- **Prioridad:** 🟡 Media  
+- **Estado:** `[ ] Pendiente`  
+- **Capas afectadas:** `infrastructure/`, `application/`, `tests/`  
+- **Dependencias:** Ninguna (base creada en subpaquete `infrastructure/compatibility/`)  
+
+##### Descripción funcional
+Consolidar todas las funciones, conversiones ad-hoc, serializaciones tolerantes a fallos y manejadores de versiones legadas que se encuentren distribuidos o dispersos en `infrastructure/storage_service.py`, `domain/models.py` u otros módulos, migrándolos de forma ordenada hacia la estructura formal de `infrastructure/compatibility/`.
+
+##### Objetivos técnicos y tareas específicas
+1. **Revisión y auditoría de código disperso:**
+   - Identificar conversiones manuales de esquemas anteriores en `StorageService` (por ejemplo, mapeo de listas a diccionarios, campos faltantes de configuración de materias o tags legados).
+   - Extraer dichas transformaciones hacia módulos especializados en `infrastructure/compatibility/` (ej. `schema_v1_to_v2_migrator.py`).
+2. **Estandarización del pipeline de migración:**
+   - Establecer una interfaz común `BaseMigrator` o función de pipeline en `infrastructure/compatibility/` que registre y aplique migrators en secuencia determinista y ordenada por versión de esquema.
+3. **Manejo uniforme de backups preventivos:**
+   - Conectar de forma sistemática `create_backup_file()` antes de que `StorageService.write()` realice sobrescrituras mayores o cuando se detecte un cambio de versión de esquema de archivo.
+4. **Pruebas y verificación:**
+   - Complementar `tests/test_compatibility.py` con fixtures de archivos JSON de versiones antiguas para garantizar que todos los esquemas históricos se carguen correctamente al 100% sin pérdida de información.
+
+##### Criterios de aceptación
+- [ ] Todo código de compatibilidad hacia atrás y migración de esquemas reside dentro de `infrastructure/compatibility/`.
+- [ ] `StorageService` delega la normalización y actualización de versiones al subpaquete de compatibilidad, manteniendo su responsabilidad única (lectura/escritura atómica).
+- [ ] Los backups preventivos se disparan de forma transparente y controlada según la política de `backup_service.py`.
+- [ ] Se documenta el ciclo de vida de los migrators en `docs/RETROCOMPATIBILIDAD_Y_MIGRACIONES.md`.
 - [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---

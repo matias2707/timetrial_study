@@ -139,11 +139,13 @@ class ThemeTests(unittest.TestCase):
 
         # Lock controls test
         window.set_locked(True)
-        self.assertFalse(window.exercise_input.isEnabled())
-        for btn in window.stepper_buttons:
-            self.assertFalse(btn.isEnabled())
+        self.assertFalse(window.section_input.isEnabled())
+        self.assertFalse(window.section_number_input.isEnabled())
+        # Reasignación en curso: exercise_input permanece habilitado
+        self.assertTrue(window.exercise_input.isEnabled())
 
         window.set_locked(False)
+        self.assertTrue(window.section_input.isEnabled())
         self.assertTrue(window.exercise_input.isEnabled())
         for btn in window.stepper_buttons:
             self.assertTrue(btn.isEnabled())
