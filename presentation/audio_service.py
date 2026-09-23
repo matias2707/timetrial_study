@@ -21,6 +21,7 @@ class AudioService(QObject):
         media_dir = Path(__file__).resolve().parent / "media"
         start_wav = media_dir / "universfield-new-notification-040-493469.wav"
         complete_wav = media_dir / "universfield-new-notification-051-494246.wav"
+        fail_wav = media_dir / "fail.wav"
 
         self.start_sound = QSoundEffect(self)
         if start_wav.exists():
@@ -33,6 +34,12 @@ class AudioService(QObject):
             self.complete_sound.setSource(QUrl.fromLocalFile(str(complete_wav)))
         self.complete_sound.setVolume(1.0)
         self.complete_sound.setMuted(self._sound_muted)
+
+        self.fail_sound = QSoundEffect(self)
+        if fail_wav.exists():
+            self.fail_sound.setSource(QUrl.fromLocalFile(str(fail_wav)))
+        self.fail_sound.setVolume(1.0)
+        self.fail_sound.setMuted(self._sound_muted)
 
     @property
     def is_muted(self) -> bool:
@@ -50,6 +57,7 @@ class AudioService(QObject):
             self.settings.setValue("sound_muted", self._sound_muted)
             self.start_sound.setMuted(self._sound_muted)
             self.complete_sound.setMuted(self._sound_muted)
+            self.fail_sound.setMuted(self._sound_muted)
             self.mute_state_changed.emit(self._sound_muted)
         except Exception:
             pass
@@ -71,5 +79,13 @@ class AudioService(QObject):
         if not self._sound_muted:
             try:
                 self.complete_sound.play()
+            except Exception:
+                pass
+
+    def play_fail(self) -> None:
+        """Reproduce el sonido de fallo/incompleto si no está silenciado."""
+        if not self._sound_muted:
+            try:
+                self.fail_sound.play()
             except Exception:
                 pass

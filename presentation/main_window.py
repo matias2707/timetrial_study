@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 import qtawesome as qta
 
 from application.application_service import StudyApplicationService
+from application.container import AppContainer
 from domain.models import TimerItem
 from domain.timer_service import TimerMode
 from presentation.ambience_view import AmbienceViewWidget
@@ -58,15 +59,16 @@ class MainWindow(QMainWindow):
 
     STYLESHEET = get_theme_stylesheet(THEME_LIGHT)
 
-    def __init__(self) -> None:
+    def __init__(self, container: AppContainer | None = None) -> None:
         super().__init__()
+        self.container = container or AppContainer()
         self.settings = QSettings("StudyTimetrial", "Preferences")
         self.current_theme = str(self.settings.value("theme", THEME_LIGHT))
         if self.current_theme not in (THEME_LIGHT, THEME_DARK):
             self.current_theme = THEME_LIGHT
         self.auto_open_recent = self.settings.value("auto_open_recent", True, type=bool)
 
-        self.application = StudyApplicationService()
+        self.application = self.container.app_service
         self.audio_service = AudioService(self)
 
         # Configurar icono oficial
@@ -274,6 +276,9 @@ class MainWindow(QMainWindow):
 
     def play_complete_sound(self) -> None:
         self.audio_service.play_complete()
+
+    def play_fail_sound(self) -> None:
+        self.audio_service.play_fail()
 
     def set_theme(self, theme: str) -> None:
         """Cambia el tema de la aplicación ('light' o 'dark') y propaga a vistas."""

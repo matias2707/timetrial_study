@@ -1,8 +1,95 @@
+# ==========================================
+# Python & Bytecode
+# ==========================================
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+
+# ==========================================
+# Entornos Virtuales
+# ==========================================
 .venv/
 .venv-*/
-desactivar_telemetria.bat
+venv/
+env/
+ENV/
 
+# ==========================================
+# Testing, Cobertura & Calidad de Código
+# ==========================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# ==========================================
+# Builds, Empaquetado & PyInstaller
+# ==========================================
+build/
+dist/
+*.egg-info/
+*.egg
+*.spec
+
+# ==========================================
+# Study Timetrial - Datos locales y sesiones
+# ==========================================
+# Registros personales de sesiones y tests masivos
 data/records/*.json
+
+# Estado reciente y caché local (contiene rutas absolutas del usuario)
+.study_timetrial_recent.json
+data/.study_timetrial_recent.json
+
+# Archivos JSON temporales en data/ (conservando presets por defecto)
 data/*.json
+!data/ambient_presets.json
+
+# Notas personales y scripts de entorno local
+desactivar_telemetria.bat
+Carpeta personal/
+
+# ==========================================
+# Logs y Archivos de Entorno
+# ==========================================
+*.log
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# IDEs y Editores
+# ==========================================
+.idea/
+*.code-workspace
+.vscode/*.log
+.cursor/
+.windsurf/
+
+# Herramientas / Cachés de IA locales
+.gemini/
+
+# ==========================================
+# Sistema Operativo y Temporales
+# ==========================================
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+$RECYCLE.BIN/
+
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+*.tmp
+*.bak
+*.swp
+*~

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "active_preset_id": "preset-default",
+  "presets": [
+    {
+      "id": "preset-default",
+      "name": "Por Defecto (Equilibrado)",
+      "master_volume": 1.0,
+      "fade_duration_sec": 1.5,
+      "fade_in_sec": 5.0,
+      "fade_out_sec": 1.0,
+      "mixes": {
+        "study": {
+          "Ruido Azul.mp3": 0.01,
+          "Ruido Marron.mp3": 0.8,
+          "Ruido Rojo.mp3": 0.41
+        },
+        "break_state": {},
+        "main_state": {}
+      }
+    },
+    {
+      "id": "preset-focus",
+      "name": "Enfoque Profundo",
+      "master_volume": 0.85,
+      "fade_duration_sec": 2.0,
+      "fade_in_sec": 2.0,
+      "fade_out_sec": 2.0,
+      "mixes": {
+        "study": {
+          "Ruido Marron.mp3": 0.6,
+          "Air Conditioner.m4a": 0.3
+        },
+        "break_state": {
+          "Ruido Marron.mp3": 0.15
+        },
+        "main_state": {}
+      }
+    }
+  ]
+}

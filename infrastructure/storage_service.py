@@ -126,6 +126,9 @@ class StorageService:
     def read(self, path: Path) -> Record:
         """Lee un registro sin cambiar el archivo activo y migra notas/comentarios a Markdown si es necesario."""
         data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("schema_version") != 1:
+            from infrastructure.compatibility import migrate_raw_record_dict
+            data, _, _ = migrate_raw_record_dict(data, target_version=1)
         record = Record.from_dict(data)
         from infrastructure.compatibility import migrate_record_notes_to_markdown
         migrate_record_notes_to_markdown(record)

@@ -37,6 +37,8 @@ from presentation.audio_service import AudioService
 from presentation.empty_state_widget import EmptyStateWidget
 from presentation.presentation_formatters import format_hh_mm_ss, timer_markup
 from presentation.theme import get_status_pill_style, get_timer_cards_style
+from presentation.home.home_presenter import HomePresenter
+from presentation.home.interfaces import IHomeView
 from presentation.today_activity_strip_widget import TodayActivityStripWidget
 
 if TYPE_CHECKING:
@@ -49,7 +51,10 @@ MAX_VALUE = 999_999
 
 
 class HomeViewWidget(QWidget):
-    """Vista principal con el cronómetro de estudio y controles de intento."""
+    """Vista principal con el cronómetro de estudio y controles de intento.
+
+    Satisface estructuralmente el protocolo IHomeView.
+    """
 
     item_finished = Signal(bool)  # completed
 
@@ -65,8 +70,55 @@ class HomeViewWidget(QWidget):
         self.audio_service = audio_service
         self._is_dark_mode = is_dark_mode
         self.stepper_buttons: list[QPushButton] = []
+        self.presenter = HomePresenter(view=self, application=self.application, audio_service=self.audio_service)
 
         self._build_ui()
+
+    def update_clock_display(self, exercise_formatted: str, break_formatted: str) -> None:
+        """Actualiza los dígitos visuales del cronómetro."""
+        if hasattr(self, "exercise_clock"):
+            self.exercise_clock.setText(timer_markup(exercise_formatted))
+        if hasattr(self, "break_clock"):
+            self.break_clock.setText(timer_markup(break_formatted))
+
+    def update_session_state(self, mode: str, is_paused: bool, is_editing: bool) -> None:
+        """Actualiza el estado visual de los controles."""
+        self.update_session_button()
+        self.update_timer_visual_state()
+
+    def update_personal_best(self, pb_text: str) -> None:
+        """Actualiza el badge de récord personal."""
+        if hasattr(self, "personal_best_badge"):
+            self.personal_best_badge.setText(pb_text)
+
+    def update_daily_kpis(self, study_time: str, completed_count: int, attempts_count: int) -> None:
+        """Actualiza las micro-tarjetas de métricas del día."""
+        if hasattr(self, "today_study_label"):
+            self.today_study_label.setText(study_time)
+        if hasattr(self, "today_completed_label"):
+            self.today_completed_label.setText(str(completed_count))
+        if hasattr(self, "today_attempts_label"):
+            self.today_attempts_label.setText(str(attempts_count))
+
+    def set_location_inputs(self, section_type: str, section_number: int, exercise: int, inciso: int | None) -> None:
+        """Sincroniza los campos de entrada de ubicación."""
+        if hasattr(self, "section_input"):
+            self.section_input.setText(section_type)
+        if hasattr(self, "section_number_input"):
+            self.section_number_input.setValue(section_number)
+        if hasattr(self, "exercise_input"):
+            self.exercise_input.setValue(exercise)
+        if hasattr(self, "inciso_input"):
+            self.inciso_input.setValue(inciso or 0)
+
+    def set_controls_locked(self, locked: bool) -> None:
+        """Bloquea o desbloquea controles."""
+        self.set_locked(locked)
+
+    def set_status_message(self, message: str) -> None:
+        """Actualiza el texto de estado."""
+        if hasattr(self, "status_label"):
+            self.status_label.setText(message)
 
     @property
     def is_dark_mode(self) -> bool:
@@ -983,6 +1035,8 @@ class HomeViewWidget(QWidget):
 
         if completed:
             self.audio_service.play_complete()
+        else:
+            self.audio_service.play_fail()
 
         self.application.finish_item(completed, overwrite=True)
         self.clear_continuation_mode()

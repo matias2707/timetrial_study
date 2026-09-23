@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Sequence
 
 from domain.models import TimerItem
-from presentation.presentation_formatters import format_milliseconds
+from domain.time_utils import format_milliseconds
 
 # Claves de columnas de datos
 COL_SECTION = "section"

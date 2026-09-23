@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: study_timetrial_tests
+    environment:
+      - QT_QPA_PLATFORM=offscreen
+      - PYTHONUNBUFFERED=1
+    command: python -m unittest discover -s tests -v
+
+  # Servicio opcional para levantar la aplicación gráfica compartiendo servidor X11 (Linux)
+  gui-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: study_timetrial_gui
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    command: python main.py
+    profiles:
+      - gui

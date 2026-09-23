@@ -18,16 +18,22 @@ __all__ = [
     "DARK_TOKENS",
     "LIGHT_TOKENS",
     "get_theme_tokens",
+    "get_available_themes",
     "get_theme_stylesheet",
     "get_dialog_stylesheet",
     "get_status_pill_style",
     "get_timer_cards_style",
 ]
 
+from presentation.theming.theme_loader import (
+    get_available_themes,
+    get_theme_tokens as _get_theme_tokens_dynamic,
+)
+
 
 def get_theme_tokens(theme: str) -> ThemeTokens:
     """Obtiene el conjunto de tokens de diseño correspondiente al nombre del tema."""
-    return THEME_TOKENS_MAP.get(theme, LIGHT_TOKENS)
+    return _get_theme_tokens_dynamic(theme)
 
 
 def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
