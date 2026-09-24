@@ -655,6 +655,8 @@ class TagManagerDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
+        self.table.itemChanged.connect(self._on_table_item_changed)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self.table)
 
         # Panel para agregar nueva etiqueta
@@ -701,6 +703,7 @@ class TagManagerDialog(QDialog):
             self._update_color_pick_button()
 
     def _refresh_table(self) -> None:
+        self.table.blockSignals(True)
         self.table.setRowCount(0)
         tags = self.app_service.get_tag_catalog()
         for row_idx, tag in enumerate(tags):
@@ -714,9 +717,11 @@ class TagManagerDialog(QDialog):
             btn_col.clicked.connect(lambda _, t=tag: self._on_change_tag_color(t))
             self.table.setCellWidget(row_idx, 0, btn_col)
 
-            # Nombre
+            # Nombre (editable directamente en celda o con doble clic)
             item_name = QTableWidgetItem(tag.name)
-            item_name.setToolTip("Haz doble clic en el botón Editar para renombrar")
+            item_name.setData(Qt.ItemDataRole.UserRole, tag.id)
+            item_name.setData(Qt.ItemDataRole.UserRole + 1, tag.name)
+            item_name.setToolTip("Doble clic para editar en la tabla o usa el botón Editar")
             self.table.setItem(row_idx, 1, item_name)
 
             # Acciones: Editar, Eliminar
@@ -727,17 +732,57 @@ class TagManagerDialog(QDialog):
 
             btn_edit = QPushButton()
             btn_edit.setIcon(qta.icon("fa5s.edit", color="#94a3b8"))
-            btn_edit.setToolTip("Renombrar etiqueta")
+            btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_edit.setToolTip("Renombrar etiqueta (un clic)")
             btn_edit.clicked.connect(lambda _, t=tag: self._on_edit_tag_name(t))
             h_act.addWidget(btn_edit)
 
             btn_del = QPushButton()
             btn_del.setIcon(qta.icon("fa5s.trash-alt", color="#ef4444"))
+            btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_del.setToolTip("Eliminar etiqueta")
             btn_del.clicked.connect(lambda _, t=tag: self._on_delete_tag(t))
             h_act.addWidget(btn_del)
 
             self.table.setCellWidget(row_idx, 2, w_actions)
+        self.table.blockSignals(False)
+
+    def _on_table_item_changed(self, item: QTableWidgetItem) -> None:
+        """Persiste inmediatamente cambios hechos escribiendo directamente en la celda de nombre."""
+        if item.column() != 1:
+            return
+        tag_id = item.data(Qt.ItemDataRole.UserRole)
+        if not tag_id:
+            return
+        new_name = item.text().strip()
+        old_name = item.data(Qt.ItemDataRole.UserRole + 1) or ""
+        if not new_name:
+            # Revertir al nombre anterior si se deja vacío
+            self.table.blockSignals(True)
+            item.setText(old_name)
+            self.table.blockSignals(False)
+            return
+        if new_name == old_name:
+            return
+        catalog = {t.id: t for t in self.app_service.get_tag_catalog()}
+        tag = catalog.get(tag_id)
+        if tag:
+            self.app_service.update_tag_definition(tag_id, new_name, tag.color)
+            item.setData(Qt.ItemDataRole.UserRole + 1, new_name)
+            self.table.blockSignals(True)
+            item.setText(new_name)
+            self.table.blockSignals(False)
+
+    def _on_cell_double_clicked(self, row: int, col: int) -> None:
+        """Gestiona la interacción de doble clic según la columna pulsada."""
+        if col == 0:
+            tags = self.app_service.get_tag_catalog()
+            if 0 <= row < len(tags):
+                self._on_change_tag_color(tags[row])
+        elif col == 1:
+            item = self.table.item(row, col)
+            if item:
+                self.table.editItem(item)
 
     def _on_change_tag_color(self, tag: TagDefinition) -> None:
         c = QColorDialog.getColor(QColor(tag.color), self, f"Color para '{tag.name}'")

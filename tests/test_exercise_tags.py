@@ -317,18 +317,142 @@ class TestExerciseTagsGUI(unittest.TestCase):
         self.assertTrue(hasattr(home, "tags_button"))
         self.assertEqual(home.tags_button.text().strip(), "MARCADORES")
 
-        # Asignar tag a Guía 1 Ejercicio 1
+    def test_home_view_location_label_renders_bookmarks(self) -> None:
+        """Verifica que el recuadro de ubicación en el cronómetro reciba y muestre los bookmarks de los marcadores."""
+        from presentation.home_view import HomeViewWidget, LocationBadgeLabel
+        from presentation.audio_service import AudioService
+        from PySide6.QtGui import QPainter, QPixmap
+
+        app = StudyApplicationService()
+        audio = AudioService()
+        home = HomeViewWidget(app, audio, is_dark_mode=True)
+
+        self.assertIsInstance(home.location_label, LocationBadgeLabel)
+        self.assertEqual(len(home.location_label.tags), 0)
+        self.assertIn(home.location_label.width(), (LocationBadgeLabel.BASE_WIDTH, LocationBadgeLabel.EXPANDED_WIDTH))
+        self.assertEqual(home.location_label.height(), LocationBadgeLabel.FIXED_HEIGHT)
+
+        # Asignar marcadores a Guía 1 Ejercicio 1
         app.set_exercise_tags("Guía", 1, 1, None, ["tag-redo", "tag-doubt"])
         home.sync_location(force=True)
 
-        self.assertIn("MARCADORES (2)", home.tags_button.text())
+        self.assertEqual(len(home.location_label.tags), 2)
+        self.assertEqual(home.location_label.tags[0].name, "Rehacer")
+        self.assertEqual(home.location_label.tags[1].name, "Duda para clase")
+        self.assertIn("Marcadores: Rehacer, Duda para clase", home.location_label.toolTip())
 
-        # Cambiar a Ejercicio 2
+        # Renderizar en pixmap para validar paintEvent con los bookmarks
+        pixmap = QPixmap(home.location_label.size())
+        pixmap.fill()
+        home.location_label.render(pixmap)
+
+        # Al cambiar a Ejercicio 2 (sin marcadores), los bookmarks deben desaparecer
         home.exercise_input.setValue(2)
         home.sync_location()
-        self.assertEqual(home.tags_button.text().strip(), "MARCADORES")
+        self.assertEqual(len(home.location_label.tags), 0)
+        self.assertNotIn("Marcadores:", home.location_label.toolTip())
+
+    def test_location_badge_label_fixed_size_adaptation(self) -> None:
+        """Verifica que el recuadro tenga tamaño fijo y se amplíe a un tamaño fijo superior si se requiere."""
+        from presentation.home_view import LocationBadgeLabel
+        from domain.models import TagDefinition
+
+        label = LocationBadgeLabel("Guía 1 · Ejercicio 1")
+        self.assertIn(label.width(), (LocationBadgeLabel.BASE_WIDTH, LocationBadgeLabel.EXPANDED_WIDTH, LocationBadgeLabel.LARGE_WIDTH))
+        self.assertEqual(label.height(), LocationBadgeLabel.FIXED_HEIGHT)
+
+        # Asignar 2 tags normales
+        tags_2 = [
+            TagDefinition(id="t1", name="Tag 1", color="#ef4444"),
+            TagDefinition(id="t2", name="Tag 2", color="#3b82f6"),
+        ]
+        label.set_tags(tags_2)
+        self.assertIn(label.width(), (LocationBadgeLabel.BASE_WIDTH, LocationBadgeLabel.EXPANDED_WIDTH, LocationBadgeLabel.LARGE_WIDTH))
+
+        # Asignar texto largo y muchos marcadores que superen el ancho base
+        many_tags = [
+            TagDefinition(id=f"t{i}", name=f"Tag {i}", color="#10b981") for i in range(8)
+        ]
+        label.setText("Guía 128 · Ejercicio 256 · Inciso 12")
+        label.set_tags(many_tags)
+        # Debe haberse ampliado a un ancho fijo superior (EXPANDED o LARGE)
+        self.assertIn(label.width(), (LocationBadgeLabel.EXPANDED_WIDTH, LocationBadgeLabel.LARGE_WIDTH))
+        self.assertEqual(label.height(), LocationBadgeLabel.FIXED_HEIGHT)
+
+    def test_tag_manager_dialog_inline_name_edit_and_persistence(self) -> None:
+        """Verifica que modificar directamente el texto de la celda de nombre persista el cambio."""
+        from presentation.planner_dialogs import TagManagerDialog
+
+        app = StudyApplicationService()
+        dlg = TagManagerDialog(None, app)
+
+        # La fila 3 corresponde a 'Clave / Importante'
+        item = dlg.table.item(3, 1)
+        self.assertEqual(item.text(), "Clave / Importante")
+
+        # Modificar texto inline en la celda
+        item.setText("Clave Prioritaria")
+
+        # Debe actualizarse inmediatamente en app_service y en record.tags
+        catalog = app.get_tag_catalog()
+        self.assertEqual(catalog[3].name, "Clave Prioritaria")
+        self.assertEqual(app.record.tags[3].name, "Clave Prioritaria")
+
+    def test_tag_manager_dialog_inline_name_empty_revert(self) -> None:
+        """Verifica que dejar en blanco la celda revierta al nombre previo sin corromper."""
+        from presentation.planner_dialogs import TagManagerDialog
+
+        app = StudyApplicationService()
+        dlg = TagManagerDialog(None, app)
+
+        item = dlg.table.item(3, 1)
+        original_name = item.text()
+
+        # Intentar poner texto vacío
+        item.setText("   ")
+
+        # Debe restaurar el nombre original
+        self.assertEqual(item.text(), original_name)
+        self.assertEqual(app.get_tag_catalog()[3].name, original_name)
+
+    def test_tag_manager_dialog_btn_edit_action(self) -> None:
+        """Verifica que el botón de editar renombra correctamente la etiqueta."""
+        from unittest.mock import patch
+        from PySide6.QtWidgets import QPushButton
+        from presentation.planner_dialogs import TagManagerDialog
+
+        app = StudyApplicationService()
+        dlg = TagManagerDialog(None, app)
+
+        w_actions = dlg.table.cellWidget(3, 2)
+        btns = w_actions.findChildren(QPushButton)
+        btn_edit = btns[0]
+
+        with patch("PySide6.QtWidgets.QInputDialog.getText", return_value=("Clave Definitiva", True)):
+            btn_edit.click()
+
+        self.assertEqual(app.get_tag_catalog()[3].name, "Clave Definitiva")
+        self.assertEqual(dlg.table.item(3, 1).text(), "Clave Definitiva")
+
+    def test_tag_manager_dialog_cell_double_clicked(self) -> None:
+        """Verifica que el doble clic sobre la columna de nombre o de color active la acción correspondiente."""
+        from unittest.mock import patch
+        from PySide6.QtGui import QColor
+        from presentation.planner_dialogs import TagManagerDialog
+
+        app = StudyApplicationService()
+        dlg = TagManagerDialog(None, app)
+
+        # Doble clic en celda de color (columna 0) abre selector de color
+        with patch("PySide6.QtWidgets.QColorDialog.getColor", return_value=QColor("#10b981")):
+            dlg._on_cell_double_clicked(3, 0)
+            self.assertEqual(app.get_tag_catalog()[3].color, "#10b981")
+
+        # Doble clic en celda de nombre (columna 1) invoca editItem sin lanzar excepciones
+        dlg._on_cell_double_clicked(3, 1)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

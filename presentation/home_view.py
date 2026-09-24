@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QRect, QSize, Qt, Signal
+from PySide6.QtGui import QPainter, QPainterPath, QPaintEvent
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QBoxLayout,
@@ -31,7 +32,7 @@ from application.planner_service import (
     STATUS_FAILED,
     STATUS_PENDING,
 )
-from domain.models import TimerItem
+from domain.models import TagDefinition, TimerItem
 from domain.timer_service import TimerMode
 from presentation.audio_service import AudioService
 from presentation.empty_state_widget import EmptyStateWidget
@@ -48,6 +49,110 @@ DEFAULT_SECTION_TYPE = "Guía"
 APP_TITLE = "Study Timetrial"
 APP_VERSION = "v1.0"
 MAX_VALUE = 999_999
+
+
+class LocationBadgeLabel(QLabel):
+    """Etiqueta y recuadro de ubicación en el cronómetro que soporta dibujar marcadores (bookmarks)."""
+
+    BASE_WIDTH = 340
+    EXPANDED_WIDTH = 440
+    LARGE_WIDTH = 520
+    FIXED_HEIGHT = 50
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._tags: list[TagDefinition] = []
+        font = self.font()
+        font.setPointSize(18)
+        font.setBold(True)
+        self.setFont(font)
+        self.setFixedHeight(self.FIXED_HEIGHT)
+        self.setFixedWidth(self.BASE_WIDTH)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def set_tags(self, tags: list[TagDefinition]) -> None:
+        """Actualiza la lista de marcadores asignados y recalcula el tamaño fijo requerido."""
+        self._tags = list(tags)
+        self._adjust_fixed_size()
+        self.update()
+
+    @property
+    def tags(self) -> list[TagDefinition]:
+        return self._tags
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self._adjust_fixed_size()
+
+    def _adjust_fixed_size(self) -> None:
+        """Ajusta el ancho fijo: usa el tamaño base, pero si los bookmarks no entran, se agranda a un tamaño fijo superior."""
+        fm = self.fontMetrics()
+        text_w = fm.horizontalAdvance(self.text())
+        k = len(self._tags)
+        gap = 3
+        bw = 13
+        tags_w = (k * bw + max(0, k - 1) * gap) if k > 0 else 0
+
+        # Al estar el texto centrado, el espacio para que el texto no solape con los marcadores a la derecha:
+        needed_w = text_w + (tags_w * 2 + 50 if tags_w > 0 else 40)
+
+        if needed_w <= self.BASE_WIDTH:
+            target_w = self.BASE_WIDTH
+        elif needed_w <= self.EXPANDED_WIDTH:
+            target_w = self.EXPANDED_WIDTH
+        else:
+            target_w = self.LARGE_WIDTH
+
+        if self.width() != target_w:
+            self.setFixedWidth(target_w)
+
+    def sizeHint(self) -> QSize:
+        return QSize(self.width(), self.FIXED_HEIGHT)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(self.BASE_WIDTH, self.FIXED_HEIGHT)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        if not self._tags:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        w = rect.width()
+        h = rect.height()
+
+        clip_path = QPainterPath()
+        clip_path.addRoundedRect(0, 0, w, h, 10, 10)
+        painter.setClipPath(clip_path)
+
+        outline_offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        tags = self._tags
+        k = len(tags)
+        gap = 3
+        bw = 13
+        bh = 20
+        total_w = k * bw + (k - 1) * gap
+        margin_right = 10
+        start_x = w - margin_right - total_w
+        y_pos = 2  # Cuelgan en la parte superior derecha, al igual como en el planificador
+
+        outline_bm = qta.icon("fa5s.bookmark", color="rgba(0, 0, 0, 180)")
+
+        for i, tag in enumerate(tags):
+            x_pos = start_x + i * (bw + gap)
+            color = tag.color or "#a855f7"
+
+            for ox, oy in outline_offsets:
+                outline_bm.paint(
+                    painter, QRect(int(x_pos + ox), int(y_pos + oy), int(bw), int(bh))
+                )
+
+            qta.icon("fa5s.bookmark", color=color).paint(
+                painter, QRect(int(x_pos), int(y_pos), int(bw), int(bh))
+            )
 
 
 class HomeViewWidget(QWidget):
@@ -289,7 +394,7 @@ class HomeViewWidget(QWidget):
         hero_top = QHBoxLayout()
         hero_top.setSpacing(10)
 
-        self.location_label = QLabel()
+        self.location_label = LocationBadgeLabel()
         self.location_label.setObjectName("location_badge")
         self.location_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.location_label.mousePressEvent = self._on_location_label_clicked
@@ -730,10 +835,25 @@ class HomeViewWidget(QWidget):
             hover_bg = "#334155" if is_dark else "#e2e8f0"
             status_desc = "Sin realizar"
 
+        if self.application.is_record_open:
+            tag_ids = self.application.get_exercise_tags(
+                location.section_type, location.section_number, location.exercise, location.inciso
+            )
+            tag_catalog = {t.id: t for t in self.application.get_tag_catalog()}
+            tags = [tag_catalog[tid] for tid in tag_ids if tid in tag_catalog]
+        else:
+            tags = []
+
+        self.location_label.set_tags(tags)
         self.location_label.setText(text)
-        self.location_label.setToolTip(
-            f"{text} ({status_desc})\nHaz clic para ver detalles, notas o marcadores"
-        )
+
+        tooltip_text = f"{text} ({status_desc})"
+        if tags:
+            tag_names = ", ".join(t.name for t in tags)
+            tooltip_text += f"\nMarcadores: {tag_names}"
+        tooltip_text += "\nHaz clic para ver detalles, notas o marcadores"
+
+        self.location_label.setToolTip(tooltip_text)
         self.location_label.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.location_label.setStyleSheet(
@@ -746,6 +866,7 @@ class HomeViewWidget(QWidget):
                 font-size: 24px;
                 font-weight: 800;
                 padding: 8px 16px;
+                qproperty-alignment: AlignCenter;
             }}
             QLabel#location_badge:hover {{
                 background-color: {hover_bg};
@@ -1285,8 +1406,10 @@ class HomeViewWidget(QWidget):
             self.update_tags_visual_state()
 
     def update_tags_visual_state(self) -> None:
-        """Actualiza el aspecto del botón de marcadores según si el ejercicio actual tiene etiquetas."""
+        """Actualiza el aspecto del botón de marcadores y del recuadro de ubicación según si el ejercicio actual tiene etiquetas."""
         if not hasattr(self, "tags_button") or not self.application.is_record_open:
+            if hasattr(self, "location_label") and hasattr(self.location_label, "set_tags"):
+                self.location_label.set_tags([])
             return
         sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
         sec_num = self.section_number_input.value()
@@ -1294,6 +1417,22 @@ class HomeViewWidget(QWidget):
         inc = self.inciso_input.value() or None
 
         tag_ids = self.application.get_exercise_tags(sec_type, sec_num, ex, inc)
+        tag_catalog = {t.id: t for t in self.application.get_tag_catalog()}
+        tags = [tag_catalog[tid] for tid in tag_ids if tid in tag_catalog]
+
+        if hasattr(self, "location_label") and hasattr(self.location_label, "set_tags"):
+            self.location_label.set_tags(tags)
+            st = self.application.get_exercise_status(sec_type, sec_num, ex, inc)
+            status_desc = "Completado" if st == STATUS_COMPLETED else ("En dificultad" if st == STATUS_FAILED else "Sin realizar")
+            suffix = f" · Inciso {inc}" if inc else ""
+            text = f"{sec_type} {sec_num} · Ejercicio {ex}{suffix}"
+            tt = f"{text} ({status_desc})"
+            if tags:
+                tag_names = ", ".join(t.name for t in tags)
+                tt += f"\nMarcadores: {tag_names}"
+            tt += "\nHaz clic para ver detalles, notas o marcadores"
+            self.location_label.setToolTip(tt)
+
         if tag_ids:
             self.tags_button.setText(f"  MARCADORES ({len(tag_ids)})")
             self.tags_button.setIcon(qta.icon("fa5s.tags", color="#a855f7"))
