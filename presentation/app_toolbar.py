@@ -20,6 +20,7 @@ class AppToolbar(QToolBar):
     request_open_record = Signal()
     request_open_recent = Signal(Path)
     request_save_as = Signal()
+    request_export = Signal()
     request_close_record = Signal()
     request_close_app = Signal()
     request_theme_change = Signal(str)
@@ -61,6 +62,11 @@ class AppToolbar(QToolBar):
         self.save_file_action.setIcon(qta.icon("fa5s.save", color=icon_color))
         self.save_file_action.triggered.connect(self.request_save_as.emit)
         self.file_menu.addAction(self.save_file_action)
+
+        self.export_file_action = QAction("Exportar datos (CSV)...", self)
+        self.export_file_action.setIcon(qta.icon("fa5s.file-export", color=icon_color))
+        self.export_file_action.triggered.connect(self.request_export.emit)
+        self.file_menu.addAction(self.export_file_action)
 
         self.file_menu.addSeparator()
         self.close_file_action = QAction("Cerrar archivo", self)
@@ -153,6 +159,7 @@ class AppToolbar(QToolBar):
     def set_record_actions_enabled(self, enabled: bool) -> None:
         """Habilita o deshabilita acciones que requieren un archivo abierto."""
         self.save_file_action.setEnabled(enabled)
+        self.export_file_action.setEnabled(enabled)
         self.close_file_action.setEnabled(enabled)
 
     def update_auto_open_action(self, enabled: bool) -> None:
@@ -168,6 +175,7 @@ class AppToolbar(QToolBar):
         self.open_file_action.setIcon(qta.icon("fa5s.folder-open", color=toolbar_icon_color))
         self.recent_file_action.setIcon(qta.icon("fa5s.history", color=toolbar_icon_color))
         self.save_file_action.setIcon(qta.icon("fa5s.save", color=toolbar_icon_color))
+        self.export_file_action.setIcon(qta.icon("fa5s.file-export", color=toolbar_icon_color))
 
         self.config_button.setIcon(qta.icon("fa5s.cog", color=toolbar_icon_color))
         self.themes_menu.setIcon(qta.icon("fa5s.palette", color=toolbar_icon_color))

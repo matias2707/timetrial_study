@@ -56,6 +56,7 @@ class RecordsViewWidget(QWidget):
     request_save_as = Signal()
     request_rename_record = Signal()
     request_close_record = Signal()
+    request_export = Signal(object)
 
     def __init__(
         self,
@@ -167,6 +168,12 @@ class RecordsViewWidget(QWidget):
         self.import_button.setIcon(qta.icon("fa5s.file-import", color="#334155"))
         self.import_button.clicked.connect(self.request_import_records.emit)
         toolbar.addWidget(self.import_button)
+
+        self.export_button = QPushButton(" Exportar")
+        self.export_button.setObjectName("secondary_action")
+        self.export_button.setIcon(qta.icon("fa5s.file-export", color="#334155"))
+        self.export_button.clicked.connect(self._on_export_clicked)
+        toolbar.addWidget(self.export_button)
 
         self.save_as_button = QPushButton(" Guardar como")
         self.save_as_button.setObjectName("secondary_action")
@@ -370,6 +377,7 @@ class RecordsViewWidget(QWidget):
         """Habilita o deshabilita acciones de la vista según si hay proyecto activo."""
         for btn in (
             getattr(self, "import_button", None),
+            getattr(self, "export_button", None),
             getattr(self, "save_as_button", None),
             getattr(self, "rename_button", None),
             getattr(self, "close_button", None),
@@ -379,6 +387,10 @@ class RecordsViewWidget(QWidget):
         ):
             if btn is not None:
                 btn.setEnabled(not is_empty)
+
+    def _on_export_clicked(self) -> None:
+        """Emite la solicitud de exportación pasando la lista actual de registros filtrados."""
+        self.request_export.emit(self._current_displayed_items)
 
         if is_empty:
             self.records_summary.setText("Sin proyecto activo")

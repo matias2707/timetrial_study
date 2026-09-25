@@ -23,6 +23,10 @@ docs/specs/
 │   └── progress_metrics.spec.md       <- Algoritmos de avance, métricas y analítica
 ├── audio/
 │   └── ambient_and_effects.spec.md    <- Especificación de mezcla ambiental y efectos
+├── statistics/
+│   └── statistics_view.spec.md        <- Rediseño analítico temporal (General, Semanal, Diario) y MVP
+├── export/
+│   └── export_service.spec.md         <- Exportación estandarizada CSV/Excel (RFC 4180, utf-8-sig)
 └── themes/
     └── color_tokens.spec.md           <- Diccionario de tokens de color requeridos por tema
 ```

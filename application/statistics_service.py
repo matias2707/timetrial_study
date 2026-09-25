@@ -13,6 +13,11 @@ from typing import Any, Sequence
 from domain.models import Milestone, Record, TimerItem
 
 SPANISH_WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+SPANISH_DAYS_FULL = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+SPANISH_MONTHS = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
 
 
 @dataclass
@@ -101,6 +106,89 @@ class RecordStatistics:
         if self.total_time_ms == 0:
             return 0.0
         return (self.total_break_time_ms / self.total_time_ms) * 100.0
+
+
+@dataclass(frozen=True)
+class DailyAttemptLogEntry:
+    item_id: str
+    timestamp: str
+    start_time_str: str
+    section_display: str
+    section_type: str
+    section_number: int
+    exercise: int
+    inciso: int | None
+    exercise_time_ms: int
+    break_time_ms: int
+    completed: bool
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class DailyStatsSummary:
+    target_date: str  # YYYY-MM-DD
+    display_date: str
+    is_today: bool
+    total_exercise_time_ms: int
+    total_break_time_ms: int
+    attempts: list[DailyAttemptLogEntry]
+    completed_count: int
+    failed_count: int
+    focus_ratio: float  # 0.0 a 100.0
+
+
+@dataclass(frozen=True)
+class WeeklyDaySummary:
+    date_str: str  # YYYY-MM-DD
+    day_name: str  # Lun, Mar...
+    exercise_time_ms: int
+    break_time_ms: int
+    completed_count: int
+    failed_count: int
+
+
+@dataclass(frozen=True)
+class WeeklyExerciseItem:
+    section_type: str
+    section_number: int
+    exercise: int
+    inciso: int | None
+    section_display: str
+    total_exercise_time_ms: int
+    attempts_count: int
+    is_completed: bool
+
+
+@dataclass(frozen=True)
+class WeeklyStatsSummary:
+    week_start_str: str
+    week_end_str: str
+    display_range: str
+    is_current_week: bool
+    total_exercise_time_ms: int
+    total_break_time_ms: int
+    active_days_count: int
+    days: list[WeeklyDaySummary]
+    exercises: list[WeeklyExerciseItem]
+    completed_count: int
+    failed_count: int
+
+
+@dataclass(frozen=True)
+class CumulativePoint:
+    date_str: str
+    display_date: str
+    cumulative_exercise_time_ms: int
+    cumulative_completed: int
+    cumulative_failed: int
+
+
+@dataclass(frozen=True)
+class CumulativeEvolutionData:
+    points: list[CumulativePoint]
+    total_study_time_ms: int
+    total_completed: int
+    total_failed: int
 
 
 def _parse_item_date(created_at_str: str) -> date | None:
@@ -817,4 +905,335 @@ def compute_today_summary_metrics(
         "completed_unique_count": len(completed_unique_exercises),
         "total_attempts": total_attempts,
     }
+
+
+def compute_streak_days(record: Record, reference_date: date | None = None) -> tuple[int, int]:
+    """Calcula la racha actual de días consecutivos estudiados y el total de días de estudio."""
+    today = reference_date or date.today()
+    daily_exercise_map: dict[date, int] = {}
+    for item in record.items:
+        d = _parse_item_date(item.created_at)
+        if d:
+            daily_exercise_map[d] = daily_exercise_map.get(d, 0) + item.exercise_time_ms
+
+    total_study_days = sum(1 for ms in daily_exercise_map.values() if ms > 0)
+    studied_dates = {d for d, ms in daily_exercise_map.items() if ms > 0}
+    streak_days = 0
+    check_date = today
+
+    if check_date in studied_dates:
+        while check_date in studied_dates:
+            streak_days += 1
+            check_date -= timedelta(days=1)
+    elif (check_date - timedelta(days=1)) in studied_dates:
+        check_date -= timedelta(days=1)
+        while check_date in studied_dates:
+            streak_days += 1
+            check_date -= timedelta(days=1)
+
+    return streak_days, total_study_days
+
+
+def get_top_effort_exercises_advanced(
+    record: Record,
+    criteria: str = "time",
+    limit: int = 5,
+) -> list[TopEffortExercise]:
+    """Calcula el ranking de ejercicios según el criterio:
+
+    - 'time': Mayor tiempo neto acumulado.
+    - 'retries': Mayor cantidad de intentos / reintentos.
+    - 'pb': Mejor marca personal / tiempo récord más veloz (solo completados).
+    """
+    exercises_map: dict[tuple[str, int, int, int | None], dict[str, Any]] = {}
+
+    for item in record.items:
+        key = (item.section_type, item.section_number, item.exercise, item.inciso)
+        if key not in exercises_map:
+            exercises_map[key] = {
+                "section_type": item.section_type,
+                "section_number": item.section_number,
+                "exercise": item.exercise,
+                "inciso": item.inciso,
+                "exercise_time_ms": 0,
+                "break_time_ms": 0,
+                "attempts": 0,
+                "completed": False,
+                "best_time_ms": None,
+            }
+        data = exercises_map[key]
+        data["exercise_time_ms"] += item.exercise_time_ms
+        data["break_time_ms"] += item.break_time_ms
+        data["attempts"] += 1
+        if item.completed:
+            data["completed"] = True
+            if data["best_time_ms"] is None or item.exercise_time_ms < data["best_time_ms"]:
+                data["best_time_ms"] = item.exercise_time_ms
+
+    if criteria == "retries":
+        sorted_exercises = sorted(
+            exercises_map.values(),
+            key=lambda x: (x["attempts"], x["exercise_time_ms"]),
+            reverse=True,
+        )
+    elif criteria == "pb":
+        completed_only = [ex for ex in exercises_map.values() if ex["best_time_ms"] is not None]
+        sorted_exercises = sorted(
+            completed_only,
+            key=lambda x: x["best_time_ms"],
+        )
+    else:
+        sorted_exercises = sorted(
+            exercises_map.values(),
+            key=lambda x: x["exercise_time_ms"],
+            reverse=True,
+        )
+
+    result: list[TopEffortExercise] = []
+    for i, ex in enumerate(sorted_exercises[:limit]):
+        result.append(
+            TopEffortExercise(
+                rank=i + 1,
+                section_type=ex["section_type"],
+                section_number=ex["section_number"],
+                exercise=ex["exercise"],
+                inciso=ex["inciso"],
+                exercise_time_ms=ex["exercise_time_ms"],
+                break_time_ms=ex["break_time_ms"],
+                attempts=ex["attempts"],
+                completed=ex["completed"],
+            )
+        )
+    return result
+
+
+def compute_cumulative_evolution(record: Record) -> CumulativeEvolutionData:
+    """Calcula la serie temporal acumulativa del tiempo neto, completados e incompletos."""
+    daily_data: dict[date, dict[str, int]] = {}
+
+    for item in record.items:
+        d = _parse_item_date(item.created_at)
+        if not d:
+            continue
+        if d not in daily_data:
+            daily_data[d] = {
+                "exercise_time_ms": 0,
+                "completed": 0,
+                "failed": 0,
+            }
+        daily_data[d]["exercise_time_ms"] += item.exercise_time_ms
+        if item.completed:
+            daily_data[d]["completed"] += 1
+        else:
+            daily_data[d]["failed"] += 1
+
+    sorted_dates = sorted(daily_data.keys())
+    points: list[CumulativePoint] = []
+    cum_time = 0
+    cum_completed = 0
+    cum_failed = 0
+
+    for d in sorted_dates:
+        data = daily_data[d]
+        cum_time += data["exercise_time_ms"]
+        cum_completed += data["completed"]
+        cum_failed += data["failed"]
+        disp = f"{d.day} {SPANISH_MONTHS[d.month - 1][:3]}"
+        points.append(
+            CumulativePoint(
+                date_str=d.isoformat(),
+                display_date=disp,
+                cumulative_exercise_time_ms=cum_time,
+                cumulative_completed=cum_completed,
+                cumulative_failed=cum_failed,
+            )
+        )
+
+    return CumulativeEvolutionData(
+        points=points,
+        total_study_time_ms=cum_time,
+        total_completed=cum_completed,
+        total_failed=cum_failed,
+    )
+
+
+def compute_daily_stats_summary(
+    record: Record,
+    target_date: date,
+) -> DailyStatsSummary:
+    """Calcula las métricas consolidadas y el desglose de intentos para un día específico."""
+    attempts: list[DailyAttemptLogEntry] = []
+    total_exercise_time_ms = 0
+    total_break_time_ms = 0
+    completed_count = 0
+    failed_count = 0
+
+    for item in record.items:
+        d = _parse_item_date(item.created_at)
+        if d != target_date:
+            continue
+
+        start_time_str = "--:--"
+        if item.created_at:
+            try:
+                dt = datetime.fromisoformat(item.created_at)
+                start_time_str = dt.strftime("%H:%M")
+            except (ValueError, TypeError):
+                pass
+
+        total_exercise_time_ms += item.exercise_time_ms
+        total_break_time_ms += item.break_time_ms
+        if item.completed:
+            completed_count += 1
+        else:
+            failed_count += 1
+
+        sec_disp = f"{item.section_type} {item.section_number}"
+        attempts.append(
+            DailyAttemptLogEntry(
+                item_id=item.id,
+                timestamp=item.created_at or "",
+                start_time_str=start_time_str,
+                section_display=sec_disp,
+                section_type=item.section_type,
+                section_number=item.section_number,
+                exercise=item.exercise,
+                inciso=item.inciso,
+                exercise_time_ms=item.exercise_time_ms,
+                break_time_ms=item.break_time_ms,
+                completed=item.completed,
+                notes=getattr(item, "comment", "") or getattr(item, "notes", "") or "",
+            )
+        )
+
+    attempts.sort(key=lambda x: x.timestamp)
+
+    total_time = total_exercise_time_ms + total_break_time_ms
+    focus_ratio = (total_exercise_time_ms / total_time * 100.0) if total_time > 0 else 0.0
+    display_date = f"{SPANISH_DAYS_FULL[target_date.weekday()]}, {target_date.day} de {SPANISH_MONTHS[target_date.month - 1]} de {target_date.year}"
+
+    return DailyStatsSummary(
+        target_date=target_date.isoformat(),
+        display_date=display_date,
+        is_today=(target_date == date.today()),
+        total_exercise_time_ms=total_exercise_time_ms,
+        total_break_time_ms=total_break_time_ms,
+        attempts=attempts,
+        completed_count=completed_count,
+        failed_count=failed_count,
+        focus_ratio=focus_ratio,
+    )
+
+
+def compute_weekly_stats_summary(
+    record: Record,
+    reference_date: date,
+) -> WeeklyStatsSummary:
+    """Calcula las métricas de la semana (Lunes a Domingo) que contiene a reference_date."""
+    start_of_week = reference_date - timedelta(days=reference_date.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    items_by_date: dict[date, list[TimerItem]] = {
+        start_of_week + timedelta(days=i): [] for i in range(7)
+    }
+
+    for item in record.items:
+        d = _parse_item_date(item.created_at)
+        if d and start_of_week <= d <= end_of_week:
+            items_by_date[d].append(item)
+
+    days_summary: list[WeeklyDaySummary] = []
+    total_week_exercise_ms = 0
+    total_week_break_ms = 0
+    active_days_count = 0
+    week_completed = 0
+    week_failed = 0
+
+    for i in range(7):
+        curr_d = start_of_week + timedelta(days=i)
+        day_items = items_by_date[curr_d]
+        d_ex_ms = sum(x.exercise_time_ms for x in day_items)
+        d_br_ms = sum(x.break_time_ms for x in day_items)
+        d_comp = sum(1 for x in day_items if x.completed)
+        d_fail = sum(1 for x in day_items if not x.completed)
+
+        total_week_exercise_ms += d_ex_ms
+        total_week_break_ms += d_br_ms
+        week_completed += d_comp
+        week_failed += d_fail
+        if d_ex_ms > 0:
+            active_days_count += 1
+
+        days_summary.append(
+            WeeklyDaySummary(
+                date_str=curr_d.isoformat(),
+                day_name=SPANISH_WEEKDAYS[i],
+                exercise_time_ms=d_ex_ms,
+                break_time_ms=d_br_ms,
+                completed_count=d_comp,
+                failed_count=d_fail,
+            )
+        )
+
+    exercises_map: dict[tuple[str, int, int, int | None], dict[str, Any]] = {}
+    for day_items in items_by_date.values():
+        for it in day_items:
+            key = (it.section_type, it.section_number, it.exercise, it.inciso)
+            if key not in exercises_map:
+                exercises_map[key] = {
+                    "section_type": it.section_type,
+                    "section_number": it.section_number,
+                    "exercise": it.exercise,
+                    "inciso": it.inciso,
+                    "section_display": f"{it.section_type} {it.section_number}",
+                    "total_exercise_time_ms": 0,
+                    "attempts_count": 0,
+                    "is_completed": False,
+                }
+            exercises_map[key]["total_exercise_time_ms"] += it.exercise_time_ms
+            exercises_map[key]["attempts_count"] += 1
+            if it.completed:
+                exercises_map[key]["is_completed"] = True
+
+    exercises_list = sorted(
+        exercises_map.values(),
+        key=lambda x: x["total_exercise_time_ms"],
+        reverse=True,
+    )
+
+    exercise_items = [
+        WeeklyExerciseItem(
+            section_type=ex["section_type"],
+            section_number=ex["section_number"],
+            exercise=ex["exercise"],
+            inciso=ex["inciso"],
+            section_display=ex["section_display"],
+            total_exercise_time_ms=ex["total_exercise_time_ms"],
+            attempts_count=ex["attempts_count"],
+            is_completed=ex["is_completed"],
+        )
+        for ex in exercises_list
+    ]
+
+    today_date = date.today()
+    is_curr_week = start_of_week <= today_date <= end_of_week
+    display_range = (
+        f"{start_of_week.day} {SPANISH_MONTHS[start_of_week.month - 1][:3]} - "
+        f"{end_of_week.day} {SPANISH_MONTHS[end_of_week.month - 1][:3]} {end_of_week.year}"
+    )
+
+    return WeeklyStatsSummary(
+        week_start_str=start_of_week.isoformat(),
+        week_end_str=end_of_week.isoformat(),
+        display_range=display_range,
+        is_current_week=is_curr_week,
+        total_exercise_time_ms=total_week_exercise_ms,
+        total_break_time_ms=total_week_break_ms,
+        active_days_count=active_days_count,
+        days=days_summary,
+        exercises=exercise_items,
+        completed_count=week_completed,
+        failed_count=week_failed,
+    )
+
 

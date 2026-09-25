@@ -166,6 +166,7 @@ class MainWindow(QMainWindow):
         self.toolbar.request_open_record.connect(self.open_record)
         self.toolbar.request_open_recent.connect(self.open_recent_record)
         self.toolbar.request_save_as.connect(self.save_as)
+        self.toolbar.request_export.connect(self._on_request_export)
         self.toolbar.request_close_record.connect(self.close_record)
         self.toolbar.request_close_app.connect(self.close)
         self.toolbar.request_theme_change.connect(self.set_theme)
@@ -181,6 +182,7 @@ class MainWindow(QMainWindow):
         self.records_view.request_import_records.connect(self.import_records)
         self.records_view.request_rename_record.connect(self.rename_record)
         self.records_view.request_close_record.connect(self.close_record)
+        self.records_view.request_export.connect(self._on_records_request_export)
         self.records_view.resume_item_requested.connect(self.resume_item_in_timer)
 
         self.planner.request_load_timer.connect(self._on_planner_load_timer)
@@ -191,6 +193,7 @@ class MainWindow(QMainWindow):
             self.ambience_view.engine.master_muted_changed.connect(self._on_ambience_engine_muted_changed)
         self.statistics_view.request_load_timer.connect(self._on_planner_load_timer)
         self.statistics_view.request_configure_schedule.connect(self._on_request_configure_schedule)
+        self.statistics_view.request_export.connect(self._on_request_export)
 
     def _on_tab_changed(self, index: int) -> None:
         icons = [
@@ -566,6 +569,32 @@ class MainWindow(QMainWindow):
     def _on_request_configure_schedule(self) -> None:
         self.tabs.setCurrentIndex(3)
         self.planner._on_manage_schedule()
+
+    def _on_request_export(self, filtered_items: list[TimerItem] | None = None) -> None:
+        """Abre el diálogo modal de exportación a CSV/Excel (TASK-009)."""
+        if not self.application.is_record_open:
+            QMessageBox.warning(
+                self,
+                "Sin registro activo",
+                "Abra o cree un archivo de registro antes de exportar datos.",
+            )
+            return
+
+        from presentation.export_dialog import ExportDialog
+
+        dialog = ExportDialog(
+            application=self.application,
+            filtered_items=filtered_items,
+            current_theme=self.current_theme,
+            is_dark_mode=self.is_dark_mode,
+            parent=self,
+        )
+        dialog.exec()
+        force_activate_window(self)
+
+    def _on_records_request_export(self, items: list[TimerItem] | None = None) -> None:
+        """Maneja la solicitud de exportación proveniente de la pestaña de Registros."""
+        self._on_request_export(filtered_items=items)
 
     def resume_item(self, target: int | TimerItem) -> None:
         self.records_view.resume_item(target)

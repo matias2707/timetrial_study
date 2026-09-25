@@ -83,6 +83,9 @@ class FlowLayout(QLayout):
     def minimumSize(self) -> QSize:
         size = QSize()
         for item in self._items:
+            wid = item.widget()
+            if wid and wid.isHidden():
+                continue
             size = size.expandedTo(item.minimumSize())
         margins = self.contentsMargins()
         size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
@@ -102,6 +105,9 @@ class FlowLayout(QLayout):
         current_line: list[tuple[QLayoutItem, int, QSize]] = []
 
         for item in self._items:
+            wid = item.widget()
+            if wid and wid.isHidden():
+                continue
             item_size = item.sizeHint()
             next_x = x + item_size.width() + space_x
             if next_x - space_x > effective_rect.right() and current_line:

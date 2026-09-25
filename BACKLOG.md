@@ -89,9 +89,11 @@ flowchart TD
 
     subgraph SEC4["Sector 4: Estadísticas & Reportes"]
         T006["TASK-006<br/>Exámenes & KPIs 24h"]:::done
-        T009["TASK-009<br/>Exportación CSV / Excel"]:::ready
+        T024["TASK-024<br/>Rediseño Estadísticas Temporal & MVP"]:::done
+        T009["TASK-009<br/>Exportación CSV / Excel"]:::done
         T011["TASK-011<br/>Dashboard Carrera"]:::review
-        T006 --> T009
+        T006 --> T024
+        T024 --> T009
         T008 --> T009
         T006 --> T011
     end
@@ -146,7 +148,6 @@ Las siguientes tareas tienen el **100% de sus dependencias cumplidas** y pueden 
 
 | ID | Sector | Tipo | Tarea | Prioridad | Capas |
 | :--- | :--- | :---: | :--- | :---: | :--- |
-| **[TASK-009](#task-009)** | Sector 4: Estadísticas & Reportes | ✨ Feature | Exportación de registros y reportes analíticos (CSV / Excel) | 🟡 Media | `infrastructure`, `application`, `presentation`, `tests` |
 | **[TASK-016](#task-016)** | Sector 6: Infraestructura & Respaldo | 🧹 Refactor | Consolidación y Centralización de Retrocompatibilidad en `infrastructure/compatibility/` | 🟡 Media | `infrastructure`, `application`, `tests` |
 | **[TASK-018](#task-018)** | Sector 5: Audio & Ambientación | ✨ Feature | Efecto sonoro de Récord Personal / Mejor Marca (*Personal Best / PB Chime*) | 🟡 Media | `application`, `presentation`, `infrastructure`, `tests` |
 | **[TASK-019](#task-019)** | Sector 5: Audio & Ambientación | ✨ Feature | Alertas sonoras para transición y fin de descanso (*Break Entry & Resume Alert*) | 🟡 Media | `domain`, `application`, `presentation`, `infrastructure`, `tests` |
@@ -186,8 +187,9 @@ Las siguientes tareas tienen el **100% de sus dependencias cumplidas** y pueden 
 
 | ID | Tipo | Tarea | Prioridad | Prerrequisitos | Desbloquea | Correlatividad | Estado |
 | :--- | :---: | :--- | :---: | :--- | :--- | :---: | :---: |
-| [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma: Calendario de exámenes, ranking y 24h | 🟡 Media | Ninguno | TASK-009, TASK-011 | 🏁 Completada | `[x] Completado` |
-| [TASK-009](#task-009) | ✨ Feature | Exportación de registros y reportes analíticos (CSV compatible con Excel) | 🟡 Media | TASK-006, TASK-008 | Integración con herramientas externas (Excel / Sheets) | 🔓 Desbloqueada (Lista para tomar) | `[ ] Pendiente` |
+| [TASK-006](#task-006) | ✨ Feature | Estadísticas avanzadas y cronograma: Calendario de exámenes, ranking y 24h | 🟡 Media | Ninguno | TASK-009, TASK-011, TASK-024 | 🏁 Completada | `[x] Completado` |
+| [TASK-024](#task-024) | 🔨 Enhancement | Rediseño integral de Estadísticas: Arquitectura MVP y Dimensiones Temporales (General, Semanal, Diario) con Evolución Acumulada | 🔴 Alta | TASK-006 | TASK-009 | 🏁 Completada | `[x] Completado` |
+| [TASK-009](#task-009) | ✨ Feature | Exportación de registros y reportes analíticos (CSV compatible con Excel) | 🟡 Media | TASK-006, TASK-008, TASK-024 | Integración con herramientas externas (Excel / Sheets) | 🏁 Completada | `[x] Completado` |
 | [TASK-011](#task-011) | ✨ Feature | Visión Global de la Carrera: Dashboard Multidisciplinar y Calendario de Exámenes | 🟡 Media | TASK-006 | Análisis global de cursada a nivel de carrera | 🔓 Desbloqueada | `[?] En revisión` |
 
 #### Sector 5: Audio, Efectos Sonoros y Ambientación
@@ -938,16 +940,60 @@ Enriquecer la pestaña de Estadísticas y el Planificador con un conjunto de her
 
 ---
 
+### TASK-024
+#### Rediseño integral de Estadísticas: Arquitectura MVP y Dimensiones Temporales (General, Semanal, Diario) con Evolución Acumulada
+
+- **Sector:** Sector 4: Estadísticas, Análisis y Reportes  
+- **Tipo:** 🔨 Enhancement  
+- **Prioridad:** 🔴 Alta  
+- **Estado:** `[x] Completado`  
+- **Correlatividad / Prerrequisitos:** TASK-006  
+- **Desbloquea / Habilita:** TASK-009 (Exportación CSV / Excel)  
+- **Estado de correlatividad:** 🏁 Completada  
+- **Capas afectadas:** `application/`, `presentation/statistics/`, `docs/specs/statistics/`, `tests/`  
+- **Dependencias:** `TASK-006`  
+
+##### Descripción funcional
+Reestructuración completa de la pestaña de Estadísticas organizándola en tres dimensiones temporales navegables (General, Semanal y Diario) con arquitectura MVP estricta (Passive View), desacoplando la lógica de presentación en Python puro (`StatisticsPresenter`) y respetando los tokens de tema dinámicos:
+1. **🌐 Dimensión General (Visión Global y Cursada):**
+   - KPIs macro consolidados (tiempo neto, descansos, racha actual de días consecutivos, días de estudio y balance estudio/receso).
+   - **Gráfico de Evolución Acumulativa:** Curva temporal de horas acumuladas de estudio y proyección del aprendizaje (ejercicios completados vs. intentos fallidos/incompletos acumulados).
+   - **Cronograma de Cursada (`CourseHeatmapWidget`):** Mapa de calor mensual con hitos evaluativos (parciales/finales).
+   - **Desglose Curricular por Secciones:** Tabla con tiempos, completados e intentos por guía.
+   - **Top 5 de Mayor Esfuerzo Dinámico:** Clasificación alternable por mayor tiempo neto, más reintentos o mejores marcas (PB), con acción de recarga al cronómetro.
+   - **Distribución 24 Horas:** Histograma circadiano con cálculo automático de franja horaria pico.
+2. **📊 Dimensión Semanal (Ritmo de 7 Días y Carga Semanal):**
+   - Navegador de semanas (`Semana Anterior`, `Semana Actual`, `Semana Siguiente`).
+   - KPIs semanales: Tiempo total, promedio diario sobre días activos, días estudiados (ej. 5/7) y ejercicios completados.
+   - **Gráfico Semanal Diario (`WeeklyChartWidget`):** Visualización comparativa de los 7 días (Lunes a Domingo) con balance exacto de estudio y descansos.
+   - **Desglose de Ejercicios de la Semana:** Tabla con los ejercicios trabajados en la semana seleccionada.
+3. **📅 Dimensión Diaria (Bitácora Quirúrgica de la Jornada):**
+   - Navegador de fechas (`Día Anterior`, `Hoy`, `Día Siguiente`).
+   - KPIs del día: Tiempo neto de estudio, descansos, ejercicios completados, tasa de éxito y ratio de enfoque.
+   - **Bitácora Cronológica de Intentos:** Tabla secuencial de sesiones con hora, ejercicio, inciso, tiempos, resultado (`✓` / `✗`), notas y botón para cargar en el cronómetro.
+4. **Acción de Exportación Unificada:** Cabecera con botón `[ 📤 Exportar Datos ]` que prepara la integración fluida de TASK-009.
+
+##### Criterios de aceptación
+- [x] La interfaz cuenta con un selector segmentado fluido para alternar entre General, Semanal y Diario.
+- [x] El gráfico de evolución acumulativa proyecta correctamente las horas netas y los ejercicios completados vs incompletos.
+- [x] La navegación semanal permite recorrer semanas pasadas y futuras recalculando KPIs y tabla de ejercicios.
+- [x] La vista diaria muestra la bitácora cronológica precisa de los intentos de la fecha seleccionada con sus notas.
+- [x] El ranking de mayor esfuerzo permite alternar entre tiempo neto, cantidad de reintentos y récords de velocidad.
+- [x] `StatisticsPresenter` está implementado en Python puro con 0 imports de Qt o PySide6.
+- [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
 ### TASK-009
 #### Exportación de registros y reportes analíticos (CSV compatible con Excel, resumen por guía y métricas de cursada)
 
 - **Sector:** Sector 4: Estadísticas, Análisis y Reportes  
 - **Tipo:** ✨ Feature  
 - **Prioridad:** 🟡 Media  
-- **Estado:** `[ ] Pendiente`  
+- **Estado:** `[x] Completado`  
 - **Correlatividad / Prerrequisitos:** TASK-006, TASK-008  
 - **Desbloquea / Habilita:** Integración con herramientas externas (Excel / Sheets)  
-- **Estado de correlatividad:** 🔓 Desbloqueada (Lista para tomar)  
+- **Estado de correlatividad:** 🏁 Completada  
 - **Capas afectadas:** `infrastructure/`, `application/`, `presentation/`, `tests/`  
 - **Dependencias:** Ninguna  
 
@@ -959,8 +1005,8 @@ Permitir a los estudiantes exportar el historial de intentos y el análisis cons
 La exportación se genera en formato CSV con codificación UTF-8 con BOM (`utf-8-sig`) y delimitador configurable (por defecto `;` para Excel en español y `,` estándar), asegurando que caracteres con tildes, símbolos matemáticos y notas multilínea se abran de manera nativa e impecable sin desalinear columnas ni corromper caracteres.
 
 ##### Casos de uso y flujo de interacción
-1. **Disparo desde Registros o Menú Principal:**
-   - Botón *"📤 Exportar"* en la barra de herramientas de `RecordsViewWidget` y opción en el menú principal *"Archivo > Exportar datos..."*.
+1. **Disparo desde Registros, Estadísticas o Menú Principal:**
+   - Botón *"📤 Exportar"* en la barra de herramientas de `RecordsViewWidget`, botón `[ 📤 Exportar Datos ]` en la cabecera de `StatisticsViewWidget` y opción en el menú principal *"Archivo > Exportar datos (CSV)..."*.
    - Se abre el diálogo modal `ExportDialog`.
 2. **Configuración en el Diálogo de Exportación:**
    - **Alcance de los datos:**
@@ -994,12 +1040,12 @@ La exportación se genera en formato CSV con codificación UTF-8 con BOM (`utf-8
   - Pruebas unitarias de serialización CSV, verificación de cabeceras, escape de comillas/saltos de línea en notas, delimitadores alternativos y compatibilidad con BOM.
 
 ##### Criterios de aceptación
-- [ ] La acción de exportación está disponible en la toolbar de Registros y en el menú principal.
-- [ ] Es posible exportar el historial completo o únicamente las filas filtradas en pantalla.
-- [ ] El archivo CSV generado se abre en Microsoft Excel sin desalinear columnas y con tildes/caracteres especiales íntegros.
-- [ ] Las notas multilínea y los nombres de las etiquetas se exportan correctamente.
-- [ ] El reporte de resumen calcula y totaliza correctamente tiempos y métricas de completitud por sección.
-- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+- [x] La acción de exportación está disponible en la toolbar de Registros y en el menú principal.
+- [x] Es posible exportar el historial completo o únicamente las filas filtradas en pantalla.
+- [x] El archivo CSV generado se abre en Microsoft Excel sin desalinear columnas y con tildes/caracteres especiales íntegros.
+- [x] Las notas multilínea y los nombres de las etiquetas se exportan correctamente.
+- [x] El reporte de resumen calcula y totaliza correctamente tiempos y métricas de completitud por sección.
+- [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 

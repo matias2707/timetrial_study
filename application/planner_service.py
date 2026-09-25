@@ -55,6 +55,42 @@ class ExerciseNodeStatus:
             return f"{self.section_type} {self.section_number} · Ej. {self.exercise}.{self.inciso}"
         return f"{self.section_type} {self.section_number} · Ejercicio {self.exercise}"
 
+    @property
+    def group_color_status(self) -> str:
+        """Determina el estado de color prioritario para grupos con incisos (gris > rojo > verde)."""
+        if not self.has_incisos or not self.incisos:
+            return self.status
+        # Prioridad 1: Gris (STATUS_PENDING) si hay al menos un inciso pendiente
+        if any(s.status == STATUS_PENDING for s in self.incisos):
+            return STATUS_PENDING
+        # Prioridad 2: Rojo (STATUS_FAILED) si al menos un inciso falló
+        if any(s.status == STATUS_FAILED for s in self.incisos):
+            return STATUS_FAILED
+        # Prioridad 3: Verde (STATUS_COMPLETED) sólo si todos están completados
+        return STATUS_COMPLETED
+
+    @property
+    def aggregated_tags(self) -> list[TagDefinition]:
+        """Devuelve la lista unificada de etiquetas de todos sus incisos (deduplicada por tag.id)."""
+        seen_ids = set()
+        result: list[TagDefinition] = []
+        for tag in self.tags:
+            if tag.id not in seen_ids:
+                seen_ids.add(tag.id)
+                result.append(tag)
+        for sub in self.incisos:
+            for tag in sub.tags:
+                if tag.id not in seen_ids:
+                    seen_ids.add(tag.id)
+                    result.append(tag)
+        return result
+
+    @property
+    def aggregated_has_note(self) -> bool:
+        """Indica si el ejercicio o cualquiera de sus incisos posee una nota o apunte."""
+        return self.has_note or any(s.has_note for s in self.incisos)
+
+
 
 @dataclass
 class PlannedSectionStatus:

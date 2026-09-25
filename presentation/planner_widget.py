@@ -335,11 +335,214 @@ class ExerciseCellButton(QPushButton):
         self.setToolTip("<br>".join(lines))
 
 
+class GroupHeaderCellButton(QPushButton):
+    """Botón cabecera para un grupo de ejercicios con incisos (ej: '1' para incisos 1.1, 1.2, ...).
+
+    Tiene la misma apariencia gráfica que ExerciseCellButton, pero en lugar de abrir modal,
+    conmuta la contracción/expansión del grupo. En modo contraído muestra íconos consolidados
+    y su color se calcula según la jerarquía estricta: gris > rojo > verde.
+    """
+
+    def __init__(
+        self,
+        node: ExerciseNodeStatus,
+        is_dark: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.node = node
+        self.is_dark = is_dark
+        self.is_collapsed = False
+        self._opacity_effect: QGraphicsOpacityEffect | None = None
+
+        self.setText(str(node.exercise))
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(QSize(52, 48))
+
+        self._apply_style()
+        self._set_tooltip()
+
+    def sizeHint(self) -> QSize:
+        return QSize(52, 48)
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        self.is_collapsed = collapsed
+        self._set_tooltip()
+        self.update()
+
+    def set_dimmed(self, dimmed: bool) -> None:
+        """Atenúa visualmente el botón cuando no coincide con un filtro activo."""
+        if dimmed:
+            if self._opacity_effect is None:
+                self._opacity_effect = QGraphicsOpacityEffect(self)
+                self._opacity_effect.setOpacity(0.18)
+                self.setGraphicsEffect(self._opacity_effect)
+        else:
+            if self._opacity_effect is not None:
+                self.setGraphicsEffect(None)
+                self._opacity_effect = None
+
+    def _apply_style(self) -> None:
+        # Prioridad estricta de color: gris > rojo > verde
+        status = self.node.group_color_status
+
+        if status == STATUS_COMPLETED:
+            if self.is_dark:
+                bg = "#064e3b"
+                hover_bg = "#065f46"
+                text = "#6ee7b7"
+                border = "#059669"
+            else:
+                bg = "#ecfdf5"
+                hover_bg = "#d1fae5"
+                text = "#047857"
+                border = "#a7f3d0"
+        elif status == STATUS_FAILED:
+            if self.is_dark:
+                bg = "#450a0a"
+                hover_bg = "#5c1010"
+                text = "#fca5a5"
+                border = "#7f1d1d"
+            else:
+                bg = "#fef2f2"
+                hover_bg = "#fee2e2"
+                text = "#b91c1c"
+                border = "#fecaca"
+        else:  # STATUS_PENDING (gris)
+            if self.is_dark:
+                bg = "#1e293b"
+                hover_bg = "#334155"
+                text = "#94a3b8"
+                border = "#334155"
+            else:
+                bg = "#f1f5f9"
+                hover_bg = "#e2e8f0"
+                text = "#64748b"
+                border = "#cbd5e1"
+
+        font_size = "11px" if len(str(self.node.exercise)) >= 4 else "12px"
+        font_weight = "700" if status != STATUS_PENDING else "600"
+        hover_border = "#10b981" if self.is_dark else "#059669"
+
+        self.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {text};
+                border: 1.5px solid {border};
+                border-radius: 6px;
+                font-size: {font_size};
+                font-weight: {font_weight};
+                padding: 2px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+                border-color: {hover_border};
+            }}
+            """
+        )
+
+    def _set_tooltip(self) -> None:
+        status = self.node.group_color_status
+        st_desc = {
+            STATUS_COMPLETED: "Completado ✅",
+            STATUS_FAILED: "En dificultad / Fallado ⚠️",
+            STATUS_PENDING: "No hecho ⏳",
+        }.get(status, "Desconocido")
+
+        c_sub = sum(1 for s in self.node.incisos if s.status == STATUS_COMPLETED)
+        f_sub = sum(1 for s in self.node.incisos if s.status == STATUS_FAILED)
+        p_sub = sum(1 for s in self.node.incisos if s.status == STATUS_PENDING)
+
+        lines = [
+            f"<b>{self.node.section_type} {self.node.section_number} · Ejercicio {self.node.exercise}</b>",
+            f"Estado general: {st_desc}",
+            f"Incisos ({len(self.node.incisos)}): {c_sub} hechos · {f_sub} en dificultad · {p_sub} pendientes",
+        ]
+
+        if self.is_collapsed:
+            lines.append("<i>(Contraído · Clic para expandir incisos)</i>")
+            tags = self.node.aggregated_tags
+            if tags:
+                tag_lines = ["<b>Marcadores en incisos:</b>"]
+                for tag in tags:
+                    tag_lines.append(f"<span style='color: {tag.color}; font-size: 13px;'>●</span> <b>{tag.name}</b>")
+                lines.append("<br>".join(tag_lines))
+            if self.node.aggregated_has_note:
+                lines.append(
+                    "<hr style='margin: 3px 0; border: 0; border-top: 1px solid #475569;'>"
+                    "<span style='color: #38bdf8; font-weight: bold;'>📝 Contiene notas o apuntes en sus incisos</span>"
+                )
+        else:
+            lines.append("<i>(Expandido · Clic para contraer incisos)</i>")
+
+        self.setToolTip("<br>".join(lines))
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        # De manera comprimida, este mostrará íconos que sus incisos poseen
+        if not self.is_collapsed:
+            return
+
+        tags = self.node.aggregated_tags
+        has_note = self.node.aggregated_has_note
+        if not tags and not has_note:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        w = rect.width()
+        h = rect.height()
+
+        clip_path = QPainterPath()
+        clip_path.addRoundedRect(0, 0, w, h, 6, 6)
+        painter.setClipPath(clip_path)
+
+        outline_offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+        if tags:
+            k = len(tags)
+            gap = 2
+            max_avail_w = max(10, w - 8)
+            bw = min(10, max(6, (max_avail_w - (k - 1) * gap) // k)) if k > 0 else 10
+            bh = 13
+            total_w = k * bw + (k - 1) * gap
+            start_x = w - 4 - total_w
+
+            outline_bm = qta.icon("fa5s.bookmark", color="rgba(0, 0, 0, 180)")
+
+            for i, tag in enumerate(tags):
+                x_pos = start_x + i * (bw + gap)
+                y_pos = 2
+                color = tag.color or "#a855f7"
+
+                for ox, oy in outline_offsets:
+                    outline_bm.paint(
+                        painter, QRect(int(x_pos + ox), int(y_pos + oy), int(bw), int(bh))
+                    )
+
+                qta.icon("fa5s.bookmark", color=color).paint(
+                    painter, QRect(int(x_pos), int(y_pos), int(bw), int(bh))
+                )
+
+        if has_note:
+            note_color = "#38bdf8" if self.is_dark else "#0284c7"
+            nx, ny, nw, nh = w - 14, h - 14, 11, 11
+            note_outline = qta.icon("fa5s.sticky-note", color="rgba(0, 0, 0, 180)")
+            for ox, oy in outline_offsets:
+                note_outline.paint(painter, QRect(nx + ox, ny + oy, nw, nh))
+            qta.icon("fa5s.sticky-note", color=note_color).paint(
+                painter, QRect(nx, ny, nw, nh)
+            )
+
+
 class CompositeExerciseGroup(QFrame):
     """Contenedor visual para ejercicios que contienen múltiples incisos numéricos.
 
-    Muestra un marco delimitador sutil alrededor de los incisos (ej: 7.1, 7.2, 7.3, 7.4),
-    dejando claro que pertenecen al mismo ejercicio sin necesidad de un cuadro 'Ej. {n}'.
+    Muestra un botón cabecera con el número del ejercicio que permite contraer/expandir
+    el grupo, seguido por los botones de sus incisos individuales (ej: [1] [1.1] [1.2]...).
     """
 
     def __init__(
@@ -353,13 +556,14 @@ class CompositeExerciseGroup(QFrame):
         self.node = node
         self.is_dark = is_dark
         self.on_sub_clicked = on_sub_clicked
+        self.is_collapsed = False
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         border_color = "#334155" if is_dark else "#cbd5e1"
         bg_color = "#111827" if is_dark else "#f8fafc"
         self.setStyleSheet(
             f"""
-            QFrame {{
+            CompositeExerciseGroup {{
                 background-color: {bg_color};
                 border: 1px dashed {border_color};
                 border-radius: 8px;
@@ -373,7 +577,17 @@ class CompositeExerciseGroup(QFrame):
         layout.setSpacing(4)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Sub-botones para cada inciso (sin cuadro duplicado 'Ej. {n}')
+        # 1. Botón cabecera de grupo con el número base del ejercicio (ej: "1")
+        self.header_btn = GroupHeaderCellButton(
+            node,
+            is_dark=is_dark,
+            parent=self,
+        )
+        self.header_btn.clicked.connect(self.toggle_collapsed)
+        layout.addWidget(self.header_btn)
+
+        # 2. Sub-botones para cada inciso (sin cuadro duplicado 'Ej. {n}')
+        self.sub_buttons: list[ExerciseCellButton] = []
         for sub_node in node.incisos:
             btn_sub = ExerciseCellButton(
                 sub_node,
@@ -383,9 +597,41 @@ class CompositeExerciseGroup(QFrame):
             )
             if on_sub_clicked:
                 btn_sub.clicked.connect(lambda _, n=sub_node: on_sub_clicked(n))
+            self.sub_buttons.append(btn_sub)
             layout.addWidget(btn_sub)
 
-        self.setToolTip(f"Ejercicio {node.exercise} · {len(node.incisos)} incisos")
+        self._update_group_tooltip()
+
+    def _update_group_tooltip(self) -> None:
+        if self.is_collapsed:
+            self.setToolTip(
+                f"Ejercicio {self.node.exercise} · {len(self.node.incisos)} incisos (contraído · clic para expandir)"
+            )
+        else:
+            self.setToolTip(
+                f"Ejercicio {self.node.exercise} · {len(self.node.incisos)} incisos (expandido · clic en [{self.node.exercise}] para contraer)"
+            )
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        """Contrae u oculta los sub-botones de incisos, mostrando únicamente el botón cabecera."""
+        self.is_collapsed = collapsed
+        self.header_btn.set_collapsed(collapsed)
+        for btn in self.sub_buttons:
+            btn.setVisible(not collapsed)
+        self._update_group_tooltip()
+        self.updateGeometry()
+        self.adjustSize()
+        p = self.parentWidget()
+        if p:
+            if p.layout():
+                p.layout().invalidate()
+            p.updateGeometry()
+            p.adjustSize()
+
+    def toggle_collapsed(self) -> None:
+        """Conmuta entre expandido y contraído."""
+        self.set_collapsed(not self.is_collapsed)
+
 
 
 class PlannedSectionCard(QFrame):
@@ -427,7 +673,17 @@ class PlannedSectionCard(QFrame):
 
         # Header de la sección
         header_layout = QHBoxLayout()
-        header_layout.setSpacing(12)
+        header_layout.setSpacing(10)
+
+        # Botón conmutador de colapso de sección (Chevron)
+        self.is_collapsed = False
+        self.btn_collapse = QPushButton()
+        self.btn_collapse.setObjectName("btn_collapse_section")
+        self.btn_collapse.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_collapse.setFixedSize(26, 26)
+        self._update_collapse_icon()
+        self.btn_collapse.clicked.connect(self.toggle_collapse)
+        header_layout.addWidget(self.btn_collapse)
 
         # Título y badges
         v_title = QVBoxLayout()
@@ -505,15 +761,15 @@ class PlannedSectionCard(QFrame):
         layout.addLayout(header_layout)
 
         # Separador sutil
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {'#1e293b' if is_dark else '#e2e8f0'}; max-height: 1px;")
-        layout.addWidget(sep)
+        self.sep = QFrame()
+        self.sep.setFrameShape(QFrame.Shape.HLine)
+        self.sep.setStyleSheet(f"color: {'#1e293b' if is_dark else '#e2e8f0'}; max-height: 1px;")
+        layout.addWidget(self.sep)
 
         # Contenedor interactivo de ejercicios con FlowLayout (distribución fluida sin columnas rígidas)
-        exercises_container = QWidget()
-        exercises_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        flow_layout = FlowLayout(exercises_container, margin=0, h_spacing=8, v_spacing=8)
+        self.exercises_container = QWidget()
+        self.exercises_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.flow_layout = FlowLayout(self.exercises_container, margin=0, h_spacing=8, v_spacing=8)
 
         for node in sec_status.exercise_nodes:
             if node.has_incisos:
@@ -523,7 +779,7 @@ class PlannedSectionCard(QFrame):
                     on_sub_clicked=self.on_node_click,
                     parent=self,
                 )
-                flow_layout.addWidget(group)
+                self.flow_layout.addWidget(group)
             else:
                 btn_single = ExerciseCellButton(
                     node,
@@ -533,9 +789,65 @@ class PlannedSectionCard(QFrame):
                 )
                 if self.on_node_click:
                     btn_single.clicked.connect(lambda _, n=node: self.on_node_click(n))
-                flow_layout.addWidget(btn_single)
+                self.flow_layout.addWidget(btn_single)
 
-        layout.addWidget(exercises_container)
+        layout.addWidget(self.exercises_container)
+
+    def _update_collapse_icon(self) -> None:
+        icon_name = "fa5s.chevron-right" if self.is_collapsed else "fa5s.chevron-down"
+        icon_color = "#94a3b8" if self.is_dark else "#64748b"
+        self.btn_collapse.setIcon(qta.icon(icon_name, color=icon_color))
+        self.btn_collapse.setToolTip("Expandir sección" if self.is_collapsed else "Contraer sección")
+        self.btn_collapse.setStyleSheet(
+            """
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 4px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: rgba(148, 163, 184, 0.2);
+            }
+            """
+        )
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        """Contrae u oculta los ejercicios de la sección, reduciendo la altura de la tarjeta."""
+        self.is_collapsed = collapsed
+        self._update_collapse_icon()
+        self.exercises_container.setVisible(not collapsed)
+        self.sep.setVisible(not collapsed)
+        self.updateGeometry()
+        self.adjustSize()
+        p = self.parentWidget()
+        if p:
+            if p.layout():
+                p.layout().invalidate()
+            p.updateGeometry()
+            p.adjustSize()
+
+    def toggle_collapse(self) -> None:
+        """Alterna el estado de contracción de la sección."""
+        self.set_collapsed(not self.is_collapsed)
+
+    def set_all_groups_collapsed(self, collapsed: bool) -> None:
+        """Contrae o expande todos los grupos de ejercicios compuestos con incisos de la sección."""
+        for group in self.findChildren(CompositeExerciseGroup):
+            group.set_collapsed(collapsed)
+        if hasattr(self, "exercises_container"):
+            if self.exercises_container.layout():
+                self.exercises_container.layout().invalidate()
+            self.exercises_container.updateGeometry()
+            self.exercises_container.adjustSize()
+        self.updateGeometry()
+        self.adjustSize()
+        p = self.parentWidget()
+        if p:
+            if p.layout():
+                p.layout().invalidate()
+            p.updateGeometry()
+            p.adjustSize()
 
     def apply_tag_filter(self, mode: str, tag_id: str | None = None) -> None:
         """Aplica el filtro de etiquetas sobre los botones de ejercicio de esta sección."""
@@ -547,6 +859,17 @@ class PlannedSectionCard(QFrame):
                 btn.set_dimmed(len(btn.node.tags) == 0)
             elif mode == "by_tag":
                 btn.set_dimmed(not any(t.id == tag_id for t in btn.node.tags))
+
+        header_buttons = self.findChildren(GroupHeaderCellButton)
+        for h_btn in header_buttons:
+            tags = h_btn.node.aggregated_tags
+            if mode == "all":
+                h_btn.set_dimmed(False)
+            elif mode == "only_tagged":
+                h_btn.set_dimmed(len(tags) == 0)
+            elif mode == "by_tag":
+                h_btn.set_dimmed(not any(t.id == tag_id for t in tags))
+
 
 
 class PlannerWidget(QWidget):
@@ -565,6 +888,7 @@ class PlannerWidget(QWidget):
         self.is_dark = is_dark_mode
         self.active_filter_mode = "all"
         self.active_filter_tag_id: str | None = None
+        self.all_incisos_collapsed = False
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 16, 20, 16)
@@ -609,6 +933,21 @@ class PlannerWidget(QWidget):
         self.btn_schedule.setToolTip("Configurar período de cursada y fechas de examen")
         self.btn_schedule.clicked.connect(self._on_manage_schedule)
         top_bar.addWidget(self.btn_schedule)
+
+        # Botón general para contraer y expandir todas las secciones
+        self.all_sections_collapsed = False
+        self.btn_toggle_sections = QPushButton("Contraer secciones")
+        self.btn_toggle_sections.setObjectName("planner_btn_toggle_sections")
+        self._update_btn_sections_style()
+        self.btn_toggle_sections.clicked.connect(self._on_toggle_sections)
+        top_bar.addWidget(self.btn_toggle_sections)
+
+        # Botón general para contraer y expandir todos los ejercicios con incisos
+        self.btn_toggle_expand_all = QPushButton("Contraer todos")
+        self.btn_toggle_expand_all.setObjectName("planner_btn_toggle_expand_all")
+        self._update_btn_expand_all_style()
+        self.btn_toggle_expand_all.clicked.connect(self._on_toggle_expand_all)
+        top_bar.addWidget(self.btn_toggle_expand_all)
 
         # Botones de acción globales
         self.btn_sync = QPushButton("Sincronizar con Registros")
@@ -682,9 +1021,30 @@ class PlannerWidget(QWidget):
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         self.scroll_content = QWidget()
-        self.cards_layout = QVBoxLayout(self.scroll_content)
-        self.cards_layout.setContentsMargins(0, 8, 0, 8)
-        self.cards_layout.setSpacing(12)
+        self.scroll_content_layout = QVBoxLayout(self.scroll_content)
+        self.scroll_content_layout.setContentsMargins(0, 8, 0, 8)
+        self.scroll_content_layout.setSpacing(0)
+
+        # Contenedor para el estado vacío
+        self.empty_state_container = QWidget()
+        self.empty_state_layout = QVBoxLayout(self.empty_state_container)
+        self.empty_state_layout.setContentsMargins(0, 0, 0, 0)
+        self.empty_state_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_container.hide()
+        self.scroll_content_layout.addWidget(self.empty_state_container)
+
+        # Contenedor multi-columna para las tarjetas
+        self.cards_columns_widget = QWidget()
+        self.columns_layout = QHBoxLayout(self.cards_columns_widget)
+        self.columns_layout.setContentsMargins(0, 0, 0, 0)
+        self.columns_layout.setSpacing(14)
+        self.columns_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.scroll_content_layout.addWidget(self.cards_columns_widget, 1)
+
+        self.cards_layout = self.columns_layout  # alias de compatibilidad
+        self.column_layouts: list[QVBoxLayout] = []
+        self._current_column_count: int = 1
+        self._section_cards: list[PlannedSectionCard] = []
 
         self.scroll_area.setWidget(self.scroll_content)
         main_layout.addWidget(self.scroll_area, 1)
@@ -728,6 +1088,105 @@ class PlannerWidget(QWidget):
                 }
                 """
             )
+
+    def _update_btn_expand_all_style(self) -> None:
+        if not hasattr(self, "btn_toggle_expand_all"):
+            return
+        if getattr(self, "all_incisos_collapsed", False):
+            self.btn_toggle_expand_all.setText("Expandir todos")
+            self.btn_toggle_expand_all.setIcon(qta.icon("fa5s.expand-arrows-alt", color="#38bdf8"))
+            self.btn_toggle_expand_all.setToolTip("Expandir todos los ejercicios con incisos")
+        else:
+            self.btn_toggle_expand_all.setText("Contraer todos")
+            self.btn_toggle_expand_all.setIcon(qta.icon("fa5s.compress-arrows-alt", color="#38bdf8"))
+            self.btn_toggle_expand_all.setToolTip("Contraer todos los ejercicios con incisos")
+
+        self.btn_toggle_expand_all.setStyleSheet("padding: 5px 10px; font-size: 11px; border-radius: 6px;")
+
+    def _on_toggle_expand_all(self) -> None:
+        """Conmuta globalmente la contracción/expansión de todos los incisos."""
+        self.all_incisos_collapsed = not getattr(self, "all_incisos_collapsed", False)
+        self._update_btn_expand_all_style()
+        for card in self.findChildren(PlannedSectionCard):
+            card.set_all_groups_collapsed(self.all_incisos_collapsed)
+
+    def _update_btn_sections_style(self) -> None:
+        if not hasattr(self, "btn_toggle_sections"):
+            return
+        if getattr(self, "all_sections_collapsed", False):
+            self.btn_toggle_sections.setText("Expandir secciones")
+            self.btn_toggle_sections.setIcon(qta.icon("fa5s.expand", color="#a855f7"))
+            self.btn_toggle_sections.setToolTip("Expandir todas las secciones de la planificación")
+        else:
+            self.btn_toggle_sections.setText("Contraer secciones")
+            self.btn_toggle_sections.setIcon(qta.icon("fa5s.compress", color="#a855f7"))
+            self.btn_toggle_sections.setToolTip("Contraer todas las secciones a su cabecera")
+
+        self.btn_toggle_sections.setStyleSheet("padding: 5px 10px; font-size: 11px; border-radius: 6px;")
+
+    def _on_toggle_sections(self) -> None:
+        """Conmuta globalmente la contracción/expansión de todas las secciones."""
+        self.all_sections_collapsed = not getattr(self, "all_sections_collapsed", False)
+        self._update_btn_sections_style()
+        for card in self._section_cards:
+            card.set_collapsed(self.all_sections_collapsed)
+
+    def _calculate_optimal_columns(self, available_width: int) -> int:
+        """Calcula el número óptimo de columnas según el ancho disponible en el viewport."""
+        if available_width <= 0:
+            if hasattr(self, "scroll_area") and self.scroll_area.viewport():
+                available_width = self.scroll_area.viewport().width()
+        if available_width <= 0:
+            available_width = max(100, self.width() - 40)
+
+        spacing = 14
+        target_col_w = 460
+        cols = max(1, (available_width + spacing) // (target_col_w + spacing))
+        return min(8, max(1, cols))
+
+    def _rebuild_columns(self) -> None:
+        """Reconstruye las N columnas del layout y distribuye las tarjetas existentes."""
+        for card in self._section_cards:
+            card.setParent(None)
+
+        while self.columns_layout.count() > 0:
+            item = self.columns_layout.takeAt(0)
+            if item.layout():
+                sub_lay = item.layout()
+                while sub_lay.count() > 0:
+                    sub_item = sub_lay.takeAt(0)
+                    if sub_item.widget():
+                        sub_item.widget().deleteLater()
+            elif item.widget():
+                item.widget().deleteLater()
+
+        self.column_layouts.clear()
+
+        col_count = max(1, self._current_column_count)
+        for _ in range(col_count):
+            col_lay = QVBoxLayout()
+            col_lay.setContentsMargins(0, 0, 0, 0)
+            col_lay.setSpacing(12)
+            col_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+            self.columns_layout.addLayout(col_lay, 1)
+            self.column_layouts.append(col_lay)
+
+        for i, card in enumerate(self._section_cards):
+            card.setParent(self.cards_columns_widget)
+            card.show()
+            col_idx = i % col_count
+            self.column_layouts[col_idx].addWidget(card)
+
+        for col_lay in self.column_layouts:
+            col_lay.addStretch()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        new_w = self.scroll_area.viewport().width() if hasattr(self, "scroll_area") else self.width()
+        optimal_cols = self._calculate_optimal_columns(new_w)
+        if optimal_cols != self._current_column_count and self._section_cards:
+            self._current_column_count = optimal_cols
+            self._rebuild_columns()
 
     def _get_badge_color(self, key: str) -> str:
         colors = {
@@ -778,13 +1237,22 @@ class PlannerWidget(QWidget):
         self.global_progress_bar.set_dark_mode(is_dark)
         if hasattr(self, "btn_add_section"):
             self._update_btn_add_section_style()
+        if hasattr(self, "btn_toggle_expand_all"):
+            self._update_btn_expand_all_style()
+        if hasattr(self, "btn_toggle_sections"):
+            self._update_btn_sections_style()
         self._update_stat_badge_styles()
         if self.app_service.is_record_open:
             self.refresh_view()
+
     def set_empty_state(self, is_empty: bool) -> None:
         """Habilita o deshabilita acciones de planificación según si hay proyecto activo."""
         self.btn_sync.setEnabled(not is_empty)
         self.btn_add_section.setEnabled(not is_empty)
+        if hasattr(self, "btn_toggle_expand_all"):
+            self.btn_toggle_expand_all.setEnabled(not is_empty)
+        if hasattr(self, "btn_toggle_sections"):
+            self.btn_toggle_sections.setEnabled(not is_empty)
         if hasattr(self, "combo_tag_filter"):
             self.combo_tag_filter.setEnabled(not is_empty)
         if hasattr(self, "btn_manage_tags"):
@@ -798,10 +1266,11 @@ class PlannerWidget(QWidget):
             self._update_stat_badge("pendientes", "-")
             self.global_progress_bar.set_segmented_values(0, 0, 100)
             self.lbl_global_breakdown.setText("Sin proyecto activo")
-            while self.cards_layout.count() > 0:
-                child = self.cards_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
+            for card in self._section_cards:
+                card.deleteLater()
+            self._section_cards.clear()
+            self.cards_columns_widget.hide()
+            self.empty_state_container.hide()
         else:
             self.refresh_view()
 
@@ -848,18 +1317,26 @@ class PlannerWidget(QWidget):
         )
 
         # Limpiar tarjetas anteriores
-        while self.cards_layout.count():
-            item = self.cards_layout.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
+        for card in self._section_cards:
+            card.deleteLater()
+        self._section_cards.clear()
+
+        # Limpiar empty state previo
+        while self.empty_state_layout.count() > 0:
+            child = self.empty_state_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
         # Si no hay secciones, mostrar Empty State amigable
         if not overview.sections:
             empty_widget = self._create_empty_state()
-            self.cards_layout.addWidget(empty_widget)
-            self.cards_layout.addStretch()
+            self.empty_state_layout.addWidget(empty_widget)
+            self.cards_columns_widget.hide()
+            self.empty_state_container.show()
             return
+
+        self.empty_state_container.hide()
+        self.cards_columns_widget.show()
 
         # Dibujar cada sección planificada
         for sec_status in overview.sections:
@@ -869,12 +1346,20 @@ class PlannerWidget(QWidget):
                 on_node_click=self._on_node_clicked,
                 on_edit_click=self._on_edit_section,
                 on_delete_click=self._on_delete_section,
-                parent=self.scroll_content,
+                parent=self.cards_columns_widget,
             )
-            self.cards_layout.addWidget(card)
+            if getattr(self, "all_incisos_collapsed", False):
+                card.set_all_groups_collapsed(True)
+            if getattr(self, "all_sections_collapsed", False):
+                card.set_collapsed(True)
+            self._section_cards.append(card)
 
-        self.cards_layout.addStretch()
+        # Determinar número óptimo de columnas y construir la cuadrícula
+        available_w = self.scroll_area.viewport().width() if hasattr(self, "scroll_area") else self.width()
+        self._current_column_count = self._calculate_optimal_columns(available_w)
+        self._rebuild_columns()
         self._apply_current_filter()
+
 
     def _populate_filter_combo(self) -> None:
         if not hasattr(self, "combo_tag_filter"):

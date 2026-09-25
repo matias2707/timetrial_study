@@ -209,6 +209,79 @@ class TestPlannerService(unittest.TestCase):
         self.assertEqual(ov3.completed_display, "1")
         self.assertEqual(ov3.completed_units, 1)  # 1 ejercicio 100% completado
 
+    def test_exercise_node_group_color_status_priority_gris_rojo_verde(self):
+        """Verifica la jerarquía estricta de color: gris > rojo > verde."""
+        from application.planner_service import (
+            ExerciseNodeStatus,
+            STATUS_COMPLETED,
+            STATUS_FAILED,
+            STATUS_PENDING,
+        )
+
+        # Caso 1: Todos completados -> Verde
+        sub1 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=1, inciso=1, status=STATUS_COMPLETED)
+        sub2 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=1, inciso=2, status=STATUS_COMPLETED)
+        node_green = ExerciseNodeStatus(
+            section_type="Guía", section_number=1, exercise=1, has_incisos=True, incisos=[sub1, sub2]
+        )
+        self.assertEqual(node_green.group_color_status, STATUS_COMPLETED)
+
+        # Caso 2: Uno completado y uno fallado (sin pendientes) -> Rojo
+        sub3 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=2, inciso=1, status=STATUS_COMPLETED)
+        sub4 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=2, inciso=2, status=STATUS_FAILED)
+        node_red = ExerciseNodeStatus(
+            section_type="Guía", section_number=1, exercise=2, has_incisos=True, incisos=[sub3, sub4]
+        )
+        self.assertEqual(node_red.group_color_status, STATUS_FAILED)
+
+        # Caso 3: Uno completado y uno pendiente (sin fallados) -> Gris (Gris > Verde)
+        sub5 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=3, inciso=1, status=STATUS_COMPLETED)
+        sub6 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=3, inciso=2, status=STATUS_PENDING)
+        node_gray1 = ExerciseNodeStatus(
+            section_type="Guía", section_number=1, exercise=3, has_incisos=True, incisos=[sub5, sub6]
+        )
+        self.assertEqual(node_gray1.group_color_status, STATUS_PENDING)
+
+        # Caso 4: Uno completado, uno fallado Y uno pendiente -> Gris (Gris > Rojo > Verde)
+        sub7 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=4, inciso=1, status=STATUS_COMPLETED)
+        sub8 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=4, inciso=2, status=STATUS_FAILED)
+        sub9 = ExerciseNodeStatus(section_type="Guía", section_number=1, exercise=4, inciso=3, status=STATUS_PENDING)
+        node_gray2 = ExerciseNodeStatus(
+            section_type="Guía", section_number=1, exercise=4, has_incisos=True, incisos=[sub7, sub8, sub9]
+        )
+        self.assertEqual(node_gray2.group_color_status, STATUS_PENDING)
+
+    def test_exercise_node_aggregated_tags_and_notes(self):
+        """Verifica la deduplicación de marcadores y la consolidación de notas."""
+        from application.planner_service import ExerciseNodeStatus
+        from domain.models import TagDefinition
+
+        tag_a = TagDefinition(id="t1", name="Examen", color="#ef4444")
+        tag_b = TagDefinition(id="t2", name="Duda", color="#3b82f6")
+
+        sub1 = ExerciseNodeStatus(
+            section_type="Guía", section_number=1, exercise=1, inciso=1,
+            tags=[tag_a], has_note=False, note=""
+        )
+        sub2 = ExerciseNodeStatus(
+            section_type="Guía", section_number=1, exercise=1, inciso=2,
+            tags=[tag_a, tag_b], has_note=True, note="Verificar fórmula"
+        )
+
+        parent = ExerciseNodeStatus(
+            section_type="Guía", section_number=1, exercise=1, has_incisos=True,
+            incisos=[sub1, sub2]
+        )
+
+        # Deduplicación: tag_a no debe repetirse
+        agg_tags = parent.aggregated_tags
+        self.assertEqual(len(agg_tags), 2)
+        self.assertEqual({t.id for t in agg_tags}, {"t1", "t2"})
+
+        # Consolidación de notas: True si al menos un sub-nodo tiene nota
+        self.assertTrue(parent.aggregated_has_note)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -68,4 +68,70 @@ Cuando el usuario navega desde el cronómetro (botones o atajos):
    * El doble clic sobre la columna de color abre directamente el selector de color `QColorDialog`.
    * Los cambios en nombres y colores se reflejan en tiempo real en los filtros del planificador, la lista de selección de marcadores y el recuadro del cronómetro.
 
+---
+
+## 7. Ejercicios con Incisos Colapsables y Control de Expansión
+
+1. **Botón General de Contracción / Expansión Global:**
+   * Ubicado en la barra superior de acciones (`PlannerWidget`).
+   * Permite alternar en bloque el estado de todos los grupos compuestos (`CompositeExerciseGroup`) entre contraídos y expandidos.
+   * Dispone de texto e íconos dinámicos (`fa5s.compress-arrows-alt` / `fa5s.expand-arrows-alt`).
+
+2. **Botón Cabecera de Grupo (`[ n ]`):**
+   * Se ubica al inicio de cada grupo de incisos y exhibe el número base del ejercicio (ej. `1`).
+   * Mantiene idéntica apariencia geométrica y cromática que sus celdas compañeras (`52x48px`, esquinas `6px`, bordes y tipografía acorde a estado y tema).
+   * **Interacción no modal:** Al hacer clic, conmuta el estado de expansión del grupo (no abre el diálogo modal de detalle).
+   * **Estado Expandido:** Muestra el botón cabecera seguido de sus incisos individuales: `[ n ] [ n.1 ] [ n.2 ] ...`.
+   * **Estado Contraído (Comprimido):** Oculta los sub-botones de incisos y únicamente presenta el botón cabecera `[ n ]`.
+
+3. **Jerarquía Estricta de Color (`Gris > Rojo > Verde`):**
+   * El color del botón padre `[ n ]` refleja la prioridad absoluta del avance de sus incisos:
+     1. **Gris (`STATUS_PENDING`):** Si **al menos uno** de los incisos se encuentra pendiente / no realizado.
+     2. **Rojo (`STATUS_FAILED`):** Si **ningún inciso** está pendiente, pero **al menos uno** se encuentra en dificultad / fallado.
+     3. **Verde (`STATUS_COMPLETED`):** Únicamente si **todos los incisos** se encuentran aprobados / completados.
+
+4. **Consolidación de Íconos en Modo Comprimido:**
+   * Al estar contraído, el botón `[ n ]` dibuja en su superficie los íconos acumulados de sus incisos:
+     * **Marcadores (Bookmarks):** Muestra las etiquetas asignadas a cualquiera de sus incisos, deduplicadas por ID.
+     * **Notas (Sticky-note):** Dibuja el indicador de notas si al menos uno de sus incisos contiene apuntes.
+   * Al expandirse, cada inciso exhibe de forma individual sus propias etiquetas y notas, mientras que el botón cabecera conserva su rol de conmutador visual.
+
+---
+
+## 8. Visualización Multi-Columna Adaptativa (Responsive Grid / Masonry)
+
+1. **Contrato de Ancho Dinámico y Adaptabilidad:**
+   * La vista general de tarjetas de secciones en `PlannerWidget` adopta una disposición multi-columna adaptativa gobernada por el cálculo de columnas óptimas en función del ancho del viewport:
+     $$N = \max\left(1, \min\left(8, \left\lfloor \frac{W_{\text{viewport}} + 14}{460 + 14} \right\rfloor\right)\right)$$
+   * Rango ergonómico por tarjeta: $380\text{px}$ a $600\text{px}$, con ancho preferente de $\approx 460-500\text{px}$.
+   * Escalabilidad según resolución de pantalla:
+     * **Ventanas compactas (< 850px):** 1 columna (100% ancho).
+     * **Laptops estándar (1024 - 1366px):** 2 columnas (~480 - 620px c/u).
+     * **Escritorio Full HD (1920px):** 3 a 4 columnas (~440 - 580px c/u).
+     * **Monitores 2K / QHD (2560px):** 4 a 5 columnas (~480 - 600px c/u).
+     * **UltraWide 21:9 (3440px) y 4K UHD (3840px):** 6 a 7 columnas en paralelo, visualizando hasta 14 secciones completas sin desplazamiento vertical.
+
+2. **Lectura Secuencial en "Z" y Columnas Verticalmente Independientes:**
+   * Cada columna está implementada mediante un `QVBoxLayout` independiente con alineación superior (`AlignTop`) y espaciador elástico final (`addStretch()`).
+   * Las tarjetas se distribuyen por índice en round-robin: tarjeta $i$ en columna $i \pmod N$.
+   * La altura de cada tarjeta ("a lo largo") es estrictamente dinámica según las filas requeridas por su `FlowLayout`. No existen ataduras rígidas de altura entre tarjetas de columnas adyacentes (cero espacios vacíos verticales).
+
+---
+
+## 9. Contracción y Expansión de Secciones (Local y Global)
+
+1. **Contracción / Expansión Individual (`PlannedSectionCard`):**
+   * Cada tarjeta dispone de un botón conmutador chevron `[ ▼ / ▶ ]` (`btn_collapse_section`).
+   * Al contraerse (`is_collapsed = True`), se oculta la cuadrícula interactiva de ejercicios (`exercises_container`) y el separador divisorio, colapsando la tarjeta a la altura compacta de su cabecera (~46px).
+   * La barra de progreso unificada (`SegmentedProgressBar`), el porcentaje y los botones de acción (`Editar` y `Eliminar`) permanecen visibles como resumen ejecutivo.
+   * La conmutación propaga inmediatamente la invalidación geométrica (`updateGeometry()`), permitiendo que las tarjetas inferiores en esa misma columna asciendan en tiempo real.
+
+2. **Control Global de Secciones (`btn_toggle_sections`):**
+   * Ubicado en la barra superior de acciones (`PlannerWidget`) junto al botón de incisos.
+   * Permite alternar en bloque el estado de colapso de todas las secciones planificadas (`"Contraer secciones"` / `"Expandir secciones"`).
+
+3. **Sinergia con la Contracción de Incisos:**
+   * La contracción de grupos de ejercicios con incisos (`[ n ]`) reduce el ancho de celda y libera espacio en el `FlowLayout`, reduciendo el número de filas de la sección y disminuyendo su altura dinámica en tiempo real.
+
+
 

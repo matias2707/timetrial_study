@@ -9,6 +9,9 @@ from __future__ import annotations
 from datetime import date
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Sequence
+
+from infrastructure.export_service import ExportResult
 
 from application.planner_service import (
     STATUS_COMPLETED,
@@ -19,15 +22,24 @@ from application.planner_service import (
     PlannerService,
 )
 from application.statistics_service import (
+    CumulativeEvolutionData,
+    DailyStatsSummary,
     RecordStatistics,
+    TopEffortExercise,
+    WeeklyStatsSummary,
+    compute_cumulative_evolution,
+    compute_daily_stats_summary,
     compute_exercise_personal_best_ms,
     compute_statistics,
+    compute_streak_days,
     compute_today_study_time_ms,
     compute_today_summary_metrics,
     compute_today_timeline_buckets,
+    compute_weekly_stats_summary,
     get_24h_hourly_distribution,
     get_course_heatmap_data,
     get_top_effort_exercises,
+    get_top_effort_exercises_advanced,
 )
 from domain.models import Milestone, PlannedSection, PlannerSchedule, Record, TagDefinition, TimerItem
 from domain.timer_service import TimerMode, TimerService
@@ -542,6 +554,38 @@ class StudyApplicationService:
             return {h: 0 for h in range(24)}
         return get_24h_hourly_distribution(self.record)
 
+    def get_top_effort_exercises_advanced(self, criteria: str = "time", limit: int = 5) -> list[TopEffortExercise]:
+        """Devuelve el ranking de ejercicios según el criterio especificado ('time', 'retries', 'pb')."""
+        if not self.is_record_open:
+            return []
+        return get_top_effort_exercises_advanced(self.record, criteria=criteria, limit=limit)
+
+    def get_cumulative_evolution_data(self) -> CumulativeEvolutionData:
+        """Devuelve la serie temporal acumulativa de tiempo neto y completitud."""
+        if not self.is_record_open:
+            return CumulativeEvolutionData(points=[], total_study_time_ms=0, total_completed=0, total_failed=0)
+        return compute_cumulative_evolution(self.record)
+
+    def get_daily_stats_summary(self, target_date: date | None = None) -> DailyStatsSummary:
+        """Devuelve el resumen y log de intentos para la fecha dada (o hoy)."""
+        t_date = target_date or date.today()
+        if not self.is_record_open:
+            return compute_daily_stats_summary(Record(record_name=""), t_date)
+        return compute_daily_stats_summary(self.record, t_date)
+
+    def get_weekly_stats_summary(self, reference_date: date | None = None) -> WeeklyStatsSummary:
+        """Devuelve el resumen de la semana (Lunes a Domingo) que contiene reference_date."""
+        ref_date = reference_date or date.today()
+        if not self.is_record_open:
+            return compute_weekly_stats_summary(Record(record_name=""), ref_date)
+        return compute_weekly_stats_summary(self.record, ref_date)
+
+    def get_streak_days(self, reference_date: date | None = None) -> tuple[int, int]:
+        """Devuelve (racha_actual, total_dias_estudio)."""
+        if not self.is_record_open:
+            return (0, 0)
+        return compute_streak_days(self.record, reference_date=reference_date)
+
     def get_exercise_personal_best_ms(
         self,
         section_type: str | None = None,
@@ -698,4 +742,91 @@ class StudyApplicationService:
             tags=tags,
             note=note,
             has_note=bool(note.strip()),
-        )
+        )
+
+    def export_items_to_csv(
+        self,
+        file_path: Path | str,
+        items: Sequence[TimerItem] | None = None,
+        delimiter: str = ";",
+    ) -> ExportResult:
+        """Exporta el historial detallado de intentos a CSV (RFC 4180 / utf-8-sig)."""
+        from infrastructure.export_service import export_items_to_csv
+
+        target_items = items if items is not None else (self.record.items if self.is_record_open else [])
+        tag_catalog = self.get_tag_catalog() if self.is_record_open else []
+        planner_sections = self.record.planner_sections if self.is_record_open else []
+
+        return export_items_to_csv(
+            file_path=file_path,
+            items=target_items,
+            delimiter=delimiter,
+            tag_catalog=tag_catalog,
+            planner_sections=planner_sections,
+        )
+
+    def export_summary_to_csv(
+        self,
+        file_path: Path | str,
+        delimiter: str = ";",
+    ) -> ExportResult:
+        """Exporta el reporte consolidado curricular por ejercicios e incisos a CSV."""
+        from infrastructure.export_service import export_summary_to_csv
+
+        if not self.is_record_open:
+            return export_summary_to_csv(file_path=file_path, summary_rows=[], delimiter=delimiter)
+
+        overview = self.get_planner_overview()
+        summary_rows: list[dict[str, Any]] = []
+
+        for sec_status in overview.sections:
+            for node in sec_status.exercise_nodes:
+                if node.has_incisos and node.incisos:
+                    for sub in node.incisos:
+                        summary_rows.append(self._build_summary_row_dict(sub))
+                else:
+                    summary_rows.append(self._build_summary_row_dict(node))
+
+        return export_summary_to_csv(file_path=file_path, summary_rows=summary_rows, delimiter=delimiter)
+
+    def _build_summary_row_dict(self, node: ExerciseNodeStatus) -> dict[str, Any]:
+        """Construye el diccionario de fila de resumen para un ExerciseNodeStatus."""
+        from infrastructure.export_service import format_ms_to_hhmmss
+
+        if node.status == STATUS_COMPLETED:
+            status_display = "Resuelto"
+        elif node.status == STATUS_FAILED:
+            status_display = "Incompleto"
+        else:
+            status_display = "Sin Intentos"
+
+        success_rate = (
+            f"{(node.completed_attempts / node.attempts * 100):.1f}%"
+            if node.attempts > 0
+            else "0.0%"
+        )
+        avg_ms = (node.exercise_time_ms // node.attempts) if node.attempts > 0 else 0
+        pb_ms = compute_exercise_personal_best_ms(
+            self.record, node.section_type, node.section_number, node.exercise, node.inciso
+        )
+
+        tags_str = " | ".join(t.name for t in node.tags)
+
+        return {
+            "section_type": node.section_type,
+            "section_number": node.section_number,
+            "exercise": node.exercise,
+            "inciso": node.inciso if (node.inciso is not None and node.inciso > 0) else "",
+            "identifier": node.full_label,
+            "resolution_status": status_display,
+            "total_attempts": node.attempts,
+            "completed_attempts": node.completed_attempts,
+            "failed_attempts": node.failed_attempts,
+            "success_rate": success_rate,
+            "total_time_hhmmss": format_ms_to_hhmmss(node.exercise_time_ms),
+            "total_time_s": f"{node.exercise_time_ms / 1000.0:.2f}",
+            "avg_time_hhmmss": format_ms_to_hhmmss(avg_ms),
+            "pb_time_hhmmss": format_ms_to_hhmmss(pb_ms) if pb_ms is not None else "-",
+            "tags": tags_str,
+            "notes": node.note,
+        }
