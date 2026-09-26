@@ -24,11 +24,13 @@ docs/specs/
 ├── audio/
 │   └── ambient_and_effects.spec.md    <- Especificación de mezcla ambiental y efectos
 ├── statistics/
-│   └── statistics_view.spec.md        <- Rediseño analítico temporal (General, Semanal, Diario) y MVP
+│   ├── statistics_view.spec.md        <- Rediseño analítico temporal (General, Semanal, Diario) y MVP
+│   └── today_activity_strip.spec.md   <- Franja de actividad 24h y aguja temporal en tiempo real
 ├── export/
 │   └── export_service.spec.md         <- Exportación estandarizada CSV/Excel (RFC 4180, utf-8-sig)
 └── themes/
-    └── color_tokens.spec.md           <- Diccionario de tokens de color requeridos por tema
+    ├── color_tokens.spec.md           <- Diccionario de tokens de color requeridos por tema
+    └── skins_catalog.spec.md          <- Catálogo ampliado de skins (Pantone, estacionales y selección)
 ```
 
 ---

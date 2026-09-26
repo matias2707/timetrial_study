@@ -66,6 +66,91 @@ class TestThemeLoader(unittest.TestCase):
         self.assertTrue(tokens.is_dark)
         self.assertEqual(tokens.bg_app, "#2e3440")
 
+    def test_all_catalog_skins_exist_in_available_themes(self) -> None:
+        themes = get_available_themes()
+        expected_skins = [
+            "sakura", "winter", "spring", "bamboo", "midnight",
+            "classic_blue", "peach_fuzz", "marsala", "emerald", "illuminating",
+            "black_sakura", "vampyr", "halloween",
+        ]
+        for skin in expected_skins:
+            self.assertIn(skin, themes, f"El skin '{skin}' no se encontró en temas disponibles.")
+
+    def test_all_json_themes_in_directory_are_valid(self) -> None:
+        for file in THEMES_DIR.glob("*.json"):
+            if file.name.endswith(".schema.json") or file.name.startswith("."):
+                continue
+            with self.subTest(theme_file=file.name):
+                with open(file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                is_valid, errors = validate_theme_dict(data)
+                self.assertTrue(is_valid, f"Tema {file.name} inválido: {errors}")
+                self.assertEqual(len(errors), 0)
+
+    def test_requested_skins_luminance_and_properties(self) -> None:
+        # Skins temáticos y sus efectos
+        sakura = get_theme_tokens("sakura")
+        self.assertFalse(sakura.is_dark)
+        self.assertEqual(sakura.bg_app, "#f8f1f3")
+        self.assertEqual(sakura.effect, "sakura")
+
+        winter = get_theme_tokens("winter")
+        self.assertTrue(winter.is_dark)
+        self.assertEqual(winter.bg_app, "#090e17")
+        self.assertEqual(winter.effect, "snow")
+
+        spring = get_theme_tokens("spring")
+        self.assertFalse(spring.is_dark)
+        self.assertEqual(spring.bg_app, "#eff5ec")
+        self.assertEqual(spring.effect, "leaves")
+
+        bamboo = get_theme_tokens("bamboo")
+        self.assertFalse(bamboo.is_dark)
+        self.assertEqual(bamboo.bg_app, "#f3ede1")
+        self.assertEqual(bamboo.effect, "bamboo")
+
+        midnight = get_theme_tokens("midnight")
+        self.assertTrue(midnight.is_dark)
+        self.assertEqual(midnight.bg_app, "#05070e")
+        self.assertEqual(midnight.effect, "stars")
+
+        black_sakura = get_theme_tokens("black_sakura")
+        self.assertTrue(black_sakura.is_dark)
+        self.assertEqual(black_sakura.bg_app, "#0c0a0e")
+        self.assertEqual(black_sakura.effect, "sakura")
+
+        vampyr = get_theme_tokens("vampyr")
+        self.assertTrue(vampyr.is_dark)
+        self.assertEqual(vampyr.bg_app, "#080405")
+        self.assertEqual(vampyr.effect, "vampyr")
+
+        halloween = get_theme_tokens("halloween")
+        self.assertTrue(halloween.is_dark)
+        self.assertEqual(halloween.bg_app, "#0c0907")
+        self.assertEqual(halloween.effect, "halloween")
+
+    def test_pantone_skins_luminance_and_properties(self) -> None:
+        # 5 skins inspirados en Pantone
+        classic_blue = get_theme_tokens("classic_blue")
+        self.assertTrue(classic_blue.is_dark)
+        self.assertEqual(classic_blue.bg_app, "#09111e")
+
+        peach_fuzz = get_theme_tokens("peach_fuzz")
+        self.assertFalse(peach_fuzz.is_dark)
+        self.assertEqual(peach_fuzz.bg_app, "#f8efe6")
+
+        marsala = get_theme_tokens("marsala")
+        self.assertTrue(marsala.is_dark)
+        self.assertEqual(marsala.bg_app, "#140a0e")
+
+        emerald = get_theme_tokens("emerald")
+        self.assertTrue(emerald.is_dark)
+        self.assertEqual(emerald.bg_app, "#040e0a")
+
+        illuminating = get_theme_tokens("illuminating")
+        self.assertTrue(illuminating.is_dark)
+        self.assertEqual(illuminating.bg_app, "#131518")
+
     def test_fallback_for_non_existent_theme(self) -> None:
         tokens = get_theme_tokens("tema_inexistente_123")
         self.assertEqual(tokens.name, LIGHT_TOKENS.name)

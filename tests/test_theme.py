@@ -214,6 +214,98 @@ class ThemeTests(unittest.TestCase):
         window.home_view.update_timer_visual_state()
         self.assertIn("#f1f5f9", window.home_view.exercise_clock.styleSheet())
 
+    def test_custom_skins_selection_and_propagation(self) -> None:
+        window = MainWindow()
+
+        # Verificar que la toolbar contiene todas las acciones de los skins
+        all_expected_skins = [
+            "light", "dark",
+            "sakura", "winter", "spring", "bamboo", "midnight",
+            "classic_blue", "peach_fuzz", "marsala", "emerald", "illuminating", "nord",
+            "black_sakura", "vampyr", "halloween",
+        ]
+        for skin in all_expected_skins:
+            self.assertIn(skin, window.toolbar.theme_actions)
+
+        # Probar selección de Sakura (Modo claro & dinámico)
+        window.set_theme("sakura")
+        self.assertEqual(window.current_theme, "sakura")
+        self.assertFalse(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["sakura"].isChecked())
+        self.assertIn("[Dinámico]", window.toolbar.theme_actions["sakura"].text())
+        self.assertEqual(window.particle_overlay.current_effect, "sakura")
+        self.assertFalse(window.theme_dark_action.isChecked())
+        self.assertFalse(window.theme_light_action.isChecked())
+        self.assertFalse(window.statistics_view.weekly_chart.dark_mode)
+
+        # Probar selección de Vampyr (Modo oscuro & dinámico)
+        window.set_theme("vampyr")
+        self.assertEqual(window.current_theme, "vampyr")
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["vampyr"].isChecked())
+        self.assertIn("[Dinámico]", window.toolbar.theme_actions["vampyr"].text())
+        self.assertEqual(window.particle_overlay.current_effect, "vampyr")
+
+        # Probar selección de Halloween (Modo oscuro & dinámico)
+        window.set_theme("halloween")
+        self.assertEqual(window.current_theme, "halloween")
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["halloween"].isChecked())
+        self.assertIn("[Dinámico]", window.toolbar.theme_actions["halloween"].text())
+        self.assertEqual(window.particle_overlay.current_effect, "halloween")
+
+        # Probar selección de Black Sakura (Modo oscuro & dinámico)
+        window.set_theme("black_sakura")
+        self.assertEqual(window.current_theme, "black_sakura")
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["black_sakura"].isChecked())
+        self.assertIn("[Dinámico]", window.toolbar.theme_actions["black_sakura"].text())
+        self.assertEqual(window.particle_overlay.current_effect, "sakura")
+
+        # Probar selección de Midnight (Modo oscuro)
+        window.set_theme("midnight")
+        self.assertEqual(window.current_theme, "midnight")
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["midnight"].isChecked())
+        self.assertFalse(window.toolbar.theme_actions["sakura"].isChecked())
+        self.assertTrue(window.statistics_view.weekly_chart.dark_mode)
+
+        # Probar selección de Winter (Modo oscuro)
+        window.set_theme("winter")
+        self.assertEqual(window.current_theme, "winter")
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["winter"].isChecked())
+
+        # Probar selección de Bamboo (Modo claro)
+        window.set_theme("bamboo")
+        self.assertEqual(window.current_theme, "bamboo")
+        self.assertFalse(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["bamboo"].isChecked())
+
+        # Probar selección de Peach Fuzz (Modo claro estático)
+        window.set_theme("peach_fuzz")
+        self.assertEqual(window.current_theme, "peach_fuzz")
+        self.assertFalse(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["peach_fuzz"].isChecked())
+        self.assertNotIn("[Dinámico]", window.toolbar.theme_actions["peach_fuzz"].text())
+        self.assertEqual(window.particle_overlay.current_effect, "none")
+
+        # Probar selección de Classic Blue (Modo oscuro)
+        window.set_theme("classic_blue")
+        self.assertEqual(window.current_theme, "classic_blue")
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["classic_blue"].isChecked())
+
+        # Probar avance de simulación de partículas sin excepción
+        window.particle_overlay.set_effect("sakura")
+        window.particle_overlay.step_simulation()
+
+        # Diálogo para skin personalizado
+        sakura_dialog = get_dialog_stylesheet("sakura")
+        self.assertIn("#fcf7f8", sakura_dialog)
+        midnight_dialog = get_dialog_stylesheet("midnight")
+        self.assertIn("#0e1224", midnight_dialog)
+
 
 if __name__ == "__main__":
     unittest.main()

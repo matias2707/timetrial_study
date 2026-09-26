@@ -175,6 +175,15 @@ class IStatisticsView(Protocol):
 3. **Determinismo Semanal:**
    - Semana normalizada de Lunes (0) a Domingo (6).
    - Soporta navegación infinita hacia atrás/adelante sin excepciones si no hay registros en la semana (muestra KPIs en cero de forma amigable).
-4. **Respeto a `AGENTS.md`:**
+4. **Fraccionamiento Horario de Sesiones (*Time Slicing* en 24h y Distribución Circadiana):**
+   - **Invariante Fundamental:** Ninguna celda o franja horaria individual puede exceder jamás 60 minutos (3.600.000 ms) de tiempo neto de estudio.
+   - **Invariante de la Hora Actual:** Para la fecha de hoy, la celda correspondiente a la hora en curso (`now.hour`) nunca puede registrar más minutos que los que efectivamente han transcurrido desde el inicio de dicha hora ($\text{minutos\_actuales} \le \text{now} - h_{\text{start}}$). Las horas futuras de hoy son estrictamente 0.
+   - **Tratamiento de Registros Finalizados:** Si un intento proyecta su intervalo más allá del momento presente en la fecha actual, se interpreta que su timestamp fue grabado al finalizar la sesión (comportamiento previo o diferido), por lo que su intervalo se retrotrae a $[t - \text{duración}, t]$, imputando los minutos previos a la hora anterior en lugar de proyectarlos a futuro o sobrecargar la hora en curso.
+   - Todo intento o ejercicio cuya duración neta o bruta atraviese los límites de una o más horas de reloj (ej. ejercicios de más de 60 min o que comiencen a las 14:10 y terminen a las 15:30) se fracciona entre todas las horas que abarca:
+     $$\text{ratio} = \frac{\text{exercise\_time\_ms}}{\text{exercise\_time\_ms} + \text{break\_time\_ms}}$$
+     $$\text{allocated\_ms}(h) = \min(3.600.000, \text{round}(\text{overlap\_ms}(h) \times \text{ratio}))$$
+   - Cada hora involucrada contabiliza su cuota exacta de tiempo neto y registra el intento activo correspondiente.
+   - Cruces de medianoche se imputan adecuadamente a cada fecha respectiva (ej. 23:20 a 00:40 asigna 40 min a las 23 hs del día 1 y 40 min a las 00 hs del día 2).
+5. **Respeto a `AGENTS.md`:**
    - Cero imports de `PySide6` o `Qt` en `presentation/statistics/statistics_presenter.py`.
    - Tokens de tema centralizados desde `get_theme_tokens()`.

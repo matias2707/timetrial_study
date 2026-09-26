@@ -746,24 +746,106 @@ def get_top_effort_exercises(record: Record, limit: int = 5) -> list[TopEffortEx
     return result
 
 
+def resolve_item_time_interval(
+    item: TimerItem,
+    record: Record | None = None,
+    item_index: int = -1,
+    reference_now: datetime | None = None,
+) -> tuple[datetime, datetime]:
+    """Determina los instantes exactos de inicio y fin de una sesión de estudio.
+
+    Soporta de manera determinista y retrocompatible:
+    1. Items con created_at guardado al finalizar la sesión (comportamiento de persistencia atómica).
+    2. Items con created_at guardado al iniciar la sesión.
+    Evita cualquier derrame de tiempo fantasma hacia horas futuras o días posteriores.
+    """
+    if not item.created_at:
+        return datetime.min, datetime.min
+    try:
+        dt = datetime.fromisoformat(item.created_at)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return datetime.min, datetime.min
+
+    total_ms = max(0, item.exercise_time_ms) + max(0, item.break_time_ms)
+    if total_ms == 0:
+        return dt, dt
+
+    dur = timedelta(milliseconds=total_ms)
+    now_dt = reference_now or datetime.now()
+
+    # Criterio 1: Causalidad temporal (una sesión finalizada no puede terminar en el futuro respecto a ahora)
+    if (dt + dur) > (now_dt + timedelta(seconds=5)):
+        return dt - dur, dt
+
+    # Criterio 2: Causalidad respecto a la última actualización del registro en disco
+    if record and record.updated_at:
+        try:
+            upd = datetime.fromisoformat(record.updated_at)
+            if upd.tzinfo is not None:
+                upd = upd.astimezone().replace(tzinfo=None)
+            if (dt + dur) > (upd + timedelta(seconds=10)):
+                return dt - dur, dt
+        except (ValueError, TypeError):
+            pass
+
+    # Criterio 3: Causalidad secuencial entre intentos dentro del mismo archivo
+    if record and 0 <= item_index < len(record.items) - 1:
+        next_item = record.items[item_index + 1]
+        if next_item.created_at:
+            try:
+                next_dt = datetime.fromisoformat(next_item.created_at)
+                if next_dt.tzinfo is not None:
+                    next_dt = next_dt.astimezone().replace(tzinfo=None)
+                if dt.date() == next_dt.date() and (dt + dur) > (next_dt + timedelta(seconds=5)):
+                    return dt - dur, dt
+            except (ValueError, TypeError):
+                pass
+
+    return dt, dt + dur
+
+
 def get_24h_hourly_distribution(record: Record) -> HourlyDistribution:
     """Agrega los intentos y milisegundos netos dedicados al estudio según la hora del día (0 a 23 hs)."""
     hourly_time: dict[int, int] = {h: 0 for h in range(24)}
     hourly_counts: dict[int, int] = {h: 0 for h in range(24)}
     total_sessions = 0
 
-    for item in record.items:
+    for idx, item in enumerate(record.items):
         if not item.created_at:
             continue
-        try:
-            dt = datetime.fromisoformat(item.created_at)
-            hour = dt.hour
-            if 0 <= hour <= 23:
-                hourly_time[hour] += item.exercise_time_ms
-                hourly_counts[hour] += 1
-                total_sessions += 1
-        except (ValueError, TypeError):
+
+        item_start, item_end = resolve_item_time_interval(item, record=record, item_index=idx)
+        if item_start == datetime.min:
             continue
+
+        ex_ms = max(0, item.exercise_time_ms)
+        brk_ms = max(0, item.break_time_ms)
+        total_ms = ex_ms + brk_ms
+        total_sessions += 1
+
+        if total_ms == 0:
+            if 0 <= item_start.hour <= 23:
+                hourly_counts[item_start.hour] += 1
+            continue
+
+        ratio = (ex_ms / total_ms) if total_ms > 0 else 0.0
+
+        curr = item_start.replace(minute=0, second=0, microsecond=0)
+        while curr < item_end:
+            next_hour = curr + timedelta(hours=1)
+            overlap_start = max(item_start, curr)
+            overlap_end = min(item_end, next_hour)
+            if overlap_end > overlap_start:
+                h = curr.hour
+                overlap_ms = int((overlap_end - overlap_start).total_seconds() * 1000)
+                allocated_ex = int(round(overlap_ms * ratio))
+                allocated_ex = min(allocated_ex, 3_600_000)
+                if 0 <= h <= 23:
+                    hourly_time[h] += allocated_ex
+                    hourly_counts[h] += 1
+            curr = next_hour
 
     slots: list[HourlySlot] = []
     peak_hour = 0
@@ -828,21 +910,59 @@ def compute_today_timeline_buckets(
     hourly_time: dict[int, int] = {h: 0 for h in range(24)}
     hourly_attempts: dict[int, int] = {h: 0 for h in range(24)}
 
-    for item in record.items:
+    for idx, item in enumerate(record.items):
         if not item.created_at:
             continue
-        try:
-            dt = datetime.fromisoformat(item.created_at)
-            if dt.date() == target_date:
-                h = dt.hour
-                if 0 <= h <= 23:
-                    hourly_time[h] += item.exercise_time_ms
-                    hourly_attempts[h] += 1
-        except (ValueError, TypeError):
+
+        item_start, item_end = resolve_item_time_interval(item, record=record, item_index=idx)
+        if item_start == datetime.min:
             continue
 
-    is_today = target_date == date.today()
-    now_hour = datetime.now().hour if is_today else -1
+        ex_ms = max(0, item.exercise_time_ms)
+        brk_ms = max(0, item.break_time_ms)
+        total_ms = ex_ms + brk_ms
+
+        if total_ms == 0:
+            if item_start.date() == target_date and 0 <= item_start.hour <= 23:
+                hourly_attempts[item_start.hour] += 1
+            continue
+
+        ratio = (ex_ms / total_ms) if total_ms > 0 else 0.0
+
+        for h in range(24):
+            h_start = datetime(target_date.year, target_date.month, target_date.day, h, 0, 0)
+            h_end = h_start + timedelta(hours=1)
+
+            overlap_start = max(item_start, h_start)
+            overlap_end = min(item_end, h_end)
+
+            if overlap_end > overlap_start:
+                overlap_ms = int((overlap_end - overlap_start).total_seconds() * 1000)
+                allocated_ex = int(round(overlap_ms * ratio))
+                allocated_ex = min(allocated_ex, 3_600_000)
+                if allocated_ex > 0:
+                    hourly_time[h] += allocated_ex
+                hourly_attempts[h] += 1
+
+    now = datetime.now()
+    is_today = target_date == now.date()
+    now_hour = now.hour if is_today else -1
+
+    for h in range(24):
+        h_start = datetime(target_date.year, target_date.month, target_date.day, h, 0, 0)
+        if is_today:
+            if h > now.hour:
+                max_h_ms = 0
+            elif h == now.hour:
+                max_h_ms = max(0, int((now - h_start).total_seconds() * 1000))
+            else:
+                max_h_ms = 3_600_000
+        elif target_date > now.date():
+            max_h_ms = 0
+        else:
+            max_h_ms = 3_600_000
+
+        hourly_time[h] = min(hourly_time[h], max_h_ms)
 
     buckets: list[dict[str, Any]] = []
     for h in range(24):

@@ -44,8 +44,10 @@ from presentation.statistics_view import StatisticsViewWidget
 from presentation.theme import (
     THEME_DARK,
     THEME_LIGHT,
+    get_available_themes,
     get_dialog_stylesheet,
     get_theme_stylesheet,
+    get_theme_tokens,
 )
 from presentation.weekly_chart_widget import WeeklyChartWidget
 from presentation.welcome_dialog import WelcomeDialog
@@ -64,7 +66,7 @@ class MainWindow(QMainWindow):
         self.container = container or AppContainer()
         self.settings = QSettings("StudyTimetrial", "Preferences")
         self.current_theme = str(self.settings.value("theme", THEME_LIGHT))
-        if self.current_theme not in (THEME_LIGHT, THEME_DARK):
+        if self.current_theme not in get_available_themes():
             self.current_theme = THEME_LIGHT
         self.auto_open_recent = self.settings.value("auto_open_recent", True, type=bool)
 
@@ -87,6 +89,7 @@ class MainWindow(QMainWindow):
             is_dark_mode=self.is_dark_mode,
             auto_open_recent=self.auto_open_recent,
             parent=self,
+            current_theme=self.current_theme,
         )
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
         self.toolbar.update_sound_action(self.audio_service.is_muted)
@@ -132,6 +135,13 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.statistics_view, qta.icon("fa5s.chart-bar", color="#94a3b8"), "  Estadísticas")
         self.tabs.addTab(self.planner, qta.icon("fa5s.tasks", color="#94a3b8"), "  Planificador")
         self.tabs.addTab(self.ambience_view, qta.icon("fa5s.headphones", color="#94a3b8"), "  Ambientación")
+
+        from presentation.theming import AmbientParticleOverlay
+
+        self.particle_overlay = AmbientParticleOverlay(self.tabs)
+        current_tokens = get_theme_tokens(self.current_theme)
+        self.particle_overlay.set_effect(current_tokens.effect)
+
 
         self._connect_signals()
 
@@ -236,7 +246,7 @@ class MainWindow(QMainWindow):
 
     @property
     def is_dark_mode(self) -> bool:
-        return self.current_theme == THEME_DARK
+        return get_theme_tokens(self.current_theme).is_dark
 
     @property
     def is_sound_muted(self) -> bool:
@@ -284,11 +294,12 @@ class MainWindow(QMainWindow):
         self.audio_service.play_fail()
 
     def set_theme(self, theme: str) -> None:
-        """Cambia el tema de la aplicación ('light' o 'dark') y propaga a vistas."""
+        """Cambia el tema de la aplicación ('light', 'dark' o cualquiera de los skins) y propaga a vistas."""
         self.current_theme = theme
         self.settings.setValue("theme", theme)
 
         self._apply_current_stylesheet()
+        self.toolbar.set_current_theme(self.current_theme)
         self.toolbar.update_theme_icons(self.is_dark_mode)
 
         self.home_view.is_dark_mode = self.is_dark_mode
@@ -298,6 +309,10 @@ class MainWindow(QMainWindow):
 
         self.update_theme_icons()
         self.update_timer_visual_state()
+
+        if hasattr(self, "particle_overlay"):
+            tokens = get_theme_tokens(self.current_theme)
+            self.particle_overlay.set_effect(tokens.effect)
 
     def update_theme_icons(self) -> None:
         self.toolbar.update_theme_icons(self.is_dark_mode)
@@ -543,6 +558,9 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "home_view"):
             self.home_view.resizeEvent(event)
+        if hasattr(self, "particle_overlay") and hasattr(self, "tabs"):
+            self.particle_overlay.setGeometry(self.tabs.rect())
+            self.particle_overlay.raise_()
 
     def _on_planner_load_timer(
         self, section_type: str, section_number: int, exercise: int, inciso: int | None

@@ -47,7 +47,7 @@ stateDiagram-v2
 2. **Construcción del `TimerItem`:**
    * Al finalizar, se extrae el snapshot del cronómetro: `exercise_ms, break_ms = timer.snapshot()`.
    * Se crea una entidad `TimerItem` con:
-     * `timestamp`: ISO-8601 de fecha/hora de creación.
+     * `created_at`: ISO-8601 con la fecha/hora de inicio del intento (`session_started_at` o fallback calculado `now - total_duration`).
      * `section_type`, `section_number`, `exercise`, `inciso` tomados de `SessionLocation`.
      * `exercise_time_ms`, `break_time_ms`.
      * `completed`: booleano (`True` si fue completado, `False` si fue incompleto).

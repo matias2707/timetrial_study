@@ -315,7 +315,7 @@ Modernizar y enriquecer la pestaña principal del Cronómetro (`HomeViewWidget`)
 - **`application/application_service.py`:**
   - Métodos `get_current_personal_best()`, `get_today_activity_strip_data()` y `get_today_summary_metrics()`.
 - **`presentation/today_activity_strip_widget.py` [NEW]:**
-  - Componente gráfico nativo con 24 celdas horarias, colores adaptativos a tema claro/oscuro, halo de hora activa y tooltips informativos.
+  - Componente gráfico nativo con 24 celdas horarias, colores adaptativos a tema claro/oscuro, halo de hora activa, aguja vertical continua en tiempo real (00:00 a 24:00) y tooltips informativos.
 - **`presentation/home_view.py`:**
   - Integración del Activity Strip en la zona superior.
   - Reestructuración de la cabecera con tarjetas independientes de KPIs del día.

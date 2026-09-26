@@ -6,6 +6,20 @@ from dataclasses import dataclass
 
 THEME_LIGHT = "light"
 THEME_DARK = "dark"
+THEME_SAKURA = "sakura"
+THEME_WINTER = "winter"
+THEME_SPRING = "spring"
+THEME_BAMBOO = "bamboo"
+THEME_MIDNIGHT = "midnight"
+THEME_CLASSIC_BLUE = "classic_blue"
+THEME_PEACH_FUZZ = "peach_fuzz"
+THEME_MARSALA = "marsala"
+THEME_EMERALD = "emerald"
+THEME_ILLUMINATING = "illuminating"
+THEME_NORD = "nord"
+THEME_BLACK_SAKURA = "black_sakura"
+THEME_VAMPYR = "vampyr"
+THEME_HALLOWEEN = "halloween"
 
 
 @dataclass(frozen=True)
@@ -195,6 +209,10 @@ class ThemeTokens:
     tooltip_bg: str
     tooltip_fg: str
     tooltip_border: str
+
+    # Efecto visual animado de fondo opcional y textura
+    effect: str = "none"
+    background_image: str = ""
 
 
 DARK_TOKENS = ThemeTokens(

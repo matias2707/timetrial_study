@@ -6,7 +6,7 @@ inyectables. La interfaz solo traduce eventos y muestra sus resultados.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -72,6 +72,7 @@ class StudyApplicationService:
         self.pending_comment = ""
         self.editing_item_id: str | None = None
         self.editing_initial_exercise_ms: int = 0
+        self.session_started_at: datetime | None = None
 
     @property
     def is_editing(self) -> bool:
@@ -121,6 +122,7 @@ class StudyApplicationService:
         if self.mode is TimerMode.WAITING:
             if location is not None:
                 self.set_location(location)
+            self.session_started_at = datetime.now()
             self.timer.start()
         else:
             self.timer.toggle_break()
@@ -130,6 +132,7 @@ class StudyApplicationService:
         """Descarta el intento en curso sin crear un registro."""
         self.editing_item_id = None
         self.editing_initial_exercise_ms = 0
+        self.session_started_at = None
         self.timer.reset()
         self.pending_comment = ""
 
@@ -137,6 +140,7 @@ class StudyApplicationService:
         """Carga un item previamente guardado para continuar su conteo o actualizarlo."""
         self.editing_item_id = item.id
         self.editing_initial_exercise_ms = item.exercise_time_ms
+        self.session_started_at = None
         self.location = SessionLocation(
             section_type=item.section_type,
             section_number=item.section_number,
@@ -150,6 +154,7 @@ class StudyApplicationService:
         """Cancela el modo edición y reinicia el cronómetro a un estado limpio."""
         self.editing_item_id = None
         self.editing_initial_exercise_ms = 0
+        self.session_started_at = None
         self.timer.reset()
         self.pending_comment = ""
 
@@ -183,6 +188,9 @@ class StudyApplicationService:
             return False
 
         exercise_ms, break_ms = self.timer.snapshot()
+        total_duration_ms = exercise_ms + break_ms
+        started_dt = self.session_started_at or (datetime.now() - timedelta(milliseconds=total_duration_ms))
+        item_created_at = started_dt.isoformat(timespec="seconds")
 
         if self.editing_item_id and overwrite:
             target = self.editing_item
@@ -206,6 +214,7 @@ class StudyApplicationService:
                         break_time_ms=break_ms,
                         completed=completed,
                         comment=self.pending_comment,
+                        created_at=item_created_at,
                     )
                 )
         else:
@@ -219,6 +228,7 @@ class StudyApplicationService:
                     break_time_ms=break_ms,
                     completed=completed,
                     comment=self.pending_comment,
+                    created_at=item_created_at,
                 )
             )
 
@@ -227,6 +237,7 @@ class StudyApplicationService:
         self.pending_comment = ""
         self.editing_item_id = None
         self.editing_initial_exercise_ms = 0
+        self.session_started_at = None
         return True
 
 

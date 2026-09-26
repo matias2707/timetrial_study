@@ -1498,6 +1498,9 @@ class HomeViewWidget(QWidget):
         if hasattr(self, "today_attempts_label"):
             self.today_attempts_label.setText(str(metrics["total_attempts"]))
 
+        if hasattr(self, "activity_strip"):
+            self.activity_strip.refresh_needle()
+
         self._strip_counter = getattr(self, "_strip_counter", 0) + 1
         if self._strip_counter % 20 == 0:
             self.update_activity_strip()

@@ -31,6 +31,14 @@
       "type": "string",
       "description": "Comentario informativo o descriptor del tema"
     },
+    "effect": {
+      "type": "string",
+      "description": "Efecto de partículas dinámicas opcional (ej. sakura, snow, stars, bamboo, halloween, vampyr, none)"
+    },
+    "background_image": {
+      "type": "string",
+      "description": "Ruta o descriptor opcional de textura o imagen de fondo"
+    },
     "bg_app": { "type": "string" },
     "bg_dialog": { "type": "string" },
     "bg_surface": { "type": "string" },
