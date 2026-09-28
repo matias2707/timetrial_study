@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import os
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["STUDY_TIMETRIAL_TEST"] = "1"
+
 from pathlib import Path
 import tempfile
 import unittest
+
+from PySide6.QtWidgets import QApplication
 
 from infrastructure.audio.sound_effects import SoundEffectsPlayer
 from infrastructure.audio.track_catalog import scan_audio_tracks
@@ -12,6 +18,10 @@ from infrastructure.audio.track_catalog import scan_audio_tracks
 
 class TestAudioInfrastructure(unittest.TestCase):
     """Verifica el escaneo de pistas y reproductor de efectos de sonido."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
 
     def test_scan_audio_tracks_detects_supported_extensions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

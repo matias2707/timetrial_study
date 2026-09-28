@@ -44,3 +44,13 @@ El subsistema gestiona efectos de sonido discretos reproducidos mediante `QSound
 2. **Ejercicio completado (`play_complete`):** Emite `universfield-new-notification-051-494246.wav` cuando un intento finaliza exitosamente (`completed=True`).
 3. **Ejercicio incompleto / fallo (`play_fail`):** Emite `fail.wav` cuando un intento finaliza sin completarse (`completed=False`).
 4. **Silenciamiento:** Todas las emisiones son ignoradas si `is_muted` es verdadero, persistiendo el estado en `QSettings` (`Preferences/sound_muted`).
+
+---
+
+## 5. Aislamiento y Optimización en Entornos de Test
+
+Para garantizar ejecuciones deterministas y de alto rendimiento en suites de pruebas unitarias (`unittest` / CI):
+
+1. **Omisión de sondeo multimedia pesado:** `AmbientStorageService` detecta si se ejecuta en entorno de tests (`STUDY_TIMETRIAL_TEST` o `QT_QPA_PLATFORM == "offscreen"`). Salvo que se provea un `audio_dir` explícito para pruebas, no sondea archivos multimedia reales de producción, evitando inicializaciones concurrentes de decodificadores FFmpeg.
+2. **Liberación inmediata de recursos (`stop_all`):** Al invocar `AudioMixerEngine.stop_all()`, cada `TrackPlayer` desconecta su fuente (`setSource(QUrl())`) liberando descriptores de archivo y threads de decodificación.
+3. **Requisito de contexto de aplicación:** `SoundEffectsPlayer` requiere un despachador de eventos `QCoreApplication`/`QApplication` activo para evitar bloqueos por COM/WASAPI en plataformas Windows.

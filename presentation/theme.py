@@ -11,6 +11,7 @@ from presentation.theme_tokens import (
     THEME_DARK,
     THEME_EMERALD,
     THEME_HALLOWEEN,
+    THEME_HIGH_NIGHT,
     THEME_ILLUMINATING,
     THEME_LIGHT,
     THEME_MARSALA,
@@ -33,6 +34,7 @@ __all__ = [
     "THEME_SPRING",
     "THEME_BAMBOO",
     "THEME_MIDNIGHT",
+    "THEME_HIGH_NIGHT",
     "THEME_CLASSIC_BLUE",
     "THEME_PEACH_FUZZ",
     "THEME_MARSALA",
@@ -188,6 +190,16 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
         }}
         QWidget#homeContainer, QWidget#statsContainer, QWidget#ambienceContainer {{
             background: transparent;
+        }}
+        QFrame#statsHeaderFrame, QFrame#subtabBarFrame {{
+            background: transparent;
+            border: none;
+        }}
+        QFrame#planner_summary_frame {{
+            background: {t.bg_card};
+            border: 1px solid {t.card_border};
+            border-radius: 12px;
+            padding: 12px 16px;
         }}
 
         /* Headers & Meta */
@@ -980,83 +992,68 @@ def get_dialog_stylesheet(theme: str) -> str:
     """
 
 
-def get_status_pill_style(state: str, is_dark: bool) -> str:
+def get_status_pill_style(state: str, is_dark: bool, tokens: ThemeTokens | None = None) -> str:
     """Devuelve la hoja de estilo QSS para la pastilla visual de estado (status_pill).
 
     Args:
         state: 'paused', 'play', 'break', o 'waiting' (idle).
         is_dark: True si el tema activo es oscuro.
+        tokens: Tokens de diseño del tema activo (opcional, fallback por luminancia).
     """
+    t = tokens or (DARK_TOKENS if is_dark else LIGHT_TOKENS)
     if state == "paused":
-        if is_dark:
-            return "background: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #ede8dd; color: #44403c; border: 1px solid #d5cdbf; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        border_col = t.clock_card_paused_border or ("#475569" if t.is_dark else "#d5cdbf")
+        return f"background: {t.bg_status_badge}; color: {t.text_primary}; border: 1px solid {border_col}; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
     elif state == "play":
-        if is_dark:
-            return "background: #064e3b; color: #6ee7b7; border: 1px solid #059669; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #e7f4ec; color: #047857; border: 1px solid #b6e1c6; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        bg_col = t.badge_completed_bg or ("#064e3b" if t.is_dark else "#e7f4ec")
+        fg_col = t.badge_completed_fg or ("#6ee7b7" if t.is_dark else "#047857")
+        border_col = t.clock_card_active_exercise_border or ("#059669" if t.is_dark else "#b6e1c6")
+        return f"background: {bg_col}; color: {fg_col}; border: 1px solid {border_col}; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
     elif state == "break":
-        if is_dark:
-            return "background: #451a03; color: #fde68a; border: 1px solid #78350f; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #fbf4dc; color: #b45309; border: 1px solid #f2dd9b; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        bg_col = t.hero_pause_bg or ("#451a03" if t.is_dark else "#fbf4dc")
+        fg_col = t.hero_pause_fg or ("#fde68a" if t.is_dark else "#b45309")
+        border_col = t.clock_card_active_break_border or ("#78350f" if t.is_dark else "#f2dd9b")
+        return f"background: {bg_col}; color: {fg_col}; border: 1px solid {border_col}; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
     else:  # waiting / idle
-        if is_dark:
-            return "background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
-        return "background: #ede8dd; color: #57534e; border: 1px solid #d5cdbf; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
+        return f"background: {t.bg_status_badge}; color: {t.text_muted}; border: 1px solid {t.border_subtle}; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 5px 12px;"
 
 
-def get_timer_cards_style(state: str, is_dark: bool) -> tuple[str, str]:
+def get_timer_cards_style(state: str, is_dark: bool, tokens: ThemeTokens | None = None) -> tuple[str, str]:
     """Devuelve la tupla de estilos (exercise_card_style, break_card_style) según el estado.
 
     Args:
         state: 'paused', 'play', 'break', o 'waiting'.
         is_dark: True si el tema activo es oscuro.
+        tokens: Tokens de diseño del tema activo (opcional, fallback por luminancia).
     """
-    if is_dark:
-        card_bg = "#162032"
-        card_border = "#1e293b"
+    t = tokens or (DARK_TOKENS if is_dark else LIGHT_TOKENS)
+    card_bg = t.bg_clock_card
+    card_border = t.border_subtle
 
-        if state == "paused":
-            return (
-                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1.5px solid #475569; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: {card_bg}; border: 1.5px solid #475569; border-radius: 14px; }}",
-            )
-        elif state == "play":
-            return (
-                f"QFrame#exerciseCard {{ background: #081d16; border: 2px solid #10b981; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-            )
-        elif state == "break":
-            return (
-                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: #231805; border: 2px solid #f59e0b; border-radius: 14px; }}",
-            )
-        else:  # waiting
-            return (
-                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-            )
-    else:
-        card_bg = "#fdfcf7"
-        card_border = "#e4ded4"
+    if state == "paused":
+        paused_border = t.clock_card_paused_border or ("#475569" if t.is_dark else "#d5cdbf")
+        paused_bg = t.bg_surface_alt if not t.is_dark else card_bg
+        return (
+            f"QFrame#exerciseCard {{ background: {paused_bg}; border: 1.5px solid {paused_border}; border-radius: 14px; }}",
+            f"QFrame#breakCard {{ background: {paused_bg}; border: 1.5px solid {paused_border}; border-radius: 14px; }}",
+        )
+    elif state == "play":
+        ex_bg = t.clock_card_active_exercise_bg or ("#081d16" if t.is_dark else "#eaf5ee")
+        ex_border = t.clock_card_active_exercise_border or ("#10b981" if t.is_dark else "#059669")
+        return (
+            f"QFrame#exerciseCard {{ background: {ex_bg}; border: 2px solid {ex_border}; border-radius: 14px; }}",
+            f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+        )
+    elif state == "break":
+        br_bg = t.clock_card_active_break_bg or ("#231805" if t.is_dark else "#fbf4dc")
+        br_border = t.clock_card_active_break_border or ("#f59e0b" if t.is_dark else "#d97706")
+        return (
+            f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+            f"QFrame#breakCard {{ background: {br_bg}; border: 2px solid {br_border}; border-radius: 14px; }}",
+        )
+    else:  # waiting / idle
+        return (
+            f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+            f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
+        )
 
-        if state == "paused":
-            return (
-                f"QFrame#exerciseCard {{ background: #f5f1e8; border: 1.5px solid #d5cdbf; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: #f5f1e8; border: 1.5px solid #d5cdbf; border-radius: 14px; }}",
-            )
-        elif state == "play":
-            return (
-                f"QFrame#exerciseCard {{ background: #eaf5ee; border: 2px solid #059669; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-            )
-        elif state == "break":
-            return (
-                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: #fbf4dc; border: 2px solid #d97706; border-radius: 14px; }}",
-            )
-        else:  # waiting
-            return (
-                f"QFrame#exerciseCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-                f"QFrame#breakCard {{ background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; }}",
-            )

@@ -6,6 +6,7 @@ Ensambla y orquesta la interfaz gráfica delegando en vistas y servicios desacop
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QTimer, Qt
@@ -130,16 +131,19 @@ class MainWindow(QMainWindow):
         self.records = self.records_view
         self.statistics = self.statistics_view
 
-        self.tabs.addTab(self.home_view, qta.icon("fa5s.stopwatch", color="#bef264"), "  Cronómetro")
-        self.tabs.addTab(self.records_view, qta.icon("fa5s.history", color="#94a3b8"), "  Registros")
-        self.tabs.addTab(self.statistics_view, qta.icon("fa5s.chart-bar", color="#94a3b8"), "  Estadísticas")
-        self.tabs.addTab(self.planner, qta.icon("fa5s.tasks", color="#94a3b8"), "  Planificador")
-        self.tabs.addTab(self.ambience_view, qta.icon("fa5s.headphones", color="#94a3b8"), "  Ambientación")
+        current_tokens = get_theme_tokens(self.current_theme)
+        active_tab_icon = current_tokens.tab_icon_active or current_tokens.tab_text_selected
+        inactive_tab_icon = current_tokens.tab_icon_inactive or current_tokens.tab_text
+
+        self.tabs.addTab(self.home_view, qta.icon("fa5s.stopwatch", color=active_tab_icon), "  Cronómetro")
+        self.tabs.addTab(self.records_view, qta.icon("fa5s.history", color=inactive_tab_icon), "  Registros")
+        self.tabs.addTab(self.statistics_view, qta.icon("fa5s.chart-bar", color=inactive_tab_icon), "  Estadísticas")
+        self.tabs.addTab(self.planner, qta.icon("fa5s.tasks", color=inactive_tab_icon), "  Planificador")
+        self.tabs.addTab(self.ambience_view, qta.icon("fa5s.headphones", color=inactive_tab_icon), "  Ambientación")
 
         from presentation.theming import AmbientParticleOverlay
 
         self.particle_overlay = AmbientParticleOverlay(self.tabs)
-        current_tokens = get_theme_tokens(self.current_theme)
         self.particle_overlay.set_effect(current_tokens.effect)
 
 
@@ -147,10 +151,11 @@ class MainWindow(QMainWindow):
 
         self._last_timer_state = (self.application.mode, self.application.timer.is_paused)
 
-        # Timer para el refresco del reloj (50 ms)
+        # Timer para el refresco del reloj (100 ms)
         self.tick = QTimer(self)
         self.tick.timeout.connect(self.refresh_clock)
-        self.tick.start(50)
+        if not (os.environ.get("STUDY_TIMETRIAL_TEST") or os.environ.get("QT_QPA_PLATFORM") == "offscreen"):
+            self.tick.start(100)
 
         self.refresh_recent_files_menu()
         self.update_title()
@@ -165,7 +170,7 @@ class MainWindow(QMainWindow):
         stylesheet = get_theme_stylesheet(self.current_theme)
         self.setStyleSheet(stylesheet)
         app = QApplication.instance()
-        if app:
+        if app and not (os.environ.get("STUDY_TIMETRIAL_TEST") or os.environ.get("QT_QPA_PLATFORM") == "offscreen"):
             app.setStyleSheet(stylesheet)
 
     def _connect_signals(self) -> None:
@@ -213,8 +218,9 @@ class MainWindow(QMainWindow):
             ("fa5s.tasks", "Planificador"),
             ("fa5s.headphones", "Ambientación"),
         ]
-        active_color = "#10b981" if self.is_dark_mode else "#059669"
-        inactive_color = "#94a3b8" if self.is_dark_mode else "#64748b"
+        tokens = get_theme_tokens(self.current_theme)
+        active_color = tokens.tab_icon_active or tokens.tab_text_selected
+        inactive_color = tokens.tab_icon_inactive or tokens.tab_text
         for i, (icon_name, _title) in enumerate(icons):
             color = active_color if i == index else inactive_color
             self.tabs.setTabIcon(i, qta.icon(icon_name, color=color))
@@ -302,16 +308,28 @@ class MainWindow(QMainWindow):
         self.toolbar.set_current_theme(self.current_theme)
         self.toolbar.update_theme_icons(self.is_dark_mode)
 
+        tokens = get_theme_tokens(self.current_theme)
+
+        if hasattr(self.home_view, "current_theme"):
+            self.home_view.current_theme = self.current_theme
         self.home_view.is_dark_mode = self.is_dark_mode
-        self.statistics_view.set_dark_mode(self.is_dark_mode)
-        self.planner.set_dark_mode(self.is_dark_mode)
+
+        if hasattr(self.statistics_view, "set_theme"):
+            self.statistics_view.set_theme(self.current_theme)
+        else:
+            self.statistics_view.set_dark_mode(self.is_dark_mode)
+
+        if hasattr(self.planner, "set_theme"):
+            self.planner.set_theme(self.current_theme)
+        else:
+            self.planner.set_dark_mode(self.is_dark_mode)
+
         self.ambience_view.set_dark_mode(self.is_dark_mode)
 
         self.update_theme_icons()
         self.update_timer_visual_state()
 
         if hasattr(self, "particle_overlay"):
-            tokens = get_theme_tokens(self.current_theme)
             self.particle_overlay.set_effect(tokens.effect)
 
     def update_theme_icons(self) -> None:
@@ -892,10 +910,18 @@ class MainWindow(QMainWindow):
             except OSError:
                 pass
 
+    def _cleanup_on_close(self) -> None:
+        """Detiene timers y libera recursos al cerrar la ventana."""
+        if hasattr(self, "tick") and self.tick.isActive():
+            self.tick.stop()
+        if hasattr(self, "particle_overlay") and hasattr(self.particle_overlay, "_timer") and self.particle_overlay._timer.isActive():
+            self.particle_overlay._timer.stop()
+        if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
+            self.ambience_view.engine.stop_all()
+
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self.application.is_record_open or self.application.mode is TimerMode.WAITING:
-            if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
-                self.ambience_view.engine.stop_all()
+            self._cleanup_on_close()
             event.accept()
             return
 
@@ -911,12 +937,10 @@ class MainWindow(QMainWindow):
             if self.application.mode is not TimerMode.WAITING:
                 event.ignore()
                 return
-            if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
-                self.ambience_view.engine.stop_all()
+            self._cleanup_on_close()
             event.accept()
         elif answer is QMessageBox.StandardButton.Discard:
-            if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
-                self.ambience_view.engine.stop_all()
+            self._cleanup_on_close()
             event.accept()
         else:
             event.ignore()

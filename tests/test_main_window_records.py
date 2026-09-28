@@ -66,6 +66,9 @@ class MainWindowExcelRecordsTests(unittest.TestCase):
         ]
         self.window.refresh_table()
 
+    def tearDown(self) -> None:
+        self.window.close()
+
     def test_header_is_movable_and_has_12_columns(self) -> None:
         header = self.window.table.horizontalHeader()
         self.assertTrue(header.sectionsMovable())

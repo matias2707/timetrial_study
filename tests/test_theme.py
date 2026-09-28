@@ -3,7 +3,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["STUDY_TIMETRIAL_TEST"] = "1"
 
 import unittest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from presentation.main_window import MainWindow
 from presentation.theme import THEME_DARK, THEME_LIGHT, get_theme_stylesheet, get_dialog_stylesheet
@@ -30,6 +30,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_main_window_toolbar_config_menu(self) -> None:
         window = MainWindow()
+        self.addCleanup(window.close)
         self.assertTrue(hasattr(window, "config_button"))
         self.assertTrue(hasattr(window, "view_button"))
         self.assertIn("Configuración", window.config_button.text())
@@ -64,6 +65,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_sound_mute_toggle(self) -> None:
         window = MainWindow()
+        self.addCleanup(window.close)
         # Default state: unmuted
         window.set_sound_muted(False)
         self.assertFalse(window.is_sound_muted)
@@ -93,6 +95,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_timer_states_and_table_badges(self) -> None:
         window = MainWindow()
+        self.addCleanup(window.close)
         # Idle state in light mode
         window.set_theme(THEME_LIGHT)
         window.update_timer_visual_state()
@@ -107,6 +110,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_steppers_and_session_controls(self) -> None:
         window = MainWindow()
+        self.addCleanup(window.close)
 
         # Stylesheet checks
         light_css = get_theme_stylesheet(THEME_LIGHT)
@@ -187,6 +191,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_deep_theme_propagation_across_views(self) -> None:
         window = MainWindow()
+        self.addCleanup(window.close)
 
         # Switch to Light Mode
         window.set_theme(THEME_LIGHT)
@@ -216,11 +221,12 @@ class ThemeTests(unittest.TestCase):
 
     def test_custom_skins_selection_and_propagation(self) -> None:
         window = MainWindow()
+        self.addCleanup(window.close)
 
         # Verificar que la toolbar contiene todas las acciones de los skins
         all_expected_skins = [
             "light", "dark",
-            "sakura", "winter", "spring", "bamboo", "midnight",
+            "sakura", "winter", "spring", "bamboo", "midnight", "high_night",
             "classic_blue", "peach_fuzz", "marsala", "emerald", "illuminating", "nord",
             "black_sakura", "vampyr", "halloween",
         ]
@@ -270,6 +276,20 @@ class ThemeTests(unittest.TestCase):
         self.assertFalse(window.toolbar.theme_actions["sakura"].isChecked())
         self.assertTrue(window.statistics_view.weekly_chart.dark_mode)
 
+        # Probar selección de High Night (Modo oscuro & dinámico)
+        window.set_theme("high_night")
+        self.assertEqual(window.current_theme, "high_night")
+        self.assertTrue(window.is_dark_mode)
+        self.assertTrue(window.toolbar.theme_actions["high_night"].isChecked())
+        self.assertIn("[Dinámico]", window.toolbar.theme_actions["high_night"].text())
+        self.assertEqual(window.particle_overlay.current_effect, "high_night")
+        # Simular avance y verificar propiedades de partículas
+        window.particle_overlay.step_simulation()
+        self.assertGreater(len(window.particle_overlay._particles), 0)
+        for p in window.particle_overlay._particles:
+            self.assertEqual(p.kind, "high_night")
+            self.assertLessEqual(p.base_size, 3.5)
+
         # Probar selección de Winter (Modo oscuro)
         window.set_theme("winter")
         self.assertEqual(window.current_theme, "winter")
@@ -305,8 +325,108 @@ class ThemeTests(unittest.TestCase):
         self.assertIn("#fcf7f8", sakura_dialog)
         midnight_dialog = get_dialog_stylesheet("midnight")
         self.assertIn("#0e1224", midnight_dialog)
+        high_night_dialog = get_dialog_stylesheet("high_night")
+        self.assertIn("#0b0b0e", high_night_dialog)
+
+    def test_high_night_particle_beat_animation(self) -> None:
+        """Verifica la física, dimensiones y el ciclo de destello fugaz (beat) individual de High Night."""
+        from presentation.theming.ambient_particle_overlay import AmbientParticleOverlay
+        from PySide6.QtWidgets import QWidget
+
+        container = QWidget()
+        container.resize(800, 600)
+        overlay = AmbientParticleOverlay(container)
+        overlay.set_effect("high_night")
+
+        self.assertEqual(overlay.current_effect, "high_night")
+        self.assertGreater(len(overlay._particles), 0)
+
+        # 1. Estrellas más pequeñas que las de Midnight (1.2 - 3.2 vs 2.5 - 6.0)
+        for p in overlay._particles:
+            self.assertEqual(p.kind, "high_night")
+            self.assertGreaterEqual(p.base_size, 1.2)
+            self.assertLessEqual(p.base_size, 3.2)
+            # Paleta de tonos claros blanco/grisáceo cuarzo y perla
+            self.assertIn(p.color_hex, ["#d8d8e8", "#e4e4ee", "#cfcfe0", "#edeef5", "#c8c4dc"])
+
+        # 2. Forzar cuenta regresiva de destello a 1 y avanzar simulación
+        overlay._flash_countdown = 1
+        overlay.step_simulation()
+
+        # Debe haberse seleccionado exactamente una estrella individual con flash activo
+        flashing_stars = [p for p in overlay._particles if p.flash_timer > 0]
+        self.assertEqual(len(flashing_stars), 1)
+        flashing = flashing_stars[0]
+        self.assertGreater(flashing.flash_duration, 0)
+        # El color del destello debe ser claro (blanco/gris, no blanco puro)
+        self.assertIn(flashing.flash_color_hex, ["#eef0f6", "#e8eaf2", "#f0f2f8", "#e5e7eb", "#ebebf2"])
+
+        # El nuevo countdown debe estar en el intervalo de 2 a 5 segundos (60 a 150 frames a 30 FPS)
+        self.assertGreaterEqual(overlay._flash_countdown, 60)
+        self.assertLessEqual(overlay._flash_countdown, 150)
+
+        # 3. Avanzar simulación hasta que termine el destello
+        while flashing.flash_timer > 0:
+            overlay.step_simulation()
+
+        self.assertEqual(flashing.flash_timer, 0)
+
+    def test_skins_refactor_semantic_tokens_and_propagation(self) -> None:
+        """Verifica la carga de tokens semánticos (ausencia, gráficos, cronómetro, pestañas) y su propagación."""
+        from presentation.theme_tokens import get_theme_tokens, list_available_themes
+        from presentation.theme import get_timer_cards_style, get_status_pill_style
+
+        # 1. Validar que todos los 17 temas cargan los nuevos atributos semánticos
+        all_themes = list_available_themes()
+        self.assertGreaterEqual(len(all_themes), 17)
+
+        for th in all_themes:
+            tok = get_theme_tokens(th)
+            self.assertTrue(bool(tok.color_absence), f"Falta color_absence en {th}")
+            self.assertTrue(bool(tok.color_absence_border), f"Falta color_absence_border en {th}")
+            self.assertTrue(bool(tok.bg_chart), f"Falta bg_chart en {th}")
+            self.assertTrue(bool(tok.chart_gridline), f"Falta chart_gridline en {th}")
+            self.assertTrue(bool(tok.activity_bar_bg), f"Falta activity_bar_bg en {th}")
+            self.assertTrue(bool(tok.activity_bar_fill), f"Falta activity_bar_fill en {th}")
+            self.assertTrue(bool(tok.tab_icon_active), f"Falta tab_icon_active en {th}")
+            self.assertTrue(bool(tok.tab_icon_inactive), f"Falta tab_icon_inactive en {th}")
+            self.assertTrue(bool(tok.clock_card_active_exercise_bg), f"Falta clock_card_active_exercise_bg en {th}")
+            self.assertTrue(bool(tok.clock_card_active_break_bg), f"Falta clock_card_active_break_bg en {th}")
+
+        # 2. Validar generación de estilos de cronómetro con tokens
+        sakura_tok = get_theme_tokens("sakura")
+        ex_css, br_css = get_timer_cards_style("play", is_dark=False, tokens=sakura_tok)
+        self.assertIn(sakura_tok.clock_card_active_exercise_bg, ex_css)
+        self.assertIn(sakura_tok.clock_card_active_exercise_border, ex_css)
+
+        ex_css_br, br_css_br = get_timer_cards_style("break", is_dark=False, tokens=sakura_tok)
+        self.assertIn(sakura_tok.clock_card_active_break_bg, br_css_br)
+        self.assertIn(sakura_tok.clock_card_active_break_border, br_css_br)
+
+        # 3. Validar propagación en MainWindow y componentes pasivos
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        window.set_theme("sakura")
+        self.assertEqual(window.current_theme, "sakura")
+        self.assertEqual(window.home_view.current_theme, "sakura")
+        self.assertEqual(window.home_view.activity_strip.current_theme, "sakura")
+        self.assertEqual(window.statistics_view._current_theme, "sakura")
+        self.assertEqual(window.planner._current_theme, "sakura")
+
+        # 4. Validar que los subtab scrolls en estadísticas tienen los objectNames asignados
+        self.assertEqual(window.statistics_view.general_tab.findChild(QWidget, "statsScroll").objectName(), "statsScroll")
+        self.assertEqual(window.statistics_view.general_tab.findChild(QWidget, "statsContainer").objectName(), "statsContainer")
+        self.assertEqual(window.statistics_view.weekly_tab.findChild(QWidget, "statsScroll").objectName(), "statsScroll")
+        self.assertEqual(window.statistics_view.weekly_tab.findChild(QWidget, "statsContainer").objectName(), "statsContainer")
+        self.assertEqual(window.statistics_view.daily_tab.findChild(QWidget, "statsScroll").objectName(), "statsScroll")
+        self.assertEqual(window.statistics_view.daily_tab.findChild(QWidget, "statsContainer").objectName(), "statsContainer")
+
+        # 5. Validar que summary_frame en planificador no tiene inline stylesheet anulando el tema
+        self.assertEqual(window.planner.summary_frame.styleSheet(), "")
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

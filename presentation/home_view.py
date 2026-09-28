@@ -38,6 +38,7 @@ from presentation.audio_service import AudioService
 from presentation.empty_state_widget import EmptyStateWidget
 from presentation.presentation_formatters import format_hh_mm_ss, timer_markup
 from presentation.theme import get_status_pill_style, get_timer_cards_style
+from presentation.theme_tokens import get_theme_tokens
 from presentation.home.home_presenter import HomePresenter
 from presentation.home.interfaces import IHomeView
 from presentation.today_activity_strip_widget import TodayActivityStripWidget
@@ -174,6 +175,7 @@ class HomeViewWidget(QWidget):
         self.application = application
         self.audio_service = audio_service
         self._is_dark_mode = is_dark_mode
+        self._current_theme = "dark" if is_dark_mode else "light"
         self.stepper_buttons: list[QPushButton] = []
         self.presenter = HomePresenter(view=self, application=self.application, audio_service=self.audio_service)
 
@@ -226,6 +228,21 @@ class HomeViewWidget(QWidget):
             self.status_label.setText(message)
 
     @property
+    def current_theme(self) -> str:
+        return getattr(self, "_current_theme", "dark" if self._is_dark_mode else "light")
+
+    @current_theme.setter
+    def current_theme(self, value: str) -> None:
+        self._current_theme = str(value)
+        if hasattr(self, "activity_strip") and hasattr(self.activity_strip, "current_theme"):
+            self.activity_strip.current_theme = self._current_theme
+        if hasattr(self, "activity_strip"):
+            self.activity_strip.is_dark_mode = self.is_dark_mode
+        self.update_timer_visual_state()
+        if hasattr(self, "_refresh_exercise_chips"):
+            self._refresh_exercise_chips()
+
+    @property
     def is_dark_mode(self) -> bool:
         return self._is_dark_mode
 
@@ -236,6 +253,8 @@ class HomeViewWidget(QWidget):
             self.empty_state_widget.set_dark_mode(self._is_dark_mode)
         if hasattr(self, "activity_strip"):
             self.activity_strip.is_dark_mode = self._is_dark_mode
+            if hasattr(self.activity_strip, "current_theme"):
+                self.activity_strip.current_theme = self.current_theme
         if hasattr(self, "session_button"):
             self.update_session_button()
         if hasattr(self, "stop_button"):
@@ -546,6 +565,7 @@ class HomeViewWidget(QWidget):
             clock.setTextFormat(Qt.TextFormat.RichText)
             clock.setAlignment(Qt.AlignmentFlag.AlignCenter)
             clock.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            clock.setWordWrap(False)
 
         self.exercise_card = QFrame()
         self.exercise_card.setObjectName("exerciseCard")
@@ -1231,6 +1251,9 @@ class HomeViewWidget(QWidget):
         sec_type = self.section_input.text().strip() or DEFAULT_SECTION_TYPE
         sec_num = self.section_number_input.value()
         is_dark = self.is_dark_mode
+        tokens = get_theme_tokens(self.current_theme)
+        absence_bg = tokens.color_absence or ("#1e293b" if is_dark else "#f1f5f9")
+        absence_border = tokens.color_absence_border or ("#334155" if is_dark else "#cbd5e1")
 
         # Índices relativos: [-2, -1, 0, 1, 2] -> el 3° chip (idx=2) es el ejercicio actual
         for idx, offset in enumerate([-2, -1, 0, 1, 2]):
@@ -1242,9 +1265,9 @@ class HomeViewWidget(QWidget):
                 btn.setText("—")
                 btn.setEnabled(False)
                 btn.setToolTip("")
-                bg = "#1e293b" if is_dark else "#f1f5f9"
-                border = "#334155" if is_dark else "#cbd5e1"
-                text_col = "#64748b" if is_dark else "#94a3b8"
+                bg = absence_bg
+                border = absence_border
+                text_col = tokens.text_muted or ("#64748b" if is_dark else "#94a3b8")
                 btn.setStyleSheet(
                     f"QPushButton {{ background-color: {bg}; color: {text_col}; border: 1.5px dashed {border}; border-radius: 6px; font-weight: 600; font-size: 13px; padding: 0px 2px; text-align: center; }}"
                 )
@@ -1266,10 +1289,10 @@ class HomeViewWidget(QWidget):
                     hover_bg = "#5c1010" if is_dark else "#fee2e2"
                     st_name = "En dificultad"
                 else:  # STATUS_PENDING
-                    bg = "#1e293b" if is_dark else "#f1f5f9"
-                    border = "#334155" if is_dark else "#cbd5e1"
-                    text_col = "#94a3b8" if is_dark else "#64748b"
-                    hover_bg = "#334155" if is_dark else "#e2e8f0"
+                    bg = absence_bg
+                    border = absence_border
+                    text_col = tokens.text_secondary or ("#94a3b8" if is_dark else "#64748b")
+                    hover_bg = tokens.bg_hover or ("#334155" if is_dark else "#e2e8f0")
                     st_name = "Pendiente"
 
                 if offset == 0:
@@ -1510,29 +1533,30 @@ class HomeViewWidget(QWidget):
         clock_size = 38 if compact else 48
         break_size = 20 if compact else 25
         is_dark = self.is_dark_mode
+        tokens = get_theme_tokens(self.current_theme)
 
         if self.application.is_timer_paused:
             state = "paused"
             pill_text = " ⏸  PAUSADO"
-            ex_color = "#94a3b8" if is_dark else "#78716c"
-            br_color = "#64748b" if is_dark else "#a8a29e"
+            ex_color = tokens.text_clock_idle or ("#94a3b8" if is_dark else "#78716c")
+            br_color = tokens.text_clock_break_idle or ("#64748b" if is_dark else "#a8a29e")
         elif self.application.mode is TimerMode.PLAY:
             state = "play"
             pill_text = " ●  ENFOQUE EN CURSO"
-            ex_color = "#34d399" if is_dark else "#047857"
-            br_color = "#64748b" if is_dark else "#a8a29e"
+            ex_color = tokens.text_clock_exercise or ("#34d399" if is_dark else "#047857")
+            br_color = tokens.text_clock_break_idle or ("#64748b" if is_dark else "#a8a29e")
         elif self.application.mode is TimerMode.BREAK:
             state = "break"
             pill_text = " ●  DESCANSO EN CURSO"
-            ex_color = "#64748b" if is_dark else "#a8a29e"
-            br_color = "#fbbf24" if is_dark else "#b45309"
+            ex_color = tokens.text_clock_idle or ("#64748b" if is_dark else "#a8a29e")
+            br_color = tokens.text_clock_break or ("#fbbf24" if is_dark else "#b45309")
         else:
             state = "waiting"
             pill_text = " ●  LISTO PARA COMENZAR"
-            ex_color = "#f1f5f9" if is_dark else "#1c1917"
-            br_color = "#64748b" if is_dark else "#78716c"
+            ex_color = tokens.text_primary or ("#f1f5f9" if is_dark else "#1c1917")
+            br_color = tokens.text_clock_break_idle or ("#64748b" if is_dark else "#78716c")
 
-        ex_card_style, br_card_style = get_timer_cards_style(state, is_dark)
+        ex_card_style, br_card_style = get_timer_cards_style(state, is_dark, tokens=tokens)
         if hasattr(self, "exercise_card"):
             self.exercise_card.setStyleSheet(ex_card_style)
             self.break_card.setStyleSheet(br_card_style)
@@ -1542,4 +1566,4 @@ class HomeViewWidget(QWidget):
 
         if hasattr(self, "status_pill"):
             self.status_pill.setText(pill_text)
-            self.status_pill.setStyleSheet(get_status_pill_style(state, is_dark))
+            self.status_pill.setStyleSheet(get_status_pill_style(state, is_dark, tokens=tokens))

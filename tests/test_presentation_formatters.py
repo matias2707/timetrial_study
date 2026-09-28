@@ -16,7 +16,20 @@ class PresentationFormatterTests(unittest.TestCase):
 
     def test_parse_accepts_compact_time(self) -> None:
         self.assertEqual(parse_milliseconds("02:345"), 2_345)
-        self.assertIn("<span", timer_markup(2_345))
+        # Formato con unidades tipográficas inline
+        self.assertIn("00<span", timer_markup(2_345))
+        self.assertIn("02<span", timer_markup(2_345))
+        self.assertIn(">h</span>", timer_markup(2_345))
+        self.assertIn(">m</span>", timer_markup(2_345))
+        self.assertIn(">s</span>", timer_markup(2_345))
+        self.assertIn("01<span", timer_markup(3_726_005))
+        self.assertIn("02<span", timer_markup(3_726_005))
+        self.assertIn("06<span", timer_markup(3_726_005))
+        # Modo compacto sin horas obligatorias
+        compact_markup = timer_markup(65_000, show_hours_always=False)
+        self.assertNotIn(">h</span>", compact_markup)
+        self.assertIn("01<span", compact_markup)
+        self.assertIn("05<span", compact_markup)
 
     def test_parse_rejects_invalid_ranges(self) -> None:
         with self.assertRaises(ValueError):

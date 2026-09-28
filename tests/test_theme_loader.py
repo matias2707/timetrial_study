@@ -69,7 +69,7 @@ class TestThemeLoader(unittest.TestCase):
     def test_all_catalog_skins_exist_in_available_themes(self) -> None:
         themes = get_available_themes()
         expected_skins = [
-            "sakura", "winter", "spring", "bamboo", "midnight",
+            "sakura", "winter", "spring", "bamboo", "midnight", "high_night",
             "classic_blue", "peach_fuzz", "marsala", "emerald", "illuminating",
             "black_sakura", "vampyr", "halloween",
         ]
@@ -113,6 +113,12 @@ class TestThemeLoader(unittest.TestCase):
         self.assertTrue(midnight.is_dark)
         self.assertEqual(midnight.bg_app, "#05070e")
         self.assertEqual(midnight.effect, "stars")
+
+        high_night = get_theme_tokens("high_night")
+        self.assertTrue(high_night.is_dark)
+        self.assertEqual(high_night.bg_app, "#040405")
+        self.assertEqual(high_night.effect, "high_night")
+        self.assertEqual(high_night.hero_card_top, "#9d4edd")
 
         black_sakura = get_theme_tokens("black_sakura")
         self.assertTrue(black_sakura.is_dark)

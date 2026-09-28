@@ -20,6 +20,7 @@ THEME_NORD = "nord"
 THEME_BLACK_SAKURA = "black_sakura"
 THEME_VAMPYR = "vampyr"
 THEME_HALLOWEEN = "halloween"
+THEME_HIGH_NIGHT = "high_night"
 
 
 @dataclass(frozen=True)
@@ -214,6 +215,72 @@ class ThemeTokens:
     effect: str = "none"
     background_image: str = ""
 
+    # Ausencia, slots vacíos e inactividad
+    color_absence: str = ""
+    color_absence_border: str = ""
+    color_future: str = ""
+    color_future_border: str = ""
+
+    # Gráficos y visualizaciones
+    bg_chart: str = ""
+    chart_gridline: str = ""
+    chart_time_curve: str = ""
+    chart_time_area: str = ""
+
+    # Barras de distribución horaria y actividad
+    activity_bar_bg: str = ""
+    activity_bar_fill: str = ""
+    activity_bar_peak: str = ""
+    activity_needle: str = ""
+
+    # Pestañas
+    tab_icon_active: str = ""
+    tab_icon_inactive: str = ""
+
+    # Estados dinámicos del marco de cronómetro
+    clock_card_active_exercise_bg: str = ""
+    clock_card_active_exercise_border: str = ""
+    clock_card_active_break_bg: str = ""
+    clock_card_active_break_border: str = ""
+    clock_card_paused_border: str = ""
+
+    @property
+    def bg_hover(self) -> str:
+        return self.bg_button_hover
+
+    @property
+    def tab_selected_bg(self) -> str:
+        return self.bg_tab_active
+
+    @property
+    def tab_indicator(self) -> str:
+        return self.tab_icon_active
+
+    @property
+    def accent_primary(self) -> str:
+        return self.hero_card_top or self.border_focus
+
+    @property
+    def success_bg(self) -> str:
+        return self.badge_completed_bg
+
+    @property
+    def success_text(self) -> str:
+        return self.badge_completed_fg
+
+    @property
+    def danger_text(self) -> str:
+        return self.badge_incomplete_fg
+
+    @property
+    def text_clock_idle(self) -> str:
+        return self.text_muted
+
+    @property
+    def text_clock_break_idle(self) -> str:
+        return self.text_faint or self.text_muted
+
+
 
 DARK_TOKENS = ThemeTokens(
     name=THEME_DARK,
@@ -381,6 +448,30 @@ DARK_TOKENS = ThemeTokens(
     tooltip_bg="#1e293b",
     tooltip_fg="#f8fafc",
     tooltip_border="#334155",
+    # Ausencia y slots
+    color_absence="#1e293b",
+    color_absence_border="#334155",
+    color_future="#0f172a",
+    color_future_border="#334155",
+    # Gráficos
+    bg_chart="#111827",
+    chart_gridline="#1e293b",
+    chart_time_curve="#38bdf8",
+    chart_time_area="rgba(56, 189, 248, 0.15)",
+    # Actividad
+    activity_bar_bg="#1e293b",
+    activity_bar_fill="#38bdf8",
+    activity_bar_peak="#10b981",
+    activity_needle="#38bdf8",
+    # Pestañas
+    tab_icon_active="#10b981",
+    tab_icon_inactive="#94a3b8",
+    # Estados de cronómetro
+    clock_card_active_exercise_bg="#081d16",
+    clock_card_active_exercise_border="#10b981",
+    clock_card_active_break_bg="#231805",
+    clock_card_active_break_border="#f59e0b",
+    clock_card_paused_border="#475569",
 )
 
 
@@ -550,9 +641,46 @@ LIGHT_TOKENS = ThemeTokens(
     tooltip_bg="#292524",
     tooltip_fg="#fdfcf7",
     tooltip_border="#44403c",
+    # Ausencia y slots
+    color_absence="#ede8dd",
+    color_absence_border="#d5cdbf",
+    color_future="#f7f4ed",
+    color_future_border="#d5cdbf",
+    # Gráficos
+    bg_chart="#fdfcf7",
+    chart_gridline="#e4ded4",
+    chart_time_curve="#0284c7",
+    chart_time_area="rgba(2, 132, 199, 0.14)",
+    # Actividad
+    activity_bar_bg="#ede8dd",
+    activity_bar_fill="#0284c7",
+    activity_bar_peak="#059669",
+    activity_needle="#0284c7",
+    # Pestañas
+    tab_icon_active="#047857",
+    tab_icon_inactive="#78716c",
+    # Estados de cronómetro
+    clock_card_active_exercise_bg="#eaf5ee",
+    clock_card_active_exercise_border="#059669",
+    clock_card_active_break_bg="#fbf4dc",
+    clock_card_active_break_border="#d97706",
+    clock_card_paused_border="#d5cdbf",
 )
 
 THEME_TOKENS_MAP: dict[str, ThemeTokens] = {
     THEME_DARK: DARK_TOKENS,
     THEME_LIGHT: LIGHT_TOKENS,
 }
+
+
+def get_theme_tokens(theme_name: str) -> ThemeTokens:
+    """Retorna la instancia de ThemeTokens para el tema especificado (estático o dinámico)."""
+    from presentation.theming.theme_loader import get_theme_tokens as _loader_get_tokens
+    return _loader_get_tokens(theme_name)
+
+
+def list_available_themes() -> list[str]:
+    """Retorna la lista de identificadores de todos los temas disponibles."""
+    from presentation.theming.theme_loader import get_available_themes
+    return get_available_themes()
+

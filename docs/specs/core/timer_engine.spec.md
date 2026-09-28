@@ -36,24 +36,29 @@ stateDiagram-v2
 
 ---
 
-## 3. Algoritmo de Medición Monotónica
+## 3. Algoritmo de Medición Monotónica Anclada (Zero-Drift)
 
-1. **Fuente de tiempo:** Utiliza exclusivamente reloj monotónico de alta resolución (`time.perf_counter()` en Python, `performance.now()` en JavaScript/Web, `std::time::Instant` en Rust).
-2. **Sincronización diferencial (`_sync`):**
+1. **Fuente de tiempo:** Utiliza exclusivamente reloj monotónico de alta resolución (`time.perf_counter()` en Python).
+2. **Sincronización diferencial con arrastre fraccional (`_sync`):**
+   Para prevenir la acumulación de errores de redondeo (que provocaban fugas de varios segundos en sesiones extensas), el temporizador emplea un ancla flotante continua:
    ```text
    now = current_monotonic_time()
-   delta = round((now - last_tick) * 1000)
-   last_tick = now
+   elapsed_s = max(0.0, now - _segment_start)
+   consumed_ms = int(elapsed_s * 1000)
 
-   if mode == PLAY and not is_paused:
-       exercise_time_ms += delta
-   elif mode == BREAK and not is_paused:
-       break_time_ms += delta
+   if consumed_ms > 0:
+       _segment_start += (consumed_ms / 1000.0)  # Preserva remanente sub-milisegundo exacto
+       if mode == PLAY and not is_paused:
+           exercise_time_ms += consumed_ms
+       elif mode == BREAK and not is_paused:
+           break_time_ms += consumed_ms
    ```
 3. **Invariantes:**
    * `exercise_time_ms >= 0` y `break_time_ms >= 0`.
-   * El paso a pausa ejecuta un `_sync()` inmediato antes de fijar `is_paused = True`.
-   * La reanudación (`resume()`) actualiza `last_tick = now` **sin** sumar el tiempo que transcurrió durante la pausa.
+   * El paso a pausa ejecuta un `_sync()` inmediato y desancla `_segment_start = None`.
+   * La reanudación (`resume()`) fija `_segment_start = time.perf_counter()` **sin** sumar el tiempo que transcurrió durante la pausa.
+   * Deriva de reloj acumulada: matemáticamente **0.000 ms** independientemente de la frecuencia de refresco de la UI o de la duración de la sesión.
+   * **Visualización de Contadores:** La capa de presentación (`timer_markup`) expone el tiempo en formato de 3 bloques consistentes con unidades tipográficas inline suaves (`00h 25m 14s`). Las letras `h`, `m`, `s` se renderizan al 52% del tamaño principal con opacidad atenuada (65%) y `setWordWrap(False)`, eliminando cualquier ambigüedad entre horas y minutos y previniendo saltos de ancho (layout shifts). Se eliminan los milisegundos fraccionales `.sss` de la vista para preservar la concentración y optimizar la tasa de refresco a 100 ms.
 
 ---
 

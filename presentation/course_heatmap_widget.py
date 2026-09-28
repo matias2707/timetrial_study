@@ -27,6 +27,15 @@ DAY_LETTERS = ["L", "M", "X", "J", "V", "S", "D"]
 DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
 
+def _blend_hex(color1: str, color2: str, factor: float) -> str:
+    c1 = QColor(color1)
+    c2 = QColor(color2)
+    r = int(c1.red() + factor * (c2.red() - c1.red()))
+    g = int(c1.green() + factor * (c2.green() - c1.green()))
+    b = int(c1.blue() + factor * (c2.blue() - c1.blue()))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 class CourseHeatmapCanvas(QWidget):
     """Canvas de dibujo puro con QPainter para la cuadrícula del mapa de calor."""
 
@@ -37,6 +46,7 @@ class CourseHeatmapCanvas(QWidget):
         self.weeks: list[list[dict[str, Any]]] = []
         self.max_day_ms: int = 3_600_000
         self.is_dark: bool = True
+        self._current_theme: str = "dark" if self.is_dark else "light"
         self.hovered_cell: tuple[int, int] | None = None
         self.setMouseTracking(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
@@ -49,9 +59,15 @@ class CourseHeatmapCanvas(QWidget):
         self._update_canvas_height()
         self.update()
 
-    def set_dark_mode(self, is_dark: bool) -> None:
-        self.is_dark = is_dark
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self.is_dark = tokens.is_dark
         self.update()
+
+    def set_dark_mode(self, is_dark: bool) -> None:
+        self.set_theme("dark" if is_dark else "light")
 
     def _calc_geometry(self) -> tuple[float, float, float, float, float]:
         """Calcula el offset y tamaño de celdas según el ancho disponible."""
@@ -222,20 +238,27 @@ class CourseHeatmapCanvas(QWidget):
             painter.drawRoundedRect(rect, 3.0, 3.0)
             return
 
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+        is_dark = tokens.is_dark
+        fill_hex = tokens.activity_bar_fill or ("#10b981" if is_dark else "#15803d")
+        peak_hex = tokens.activity_bar_peak or ("#34d399" if is_dark else "#059669")
+        absence_hex = tokens.color_absence or ("#1e293b" if is_dark else "#ede8dd")
+
         if is_past or (is_today and ex_ms > 0):
             if ex_ms == 0:
-                bg_color = QColor("#1e293b" if self.is_dark else "#ede8dd")
+                bg_color = QColor(absence_hex)
             elif ex_ms < 3_600_000:  # < 1h
-                bg_color = QColor("#064e3b" if self.is_dark else "#bbf7d0")
+                bg_color = QColor(_blend_hex(absence_hex, fill_hex, 0.40))
             elif ex_ms < 7_200_000:  # 1-2h
-                bg_color = QColor("#047857" if self.is_dark else "#4ade80")
+                bg_color = QColor(_blend_hex(absence_hex, fill_hex, 0.70))
             elif ex_ms < 10_800_000:  # 2-3h
-                bg_color = QColor("#059669" if self.is_dark else "#16a34a")
+                bg_color = QColor(fill_hex)
             else:  # >= 3h
-                bg_color = QColor("#10b981" if self.is_dark else "#15803d")
+                bg_color = QColor(peak_hex)
         else:
             # Días futuros: silueta tenue tono papel
-            bg_color = QColor("#0f172a" if self.is_dark else "#f7f4ed")
+            bg_color = QColor(tokens.color_future or ("#0f172a" if is_dark else "#f7f4ed"))
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(bg_color))
@@ -243,7 +266,7 @@ class CourseHeatmapCanvas(QWidget):
 
         # Borde para días futuros dentro de la cursada
         if is_future:
-            border_pen = QPen(QColor("#334155" if self.is_dark else "#d5cdbf"), 1.0, Qt.PenStyle.DashLine)
+            border_pen = QPen(QColor(tokens.color_future_border or ("#334155" if is_dark else "#d5cdbf")), 1.0, Qt.PenStyle.DashLine)
             painter.setPen(border_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 3.0, 3.0)
@@ -273,9 +296,9 @@ class CourseHeatmapCanvas(QWidget):
             center = rect.center()
             painter.drawEllipse(center, 2.5, 2.5)
 
-        # Resaltado de HOY (borde azul brillante)
+        # Resaltado de HOY (borde con color acento/aguja)
         if is_today:
-            today_pen = QPen(QColor("#38bdf8"), 2.0)
+            today_pen = QPen(QColor(tokens.activity_needle or ("#38bdf8" if is_dark else "#0284c7")), 2.0)
             painter.setPen(today_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 3.0, 3.0)
@@ -393,13 +416,19 @@ class CourseHeatmapWidget(QWidget):
             """)
 
     def _update_legend_text(self) -> None:
-        muted = "#94a3b8" if self.is_dark else "#78716c"
-        c0 = "#1e293b" if self.is_dark else "#ede8dd"
-        c1 = "#064e3b" if self.is_dark else "#bbf7d0"
-        c2 = "#047857" if self.is_dark else "#4ade80"
-        c3 = "#059669" if self.is_dark else "#16a34a"
-        c4 = "#10b981" if self.is_dark else "#15803d"
-        today_c = "#38bdf8" if self.is_dark else "#0284c7"
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+        is_dark = tokens.is_dark
+
+        muted = tokens.text_muted or ("#94a3b8" if is_dark else "#78716c")
+        c0 = tokens.color_absence or ("#1e293b" if is_dark else "#ede8dd")
+        fill_hex = tokens.activity_bar_fill or ("#10b981" if is_dark else "#15803d")
+        peak_hex = tokens.activity_bar_peak or ("#34d399" if is_dark else "#059669")
+        c1 = _blend_hex(c0, fill_hex, 0.40)
+        c2 = _blend_hex(c0, fill_hex, 0.70)
+        c3 = fill_hex
+        c4 = peak_hex
+        today_c = tokens.activity_needle or ("#38bdf8" if is_dark else "#0284c7")
         self.leg_text.setText(
             f"<span style='color: {muted};'>Intensidad de estudio:</span> "
             f"<span style='color: {c0};'>■</span> "
@@ -419,13 +448,20 @@ class CourseHeatmapWidget(QWidget):
         canvas_h = self.canvas.get_required_height() if hasattr(self, "canvas") else 220
         return QSize(500, canvas_h + 85)
 
-    def set_dark_mode(self, is_dark: bool) -> None:
-        self.is_dark = is_dark
-        self.canvas.set_dark_mode(is_dark)
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self.is_dark = tokens.is_dark
+        if hasattr(self, "canvas"):
+            self.canvas.set_theme(theme)
         if hasattr(self, "btn_config_schedule"):
             self._update_schedule_btn_style()
         if hasattr(self, "leg_text"):
             self._update_legend_text()
+
+    def set_dark_mode(self, is_dark: bool) -> None:
+        self.set_theme("dark" if is_dark else "light")
 
     def set_heatmap_data(self, data: dict[str, Any]) -> None:
         """Actualiza todos los subcomponentes con los datos calculados de cursada."""

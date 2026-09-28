@@ -38,6 +38,10 @@ class Particle:
     wobble_speed: float
     color_hex: str
     kind: str
+    base_size: float = 0.0
+    flash_timer: int = 0
+    flash_duration: int = 0
+    flash_color_hex: str = "#eef0f6"
 
 
 class AmbientParticleOverlay(QWidget):
@@ -51,6 +55,7 @@ class AmbientParticleOverlay(QWidget):
         "sakura",
         "snow",
         "stars",
+        "high_night",
         "bamboo",
         "leaves",
         "halloween",
@@ -69,6 +74,7 @@ class AmbientParticleOverlay(QWidget):
 
         self._effect: str = "none"
         self._particles: list[Particle] = []
+        self._flash_countdown: int = 60
         self._timer = QTimer(self)
         self._timer.setInterval(33)  # ~30 FPS para máxima fluidez con bajo impacto de CPU
         self._timer.timeout.connect(self._update_particles)
@@ -174,6 +180,30 @@ class AmbientParticleOverlay(QWidget):
                         wobble_speed=random.uniform(0.03, 0.08),  # Pulso de brillo
                         color_hex=random.choice(palette),
                         kind="stars",
+                        base_size=random.uniform(2.5, 6.0),
+                    )
+                )
+
+        elif self._effect == "high_night":
+            palette = ["#d8d8e8", "#e4e4ee", "#cfcfe0", "#edeef5", "#c8c4dc"]
+            self._flash_countdown = random.randint(60, 150)
+            for _ in range(count + 5):
+                sz = random.uniform(1.2, 3.2)  # Estrellas más pequeñas y claras
+                self._particles.append(
+                    Particle(
+                        x=random.uniform(0, w),
+                        y=random.uniform(0, h),
+                        vx=random.uniform(-0.03, 0.03),
+                        vy=random.uniform(0.01, 0.05),
+                        size=sz,
+                        alpha=random.uniform(0.18, 0.42),
+                        rotation=random.uniform(0, 360),
+                        v_rot=random.uniform(-0.3, 0.3),
+                        phase=random.uniform(0, math.tau),
+                        wobble_speed=random.uniform(0.02, 0.06),
+                        color_hex=random.choice(palette),
+                        kind="high_night",
+                        base_size=sz,
                     )
                 )
 
@@ -258,10 +288,17 @@ class AmbientParticleOverlay(QWidget):
                 )
 
     def _update_particles(self) -> None:
-        """Avanza la simulación física de cada partícula."""
+        """Avanza la simulación física si el widget está visible."""
         if not self.isVisible() or (self.window() and self.window().isMinimized()):
             return
+        self._advance_physics()
 
+    def step_simulation(self) -> None:
+        """Avanza manualmente la simulación (utilizado en pruebas automatizadas)."""
+        self._advance_physics()
+
+    def _advance_physics(self) -> None:
+        """Calcula el siguiente paso de física para las partículas activas."""
         w = max(self.width(), 100)
         h = max(self.height(), 100)
 
@@ -289,11 +326,27 @@ class AmbientParticleOverlay(QWidget):
             elif p.x < -25:
                 p.x = w + 20
 
-        self.update()
+        # Manejo de destellos fugaces ("beat" o pulso individual) para High Night
+        if self._effect == "high_night":
+            for p in self._particles:
+                if p.flash_timer > 0:
+                    p.flash_timer -= 1
 
-    def step_simulation(self) -> None:
-        """Avanza manualmente la simulación (utilizado en pruebas automatizadas)."""
-        self._update_particles()
+            self._flash_countdown -= 1
+            if self._flash_countdown <= 0:
+                # Una a una individualmente emiten un destello fugaz cada 2 a 5 segundos
+                idle_stars = [p for p in self._particles if p.flash_timer <= 0]
+                if idle_stars:
+                    chosen = random.choice(idle_stars)
+                    duration = random.randint(14, 20)  # ~0.5 a 0.7 segundos a 30 FPS
+                    chosen.flash_timer = duration
+                    chosen.flash_duration = duration
+                    chosen.flash_color_hex = random.choice(
+                        ["#eef0f6", "#e8eaf2", "#f0f2f8", "#e5e7eb", "#ebebf2"]
+                    )
+                self._flash_countdown = random.randint(60, 150)
+
+        self.update()
 
     def paintEvent(self, event) -> None:
         """Renderiza las partículas con antialiasing y transparencia calibrada."""
@@ -305,14 +358,30 @@ class AmbientParticleOverlay(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
 
         for p in self._particles:
+            effective_size = p.size
+            if p.kind == "high_night":
+                if p.flash_timer > 0 and p.flash_duration > 0:
+                    # Curva de destello fugaz senoidal: rápida subida y bajada
+                    progress = 1.0 - (p.flash_timer / p.flash_duration)
+                    pulse = math.sin(progress * math.pi)
+                    current_alpha = min(0.92, p.alpha + (0.85 - p.alpha) * pulse)
+                    effective_size = p.base_size * (1.0 + 1.2 * pulse)
+                    color = QColor(p.flash_color_hex)
+                else:
+                    # Titilación base en reposo
+                    pulse = 0.5 + 0.5 * math.sin(p.phase)
+                    current_alpha = max(0.12, min(0.48, p.alpha * (0.75 + 0.5 * pulse)))
+                    effective_size = p.base_size
+                    color = QColor(p.color_hex)
             # Calcular alpha pulsante suave para estrellas y rescoldos
-            if p.kind in ("stars", "halloween", "vampyr"):
+            elif p.kind in ("stars", "halloween", "vampyr"):
                 pulse = 0.5 + 0.5 * math.sin(p.phase)
                 current_alpha = max(0.1, min(0.65, p.alpha * (0.7 + 0.6 * pulse)))
+                color = QColor(p.color_hex)
             else:
                 current_alpha = p.alpha
+                color = QColor(p.color_hex)
 
-            color = QColor(p.color_hex)
             color.setAlphaF(current_alpha)
             painter.setBrush(QBrush(color))
 
@@ -352,9 +421,9 @@ class AmbientParticleOverlay(QWidget):
                 r = p.size * 0.5
                 painter.drawEllipse(QPointF(0, 0), r, r)
 
-            elif p.kind == "stars":
+            elif p.kind in ("stars", "high_night"):
                 # Estrella titilante de cuatro puntas
-                sz = p.size
+                sz = effective_size
                 path = QPainterPath()
                 path.moveTo(0, -sz)
                 path.lineTo(sz * 0.25, -sz * 0.25)

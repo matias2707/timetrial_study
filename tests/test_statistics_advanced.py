@@ -164,6 +164,69 @@ class TestPresentationAdvancedStatistics(unittest.TestCase):
         self.assertEqual(widget.hero_stack.currentIndex(), 0)
         self.assertTrue(widget.btn_view_heatmap.isChecked())
 
+    def test_statistics_view_hourly_chart_data_population(self):
+        """Verifica que el histograma 24h reciba la distribución horaria y actualice las barras y etiqueta pico."""
+        self.app_service.record.items.extend([
+            TimerItem(
+                section_type="Guía",
+                section_number=1,
+                exercise=1,
+                inciso=None,
+                exercise_time_ms=1800000,
+                break_time_ms=0,
+                completed=True,
+                created_at="2026-09-20T02:00:00",
+            ),
+            TimerItem(
+                section_type="Guía",
+                section_number=1,
+                exercise=2,
+                inciso=None,
+                exercise_time_ms=3600000,
+                break_time_ms=0,
+                completed=True,
+                created_at="2026-09-20T14:00:00",
+            ),
+        ])
+
+        widget = StatisticsViewWidget(self.app_service)
+        widget.refresh_statistics()
+
+        self.assertEqual(widget.hourly_chart.hourly_data[2], 1800000)
+        self.assertEqual(widget.hourly_chart.hourly_data[14], 3600000)
+        self.assertEqual(widget.hourly_chart.hourly_data[5], 0)
+        self.assertIn("14:00", widget.general_tab.lbl_peak_hour.text())
+
+    def test_hourly_chart_widget_standalone(self):
+        """Verifica los métodos del componente Hourly24hChartWidget de forma aislada."""
+        from PySide6.QtGui import QPixmap
+
+        chart = Hourly24hChartWidget(is_dark_mode=True)
+        self.assertTrue(chart.dark_mode)
+
+        # Carga de datos
+        chart.set_data({2: 500000, 10: 1200000})
+        self.assertEqual(chart.hourly_data[2], 500000)
+        self.assertEqual(chart.hourly_data[10], 1200000)
+        self.assertEqual(chart.hourly_data[0], 0)
+
+        # Renderizado offscreen en modo oscuro
+        chart.resize(400, 150)
+        pix = QPixmap(chart.size())
+        chart.render(pix)
+        self.assertFalse(pix.isNull())
+
+        # Modo claro y clear
+        chart.set_dark_mode(False)
+        self.assertFalse(chart.dark_mode)
+        chart.clear()
+        self.assertEqual(chart.hourly_data[2], 0)
+        self.assertEqual(chart.hourly_data[10], 0)
+
+        # Manejo de None sin excepción
+        chart.set_data(None)
+        self.assertEqual(chart.hourly_data[0], 0)
+
     def test_statistics_view_signals(self):
         widget = StatisticsViewWidget(self.app_service)
         received_schedule = []

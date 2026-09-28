@@ -39,21 +39,41 @@ class GeneralTabWidget(QWidget):
     def __init__(self, is_dark_mode: bool = False, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._is_dark_mode = is_dark_mode
+        self._current_theme = "dark" if is_dark_mode else "light"
         self._top_effort_data: list[TopEffortExercise] = []
         self._build_ui()
 
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self._is_dark_mode = tokens.is_dark
+        if hasattr(self.cumulative_chart, "set_theme"):
+            self.cumulative_chart.set_theme(theme)
+        else:
+            self.cumulative_chart.set_dark_mode(tokens.is_dark)
+
+        if hasattr(self.course_heatmap, "set_theme"):
+            self.course_heatmap.set_theme(theme)
+        else:
+            self.course_heatmap.set_dark_mode(tokens.is_dark)
+
+        if hasattr(self.hourly_chart, "set_theme"):
+            self.hourly_chart.set_theme(theme)
+        else:
+            self.hourly_chart.set_dark_mode(tokens.is_dark)
+
     def set_dark_mode(self, is_dark: bool) -> None:
-        self._is_dark_mode = is_dark
-        self.cumulative_chart.set_dark_mode(is_dark)
-        self.course_heatmap.set_dark_mode(is_dark)
-        self.hourly_chart.set_dark_mode(is_dark)
+        self.set_theme("dark" if is_dark else "light")
 
     def _build_ui(self) -> None:
         scroll = QScrollArea(self)
+        scroll.setObjectName("statsScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         container = QWidget()
+        container.setObjectName("statsContainer")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(32, 20, 32, 32)
         layout.setSpacing(20)
@@ -455,6 +475,8 @@ class GeneralTabWidget(QWidget):
             self.effort_table.setCellWidget(row, 4, btn)
 
         # Histograma 24h
+        self.hourly_chart.set_data(hourly_data)
+
         # Detectar hora pico
         if hourly_data:
             peak_h = max(hourly_data.keys(), key=lambda h: hourly_data[h])
@@ -462,3 +484,5 @@ class GeneralTabWidget(QWidget):
                 self.lbl_peak_hour.setText(f"Franja pico: {peak_h:02d}:00 a {(peak_h+1)%24:02d}:00")
             else:
                 self.lbl_peak_hour.setText("Franja horaria (00h a 23h)")
+        else:
+            self.lbl_peak_hour.setText("Franja horaria (00h a 23h)")

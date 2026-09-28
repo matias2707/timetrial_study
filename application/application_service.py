@@ -122,7 +122,7 @@ class StudyApplicationService:
         if self.mode is TimerMode.WAITING:
             if location is not None:
                 self.set_location(location)
-            self.session_started_at = datetime.now()
+            self.session_started_at = datetime.now().replace(microsecond=0)
             self.timer.start()
         else:
             self.timer.toggle_break()
@@ -188,8 +188,13 @@ class StudyApplicationService:
             return False
 
         exercise_ms, break_ms = self.timer.snapshot()
+        # Redondeo exacto a segundos (múltiplos de 1.000 ms) para consistencia limpia sin residuos sub-segundo
+        exercise_ms = int(round(exercise_ms / 1000.0) * 1000)
+        break_ms = int(round(break_ms / 1000.0) * 1000)
         total_duration_ms = exercise_ms + break_ms
-        started_dt = self.session_started_at or (datetime.now() - timedelta(milliseconds=total_duration_ms))
+        started_dt = (
+            self.session_started_at or (datetime.now() - timedelta(milliseconds=total_duration_ms))
+        ).replace(microsecond=0)
         item_created_at = started_dt.isoformat(timespec="seconds")
 
         if self.editing_item_id and overwrite:

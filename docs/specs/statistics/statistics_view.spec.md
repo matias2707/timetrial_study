@@ -184,6 +184,10 @@ class IStatisticsView(Protocol):
      $$\text{allocated\_ms}(h) = \min(3.600.000, \text{round}(\text{overlap\_ms}(h) \times \text{ratio}))$$
    - Cada hora involucrada contabiliza su cuota exacta de tiempo neto y registra el intento activo correspondiente.
    - Cruces de medianoche se imputan adecuadamente a cada fecha respectiva (ej. 23:20 a 00:40 asigna 40 min a las 23 hs del día 1 y 40 min a las 00 hs del día 2).
-5. **Respeto a `AGENTS.md`:**
+5. **Visualización y Sincronización del Histograma Circadiano (`Hourly24hChartWidget`):**
+   - **Contrato de Renderizado:** `GeneralTabWidget.render_data` recibe `hourly_data: dict[int, int]` (mapa 0..23 de milisegundos netos) e invoca explícitamente `self.hourly_chart.set_data(hourly_data)`.
+   - **Resiliencia ante Datos Nulos:** `Hourly24hChartWidget.set_data` tolera `None` o diccionarios vacíos degradando de forma segura a pistas en 0 sin excepciones. Incluye método `clear()` para restablecer el estado.
+   - **Sincronización de Franja Pico:** La franja horaria pico identificada en el histograma se sincroniza visualmente con la etiqueta de cabecera (`self.lbl_peak_hour`: "Franja pico: HH:00 a (HH+1):00") y el indicador superior de estrella (`★`) en la barra con mayor volumen acumulado.
+6. **Respeto a `AGENTS.md`:**
    - Cero imports de `PySide6` o `Qt` en `presentation/statistics/statistics_presenter.py`.
    - Tokens de tema centralizados desde `get_theme_tokens()`.

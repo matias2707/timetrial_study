@@ -46,8 +46,9 @@ stateDiagram-v2
    * Solo es posible finalizar un intento si el cronómetro está activo (`mode != WAITING`) o si se encuentra en modo edición/continuación (`editing_item_id is not None`).
 2. **Construcción del `TimerItem`:**
    * Al finalizar, se extrae el snapshot del cronómetro: `exercise_ms, break_ms = timer.snapshot()`.
+   * Los tiempos se redondean al segundo entero más cercano (`round(ms / 1000) * 1000`), garantizando persistencia en milisegundos limpios sin residuos fraccionales sub-segundo.
    * Se crea una entidad `TimerItem` con:
-     * `created_at`: ISO-8601 con la fecha/hora de inicio del intento (`session_started_at` o fallback calculado `now - total_duration`).
+     * `created_at`: ISO-8601 con la fecha/hora de inicio del intento (`session_started_at` o fallback calculado `now - total_duration`), acotada a precisión de segundos (`microsecond=0`).
      * `section_type`, `section_number`, `exercise`, `inciso` tomados de `SessionLocation`.
      * `exercise_time_ms`, `break_time_ms`.
      * `completed`: booleano (`True` si fue completado, `False` si fue incompleto).

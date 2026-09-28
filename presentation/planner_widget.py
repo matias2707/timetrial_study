@@ -44,6 +44,7 @@ from presentation.planner_dialogs import (
     TagManagerDialog,
 )
 from presentation.presentation_formatters import format_milliseconds
+from presentation.theme_tokens import get_theme_tokens
 
 
 class SegmentedProgressBar(QProgressBar):
@@ -57,6 +58,7 @@ class SegmentedProgressBar(QProgressBar):
     ) -> None:
         super().__init__(parent)
         self.is_dark = is_dark
+        self._current_theme = "dark" if is_dark else "light"
         self.corner_radius = corner_radius
         self.completed_val: float = 0.0
         self.failed_val: float = 0.0
@@ -67,9 +69,14 @@ class SegmentedProgressBar(QProgressBar):
         self.setValue(0)
         self.setStyleSheet("QProgressBar { border: none; background: transparent; }")
 
-    def set_dark_mode(self, is_dark: bool) -> None:
-        self.is_dark = is_dark
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        tokens = get_theme_tokens(theme)
+        self.is_dark = tokens.is_dark
         self.update()
+
+    def set_dark_mode(self, is_dark: bool) -> None:
+        self.set_theme("dark" if is_dark else "light")
 
     def set_segmented_values(self, completed: float, failed: float, total: float = 100.0) -> None:
         self.completed_val = max(0.0, float(completed))
@@ -108,8 +115,11 @@ class SegmentedProgressBar(QProgressBar):
         clip_path.addRoundedRect(0, 0, w, h, r, r)
         painter.setClipPath(clip_path)
 
-        # Fondo del canal
-        bg_color = QColor("#1e293b" if self.is_dark else "#e2e8f0")
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+        is_dark = tokens.is_dark
+
+        # Fondo del canal (color ausencia o track)
+        bg_color = QColor(tokens.color_absence or tokens.progress_bg or ("#1e293b" if is_dark else "#e2e8f0"))
         painter.fillRect(rect, bg_color)
 
         if self.total_val > 0:
@@ -136,13 +146,15 @@ class SegmentedProgressBar(QProgressBar):
             if w_comp + w_failed > w:
                 w_failed = max(0, w - w_comp)
 
-            # Segmento verde: Hechos / Completados (#059669)
+            # Segmento: Hechos / Completados
             if w_comp > 0:
-                painter.fillRect(0, 0, w_comp, h, QColor("#059669"))
+                comp_color = QColor(tokens.progress_chunk or tokens.success_bg or ("#059669" if is_dark else "#10b981"))
+                painter.fillRect(0, 0, w_comp, h, comp_color)
 
-            # Segmento rojo: En dificultad / Fallados (#b91c1c)
+            # Segmento: En dificultad / Fallados
             if w_failed > 0:
-                painter.fillRect(w_comp, 0, w_failed, h, QColor("#b91c1c"))
+                failed_color = QColor(tokens.danger_bg or "#b91c1c")
+                painter.fillRect(w_comp, 0, w_failed, h, failed_color)
 
 
 class ExerciseCellButton(QPushButton):
@@ -268,16 +280,11 @@ class ExerciseCellButton(QPushButton):
                 text = "#b91c1c"
                 border = "#fecaca"
         else:  # STATUS_PENDING
-            if self.is_dark:
-                bg = "#1e293b"
-                hover_bg = "#334155"
-                text = "#94a3b8"
-                border = "#334155"
-            else:
-                bg = "#f1f5f9"
-                hover_bg = "#e2e8f0"
-                text = "#64748b"
-                border = "#cbd5e1"
+            tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+            bg = tokens.color_absence or ("#1e293b" if self.is_dark else "#f1f5f9")
+            hover_bg = tokens.bg_hover or ("#334155" if self.is_dark else "#e2e8f0")
+            text = tokens.text_secondary or ("#94a3b8" if self.is_dark else "#64748b")
+            border = tokens.color_absence_border or ("#334155" if self.is_dark else "#cbd5e1")
 
         font_size = "11px" if len(self.node.display_label) >= 4 else "12px"
         font_weight = "700" if status != STATUS_PENDING else "600"
@@ -408,17 +415,12 @@ class GroupHeaderCellButton(QPushButton):
                 hover_bg = "#fee2e2"
                 text = "#b91c1c"
                 border = "#fecaca"
-        else:  # STATUS_PENDING (gris)
-            if self.is_dark:
-                bg = "#1e293b"
-                hover_bg = "#334155"
-                text = "#94a3b8"
-                border = "#334155"
-            else:
-                bg = "#f1f5f9"
-                hover_bg = "#e2e8f0"
-                text = "#64748b"
-                border = "#cbd5e1"
+        else:  # STATUS_PENDING (gris de ausencia)
+            tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+            bg = tokens.color_absence or ("#1e293b" if self.is_dark else "#f1f5f9")
+            hover_bg = tokens.bg_hover or ("#334155" if self.is_dark else "#e2e8f0")
+            text = tokens.text_secondary or ("#94a3b8" if self.is_dark else "#64748b")
+            border = tokens.color_absence_border or ("#334155" if self.is_dark else "#cbd5e1")
 
         font_size = "11px" if len(str(self.node.exercise)) >= 4 else "12px"
         font_weight = "700" if status != STATUS_PENDING else "600"
@@ -559,8 +561,9 @@ class CompositeExerciseGroup(QFrame):
         self.is_collapsed = False
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        border_color = "#334155" if is_dark else "#cbd5e1"
-        bg_color = "#111827" if is_dark else "#f8fafc"
+        tokens = get_theme_tokens("dark" if is_dark else "light")
+        border_color = tokens.card_border or ("#334155" if is_dark else "#cbd5e1")
+        bg_color = tokens.bg_card_inner or tokens.bg_card or ("#111827" if is_dark else "#f8fafc")
         self.setStyleSheet(
             f"""
             CompositeExerciseGroup {{
@@ -654,8 +657,9 @@ class PlannedSectionCard(QFrame):
         self.on_delete_click = on_delete_click
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        card_bg = "#0f172a" if is_dark else "#ffffff"
-        card_border = "#1e293b" if is_dark else "#e2e8f0"
+        tokens = get_theme_tokens("dark" if is_dark else "light")
+        card_bg = tokens.bg_card or ("#0f172a" if is_dark else "#ffffff")
+        card_border = tokens.card_border or ("#1e293b" if is_dark else "#e2e8f0")
         self.setStyleSheet(
             f"""
             PlannedSectionCard {{
@@ -886,6 +890,7 @@ class PlannerWidget(QWidget):
         super().__init__(parent)
         self.app_service = app_service
         self.is_dark = is_dark_mode
+        self._current_theme = "dark" if is_dark_mode else "light"
         self.active_filter_mode = "all"
         self.active_filter_tag_id: str | None = None
         self.all_incisos_collapsed = False
@@ -966,16 +971,6 @@ class PlannerWidget(QWidget):
         # 2. Resumen Global (Chips / Bento Cards)
         self.summary_frame = QFrame()
         self.summary_frame.setObjectName("planner_summary_frame")
-        self.summary_frame.setStyleSheet(
-            f"""
-            QFrame#planner_summary_frame {{
-                background-color: {"#111827" if is_dark_mode else "#fdfcf7"};
-                border: 1px solid {"#1e293b" if is_dark_mode else "#e4ded4"};
-                border-radius: 12px;
-                padding: 12px 16px;
-            }}
-            """
-        )
         sum_layout = QHBoxLayout(self.summary_frame)
         sum_layout.setSpacing(20)
 
@@ -1189,20 +1184,23 @@ class PlannerWidget(QWidget):
             self._rebuild_columns()
 
     def _get_badge_color(self, key: str) -> str:
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
         colors = {
-            "total_planificado": "#38bdf8" if self.is_dark else "#0284c7",
-            "hechos": "#10b981" if self.is_dark else "#059669",
-            "en_dificultad": "#f87171" if self.is_dark else "#dc2626",
-            "pendientes": "#cbd5e1" if self.is_dark else "#57534e",
+            "total_planificado": tokens.accent_primary or ("#38bdf8" if self.is_dark else "#0284c7"),
+            "hechos": tokens.success_text or ("#10b981" if self.is_dark else "#059669"),
+            "en_dificultad": tokens.danger_text or ("#f87171" if self.is_dark else "#dc2626"),
+            "pendientes": tokens.text_secondary or ("#cbd5e1" if self.is_dark else "#57534e"),
         }
-        return colors.get(key, "#10b981" if self.is_dark else "#059669")
+        return colors.get(key, tokens.accent_primary or ("#10b981" if self.is_dark else "#059669"))
 
     def _make_stat_badge(self, title: str, value: str, key: str) -> QVBoxLayout:
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+        muted = tokens.text_muted or ("#94a3b8" if self.is_dark else "#78716c")
         v = QVBoxLayout()
         v.setSpacing(1)
         t_lbl = QLabel(title)
         t_lbl.setObjectName(f"stat_title_{key}")
-        t_lbl.setStyleSheet(f"color: {'#94a3b8' if self.is_dark else '#78716c'}; font-size: 11px; font-weight: 600;")
+        t_lbl.setStyleSheet(f"color: {muted}; font-size: 11px; font-weight: 600;")
         v_lbl = QLabel(value)
         v_lbl.setObjectName(f"stat_val_{key}")
         color = self._get_badge_color(key)
@@ -1212,7 +1210,8 @@ class PlannerWidget(QWidget):
         return v
 
     def _update_stat_badge_styles(self) -> None:
-        muted = "#94a3b8" if self.is_dark else "#78716c"
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+        muted = tokens.text_muted or ("#94a3b8" if self.is_dark else "#78716c")
         for key in ("total_planificado", "hechos", "en_dificultad", "pendientes"):
             color = self._get_badge_color(key)
             w_val = self.summary_frame.findChild(QLabel, f"stat_val_{key}")
@@ -1222,19 +1221,16 @@ class PlannerWidget(QWidget):
             if w_title:
                 w_title.setStyleSheet(f"color: {muted}; font-size: 11px; font-weight: 600;")
 
-    def set_dark_mode(self, is_dark: bool) -> None:
-        self.is_dark = is_dark
-        self.summary_frame.setStyleSheet(
-            f"""
-            QFrame#planner_summary_frame {{
-                background-color: {"#111827" if is_dark else "#fdfcf7"};
-                border: 1px solid {"#1e293b" if is_dark else "#e4ded4"};
-                border-radius: 12px;
-                padding: 12px 16px;
-            }}
-            """
-        )
-        self.global_progress_bar.set_dark_mode(is_dark)
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        tokens = get_theme_tokens(theme)
+        self.is_dark = tokens.is_dark
+        self.summary_frame.setStyleSheet("")
+        if hasattr(self.global_progress_bar, "set_theme"):
+            self.global_progress_bar.set_theme(theme)
+        else:
+            self.global_progress_bar.set_dark_mode(tokens.is_dark)
+
         if hasattr(self, "btn_add_section"):
             self._update_btn_add_section_style()
         if hasattr(self, "btn_toggle_expand_all"):
@@ -1244,6 +1240,9 @@ class PlannerWidget(QWidget):
         self._update_stat_badge_styles()
         if self.app_service.is_record_open:
             self.refresh_view()
+
+    def set_dark_mode(self, is_dark: bool) -> None:
+        self.set_theme("dark" if is_dark else "light")
 
     def set_empty_state(self, is_empty: bool) -> None:
         """Habilita o deshabilita acciones de planificación según si hay proyecto activo."""

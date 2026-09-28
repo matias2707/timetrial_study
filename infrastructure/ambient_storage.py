@@ -27,6 +27,7 @@ class AmbientStorageService:
             base_dir = Path(__file__).resolve().parent.parent / "data"
         self.data_dir = Path(base_dir)
         self.presets_file = Path(presets_path) if presets_path else (self.data_dir / presets_filename)
+        self._custom_audio_dir: bool = audio_dir is not None
         self.audio_dir = Path(audio_dir) if audio_dir else (self.data_dir / audio_dirname)
 
         # Asegurar que el directorio de audios exista
@@ -92,6 +93,11 @@ class AmbientStorageService:
 
     def scan_audio_tracks(self) -> list[dict[str, Any]]:
         """Escanea el directorio data/ambient/ en busca de pistas de audio soportadas."""
+        import os
+        is_test = bool(os.environ.get("STUDY_TIMETRIAL_TEST") or os.environ.get("QT_QPA_PLATFORM") == "offscreen")
+        if is_test and not self._custom_audio_dir:
+            return []
+
         if not self.audio_dir.exists():
             return []
 

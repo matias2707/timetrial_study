@@ -30,7 +30,8 @@ docs/specs/
 │   └── export_service.spec.md         <- Exportación estandarizada CSV/Excel (RFC 4180, utf-8-sig)
 └── themes/
     ├── color_tokens.spec.md           <- Diccionario de tokens de color requeridos por tema
-    └── skins_catalog.spec.md          <- Catálogo ampliado de skins (Pantone, estacionales y selección)
+    ├── skins_catalog.spec.md          <- Catálogo ampliado de skins (Pantone, estacionales y selección)
+    └── high_night.spec.md             <- Especificación cromática y física de destellos de High Night
 ```
 
 ---

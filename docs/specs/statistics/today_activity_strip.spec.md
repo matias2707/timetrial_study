@@ -51,12 +51,33 @@ Para cualquier instante temporal $T = (H, M, S, \mu s)$:
 
 El cálculo de franjas horarias (`compute_today_timeline_buckets` y `get_24h_hourly_distribution`) delega en `resolve_item_time_interval` para determinar con precisión matemática el inicio y fin de cada sesión `[item_start, item_end]` a partir de `item.created_at` y `total_duration_ms`:
 
-1. **Causalidad contra reloj de pared (`now`):** Si `dt + dur > now + 5s`, la sesión no pudo terminar en el futuro respecto a la hora real de consulta; se resuelve como finalizada en `dt` (`item_end = dt`, `item_start = dt - dur`).
-2. **Causalidad contra actualización de archivo (`record.updated_at`):** Si `dt + dur > updated_at + 10s`, la sesión no pudo extenderse más allá del momento en que el archivo fue guardado en disco; se resuelve como finalizada en `dt`.
-3. **Causalidad secuencial entre intentos:** Si el registro posterior en la misma fecha inicia antes de `dt + dur - 5s`, se descarta el solapamiento imposible resolviendo `item_end = dt`.
-4. **Modo Inicio:** Si no se viola ningún principio de causalidad (ej. intentos nuevos con `created_at` grabado al inicio de sesión), se resuelve como `item_start = dt` e `item_end = dt + dur`.
+1. **Esquema de Creación Dual y Retrocompatibilidad:**
+   - **Items Estándar (Modernos):** Creados mediante `StudyApplicationService.finish_item` con `session_started_at`. Su atributo `created_at` (`dt`) refleja el **inicio real** de la sesión, y la finalización real se calcula como `dt + dur`.
+   - **Items Legados (Completion-Stamped):** Archivos históricos o registros manuales donde `created_at` (`dt`) se estampó al **finalizar** la sesión, habiendo iniciado en `dt - dur`.
+   - **Sesiones Prolongadas (hasta 6 horas o más):** Durante sesiones de estudio extensas, el temporizador de alta resolución (`time.perf_counter`) y el reloj de pared (`datetime.now()`) pueden acumular leves derivas (10 a 30 segundos). La heurística no debe confundir esta pequeña deriva con un registro legado.
 
-Esta formulación garantiza retrocompatibilidad absoluta con registros históricos grabados al término del ejercicio y previene la fuga o derrame de horas netas a través de la medianoche hacia el día siguiente.
+2. **Criterios Matemáticos de Detección:**
+   Para un item con duración total $D = \text{dur} = \text{exercise\_time\_ms} + \text{break\_time\_ms}$:
+   - **Umbral de proximidad:** $U_{\text{near}} = \max(120\text{ s}, 0.20 \times D)$
+   - **Umbral de exceso hacia el futuro:** $U_{\text{excess}} = \max(15\text{ s}, 0.40 \times D)$
+
+   Un item se clasifica como legado (completion-stamped, resolviendo `[dt - dur, dt]`) si y solo si:
+   - Su marca `dt` coincide estrechamente con el evento de guardado/consulta $T_{\text{ref}}$ ($|T_{\text{ref}} - dt| \le U_{\text{near}}$).
+   - Y proyectar $dt + dur$ generaría una intrusión anómala mayoritaria hacia el futuro $((dt + dur) - T_{\text{ref}} \ge U_{\text{excess}}$).
+
+   Donde $T_{\text{ref}}$ se evalúa secuencialmente contra:
+   - `record.updated_at` (guardado en disco).
+   - `now_dt` (reloj de pared o referencia temporal inyectada).
+   - `next_item.created_at` (siguiente intento en la misma fecha).
+
+3. **Modo Estándar (Start-Stamped):**
+   Si no se cumplen simultáneamente ambas condiciones de exceso mayoritario y proximidad, el item se resuelve de forma determinista como `item_start = dt` e `item_end = dt + dur`.
+
+4. **Acotamiento Anti-Spill en Franjas de Hoy:**
+   En `compute_today_timeline_buckets`, para la jornada en curso (`is_today = True`):
+   - Cualquier hora futura ($h > \text{now.hour}$) queda estrictamente forzada a $0\text{ ms}$ y $0$ intentos.
+   - La hora actual ($h = \text{now.hour}$) se acota al tiempo efectivamente transcurrido en dicha hora ($\text{now} - h_{\text{start}}$).
+   - Para ejercicios que cruzan la medianoche, las horas pertenecientes a cada jornada se computan exclusivamente dentro de los límites de las 00:00 a las 24:00 hs de la fecha consultada.
 
 ---
 

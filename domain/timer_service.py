@@ -17,28 +17,38 @@ class TimerMode(Enum):
 
 
 class TimerService:
-    """Centraliza la lógica del cronómetro principal y del tiempo de descanso."""
+    """Centraliza la lógica del cronómetro principal y del tiempo de descanso con precisión anclada."""
 
     def __init__(self) -> None:
         self.mode = TimerMode.WAITING
         self.exercise_time_ms = 0
         self.break_time_ms = 0
-        self._last_tick = 0.0
+        self._segment_start: float | None = None
+        self._last_tick: float = 0.0
         self.is_paused = False
 
     def _sync(self) -> None:
-        """Acumula el tiempo transcurrido según el estado actual del temporizador."""
-        if self.mode is TimerMode.WAITING or self.is_paused:
+        """Sincroniza y consolida el tiempo transcurrido en el tramo activo sin derivas de reloj.
+
+        Utiliza avance fraccional exacto: consume únicamente milisegundos enteros y desplaza
+        el ancla por el tiempo equivalente exacto, preservando el remanente sub-milisegundo
+        para el siguiente ciclo.
+        """
+        if self.mode is TimerMode.WAITING or self.is_paused or self._segment_start is None:
             return
 
         now = time.perf_counter()
-        delta = max(0, round((now - self._last_tick) * 1000))
-        self._last_tick = now
+        elapsed_s = max(0.0, now - self._segment_start)
+        consumed_ms = int(elapsed_s * 1000)
 
-        if self.mode is TimerMode.PLAY:
-            self.exercise_time_ms += delta
-        elif self.mode is TimerMode.BREAK:
-            self.break_time_ms += delta
+        if consumed_ms > 0:
+            self._segment_start += consumed_ms / 1000.0
+            self._last_tick = self._segment_start
+
+            if self.mode is TimerMode.PLAY:
+                self.exercise_time_ms += consumed_ms
+            elif self.mode is TimerMode.BREAK:
+                self.break_time_ms += consumed_ms
 
     def pause(self) -> None:
         """Pausa / congela los contadores sin alterar el modo."""
@@ -46,12 +56,14 @@ class TimerService:
             return
         self._sync()
         self.is_paused = True
+        self._segment_start = None
 
     def resume(self) -> None:
         """Reanuda los contadores sin acumular el lapso pausado."""
         if not self.is_paused:
             return
-        self._last_tick = time.perf_counter()
+        self._segment_start = time.perf_counter()
+        self._last_tick = self._segment_start
         self.is_paused = False
 
     def start(self) -> None:
@@ -59,18 +71,21 @@ class TimerService:
         self._sync()
         self.is_paused = False
         self.mode = TimerMode.PLAY
-        self._last_tick = time.perf_counter()
+        self._segment_start = time.perf_counter()
+        self._last_tick = self._segment_start
 
     def toggle_break(self) -> None:
         """Alterna entre modo de ejercicio y modo de descanso."""
         self._sync()
         self.is_paused = False
         self.mode = TimerMode.PLAY if self.mode is TimerMode.BREAK else TimerMode.BREAK
-        self._last_tick = time.perf_counter()
+        self._segment_start = time.perf_counter()
+        self._last_tick = self._segment_start
 
     @property
     def has_accumulated_time(self) -> bool:
         """Indica si existe tiempo acumulado en ejercicio o en descanso."""
+        self._sync()
         return self.exercise_time_ms > 0 or self.break_time_ms > 0
 
     def load_accumulated_times(self, exercise_ms: int, break_ms: int) -> None:
@@ -78,6 +93,7 @@ class TimerService:
         self.mode = TimerMode.WAITING
         self.exercise_time_ms = max(0, exercise_ms)
         self.break_time_ms = max(0, break_ms)
+        self._segment_start = None
         self._last_tick = 0.0
         self.is_paused = False
 
@@ -86,6 +102,7 @@ class TimerService:
         self.mode = TimerMode.WAITING
         self.exercise_time_ms = 0
         self.break_time_ms = 0
+        self._segment_start = None
         self._last_tick = 0.0
         self.is_paused = False
 
@@ -95,6 +112,7 @@ class TimerService:
             return None
         self._sync()
         self.mode = TimerMode.WAITING
+        self._segment_start = None
         self._last_tick = 0.0
         self.is_paused = False
         return None

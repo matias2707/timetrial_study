@@ -32,18 +32,27 @@ class DailyTabWidget(QWidget):
     def __init__(self, is_dark_mode: bool = False, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._is_dark_mode = is_dark_mode
+        self._current_theme = "dark" if is_dark_mode else "light"
         self._summary: DailyStatsSummary | None = None
         self._build_ui()
 
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self._is_dark_mode = tokens.is_dark
+
     def set_dark_mode(self, is_dark: bool) -> None:
-        self._is_dark_mode = is_dark
+        self.set_theme("dark" if is_dark else "light")
 
     def _build_ui(self) -> None:
         scroll = QScrollArea(self)
+        scroll.setObjectName("statsScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         container = QWidget()
+        container.setObjectName("statsContainer")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(32, 20, 32, 32)
         layout.setSpacing(18)

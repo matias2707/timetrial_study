@@ -755,9 +755,20 @@ def resolve_item_time_interval(
     """Determina los instantes exactos de inicio y fin de una sesión de estudio.
 
     Soporta de manera determinista y retrocompatible:
-    1. Items con created_at guardado al finalizar la sesión (comportamiento de persistencia atómica).
-    2. Items con created_at guardado al iniciar la sesión.
-    Evita cualquier derrame de tiempo fantasma hacia horas futuras o días posteriores.
+    1. Items estándar con created_at guardado al inicio de la sesión (comportamiento habitual).
+    2. Items legados con created_at guardado al finalizar la sesión (completados retroactivamente).
+    3. Sesiones de estudio prolongadas (de hasta 6 horas o más) con descansos intercalados.
+    4. Resiliencia ante derivas temporales entre el reloj monotónico (perf_counter) y el reloj de pared.
+
+    Criterio matemático de diferenciación:
+    - En items legados (completion-stamped), created_at coincide con el final de la sesión (dt ≈ T_end).
+      Proyectar (created_at + dur) genera un exceso hacia el futuro que abarca una fracción mayoritaria
+      de la duración total (excess >= 40% de dur y excess >= 15s), y dt se encuentra muy próximo al
+      evento de guardado/consulta (|T_ref - dt| <= max(120s, 0.2 * dur)).
+    - En items estándar (start-stamped), created_at es el inicio real (dt = T_start), y (dt + dur)
+      es la finalización real (T_end). Cualquier discrepancia con el reloj de pared o updated_at se debe
+      a derivas de temporizador, pausas no acumuladas o ajustes manuales (excess << 40% de dur),
+      mientras que dt se sitúa horas en el pasado (|T_ref - dt| ≈ dur >> 0.2 * dur).
     """
     if not item.created_at:
         return datetime.min, datetime.min
@@ -775,22 +786,28 @@ def resolve_item_time_interval(
     dur = timedelta(milliseconds=total_ms)
     now_dt = reference_now or datetime.now()
 
-    # Criterio 1: Causalidad temporal (una sesión finalizada no puede terminar en el futuro respecto a ahora)
-    if (dt + dur) > (now_dt + timedelta(seconds=5)):
-        return dt - dur, dt
+    dur_seconds = dur.total_seconds()
+    near_threshold = max(120.0, dur_seconds * 0.2)
+    excess_threshold = max(timedelta(seconds=15), timedelta(seconds=dur_seconds * 0.4))
 
-    # Criterio 2: Causalidad respecto a la última actualización del registro en disco
+    # Criterio A: Causalidad contra la última actualización del registro en disco
     if record and record.updated_at:
         try:
             upd = datetime.fromisoformat(record.updated_at)
             if upd.tzinfo is not None:
                 upd = upd.astimezone().replace(tzinfo=None)
-            if (dt + dur) > (upd + timedelta(seconds=10)):
-                return dt - dur, dt
+            if abs((upd - dt).total_seconds()) <= near_threshold:
+                if (dt + dur) - upd >= excess_threshold:
+                    return dt - dur, dt
         except (ValueError, TypeError):
             pass
 
-    # Criterio 3: Causalidad secuencial entre intentos dentro del mismo archivo
+    # Criterio B: Causalidad temporal contra el reloj de pared o referencia inyectada
+    if abs((now_dt - dt).total_seconds()) <= near_threshold:
+        if (dt + dur) - now_dt >= excess_threshold:
+            return dt - dur, dt
+
+    # Criterio C: Causalidad secuencial entre intentos dentro del mismo archivo
     if record and 0 <= item_index < len(record.items) - 1:
         next_item = record.items[item_index + 1]
         if next_item.created_at:
@@ -798,8 +815,10 @@ def resolve_item_time_interval(
                 next_dt = datetime.fromisoformat(next_item.created_at)
                 if next_dt.tzinfo is not None:
                     next_dt = next_dt.astimezone().replace(tzinfo=None)
-                if dt.date() == next_dt.date() and (dt + dur) > (next_dt + timedelta(seconds=5)):
-                    return dt - dur, dt
+                if dt.date() == next_dt.date():
+                    if abs((next_dt - dt).total_seconds()) <= near_threshold:
+                        if (dt + dur) - next_dt >= excess_threshold:
+                            return dt - dur, dt
             except (ValueError, TypeError):
                 pass
 
@@ -963,6 +982,8 @@ def compute_today_timeline_buckets(
             max_h_ms = 3_600_000
 
         hourly_time[h] = min(hourly_time[h], max_h_ms)
+        if (is_today and h > now.hour) or target_date > now.date():
+            hourly_attempts[h] = 0
 
     buckets: list[dict[str, Any]] = []
     for h in range(24):

@@ -47,6 +47,36 @@ Cada tema JSON debe definir las siguientes variables en formato hexadecimal (`#R
 * `status_pill_*`: Píldoras de estado (`completed`, `failed`, `pending`).
 * `accent_primary`, `accent_secondary`: Colores de realce de marca.
 
+### E. Ausencia, Inactividad y Slots Vacíos
+* `color_absence`: Fondo para celdas/barras con 0 actividad, slots vacíos o ejercicios pendientes.
+* `color_absence_border`: Borde sutil para celdas/slots sin actividad.
+* `color_future`: Fondo de silueta para días o hitos futuros.
+* `color_future_border`: Borde punteado para días/hitos futuros.
+
+### F. Fondos de Gráficos y Visualizaciones
+* `bg_chart`: Fondo para áreas de trazado de gráficos y curvas de aprendizaje.
+* `chart_gridline`: Color para líneas de cuadrícula punteadas o divisorias.
+* `chart_time_curve`: Color principal de la curva de tiempo acumulado.
+* `chart_time_area`: Relleno semi-transparente del área bajo la curva.
+
+### G. Barras de Distribución Horaria y Densidad de Actividad
+* `activity_bar_bg`: Fondo de pista inactiva para histogramas de actividad.
+* `activity_bar_fill`: Color de volumen horario habitual según identidad del skin.
+* `activity_bar_peak`: Color destacado para la hora pico de estudio o máxima marca.
+* `activity_needle`: Aguja indicadora de la hora actual en tiempo real.
+
+### H. Pestañas y Navegación
+* `tab_icon_active`: Color cromático del icono de la pestaña activa (conectado al tema).
+* `tab_icon_inactive`: Color del icono de pestañas inactivas.
+
+### I. Estados Dinámicos de Cronómetros
+* `clock_card_active_exercise_bg`: Fondo de tarjeta de ejercicio durante sesión activa.
+* `clock_card_active_exercise_border`: Borde destacado de ejercicio activo.
+* `clock_card_active_break_bg`: Fondo de tarjeta de descanso durante receso activo.
+* `clock_card_active_break_border`: Borde destacado de descanso activo.
+* `clock_card_paused_border`: Borde de tarjeta durante estado en pausa.
+
+
 ---
 
 ## 3. Formato de Archivo de Tema (`data/themes/<nombre>.json`) y Validación

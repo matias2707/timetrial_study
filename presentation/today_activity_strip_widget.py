@@ -30,6 +30,17 @@ from PySide6.QtWidgets import (
 )
 
 from presentation.presentation_formatters import format_hh_mm_ss
+from presentation.theme_tokens import get_theme_tokens
+
+
+def _blend_hex(color1: str, color2: str, factor: float) -> str:
+    c1 = QColor(color1)
+    c2 = QColor(color2)
+    r = int(c1.red() + factor * (c2.red() - c1.red()))
+    g = int(c1.green() + factor * (c2.green() - c1.green()))
+    b = int(c1.blue() + factor * (c2.blue() - c1.blue()))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 
 
 class _TimelineNeedleOverlay(QWidget):
@@ -172,6 +183,7 @@ class TodayActivityStripWidget(QFrame):
         super().__init__(parent)
         self.setObjectName("activityStripCard")
         self._is_dark_mode = is_dark_mode
+        self._current_theme = "dark" if is_dark_mode else "light"
         self._show_needle = True
         self._reference_time: datetime | None = None
         self._current_hour_color = "#38bdf8" if is_dark_mode else "#0284c7"
@@ -187,6 +199,15 @@ class TodayActivityStripWidget(QFrame):
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._on_tick)
         self._timer.start()
+
+    @property
+    def current_theme(self) -> str:
+        return getattr(self, "_current_theme", "dark" if self._is_dark_mode else "light")
+
+    @current_theme.setter
+    def current_theme(self, value: str) -> None:
+        self._current_theme = str(value)
+        self._apply_theme()
 
     @property
     def is_dark_mode(self) -> bool:
@@ -333,38 +354,28 @@ class TodayActivityStripWidget(QFrame):
         self._apply_theme()
 
     def _apply_theme(self) -> None:
-        is_dark = self._is_dark_mode
+        tokens = get_theme_tokens(self.current_theme)
+        is_dark = tokens.is_dark
 
-        # Paleta de colores para niveles 0 a 4
-        if is_dark:
-            bg_card = "#18181b"  # zinc-900
-            border_card = "#27272a"
-            now_color = "#94a3b8"
-            mark_color = "#64748b"
+        bg_card = tokens.bg_card or ("#18181b" if is_dark else "#ffffff")
+        border_card = tokens.card_border or ("#27272a" if is_dark else "#e2e8f0")
+        now_color = tokens.text_secondary or ("#94a3b8" if is_dark else "#64748b")
+        mark_color = tokens.text_muted or ("#64748b" if is_dark else "#94a3b8")
 
-            level_colors = {
-                0: {"bg": "#27272a", "border": "#3f3f46"},
-                1: {"bg": "#064e3b", "border": "#065f46"},
-                2: {"bg": "#047857", "border": "#059669"},
-                3: {"bg": "#059669", "border": "#10b981"},
-                4: {"bg": "#10b981", "border": "#34d399"},
-            }
-            current_hour_border = "#38bdf8"  # halo celeste
-        else:
-            bg_card = "#ffffff"
-            border_card = "#e2e8f0"
-            now_color = "#64748b"
-            mark_color = "#94a3b8"
+        level_0_bg = tokens.color_absence or ("#27272a" if is_dark else "#f1f5f9")
+        level_0_border = tokens.color_absence_border or ("#3f3f46" if is_dark else "#e2e8f0")
 
-            level_colors = {
-                0: {"bg": "#f1f5f9", "border": "#e2e8f0"},
-                1: {"bg": "#a7f3d0", "border": "#6ee7b7"},
-                2: {"bg": "#6ee7b7", "border": "#34d399"},
-                3: {"bg": "#34d399", "border": "#10b981"},
-                4: {"bg": "#10b981", "border": "#059669"},
-            }
-            current_hour_border = "#0284c7"  # halo azul cielo
+        fill_hex = tokens.activity_bar_fill or ("#10b981" if is_dark else "#10b981")
+        peak_hex = tokens.activity_bar_peak or ("#34d399" if is_dark else "#059669")
 
+        level_colors = {
+            0: {"bg": level_0_bg, "border": level_0_border},
+            1: {"bg": _blend_hex(level_0_bg, fill_hex, 0.35), "border": _blend_hex(level_0_border, fill_hex, 0.45)},
+            2: {"bg": _blend_hex(level_0_bg, fill_hex, 0.60), "border": _blend_hex(level_0_border, fill_hex, 0.70)},
+            3: {"bg": _blend_hex(level_0_bg, fill_hex, 0.85), "border": fill_hex},
+            4: {"bg": peak_hex, "border": _blend_hex(peak_hex, "#ffffff" if is_dark else "#000000", 0.15)},
+        }
+        current_hour_border = tokens.activity_needle or ("#38bdf8" if is_dark else "#0284c7")
         self._current_hour_color = current_hour_border
 
         self.setStyleSheet(
@@ -392,10 +403,21 @@ class TodayActivityStripWidget(QFrame):
         bucket_map = {b["hour"]: b for b in self._buckets} if self._buckets else {}
         now_h = self.current_time.hour
 
+        has_current_flag = (
+            any(b.get("is_current_hour", False) for b in self._buckets)
+            if self._buckets
+            else False
+        )
+
         for h, cell in enumerate(self._cells):
             b = bucket_map.get(h)
             level = b["intensity_level"] if b else 0
-            is_current = (b.get("is_current_hour", False) if b else (h == now_h))
+            if self._reference_time is not None or not self._buckets:
+                is_current = (h == now_h)
+            elif has_current_flag:
+                is_current = (h == now_h)
+            else:
+                is_current = False
             palette = level_colors.get(level, level_colors[0])
 
             bg = palette["bg"]

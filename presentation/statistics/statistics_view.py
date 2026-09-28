@@ -90,61 +90,73 @@ class StatisticsViewWidget(QWidget):
     def _show_heatmap_view(self) -> None:
         self.presenter.set_subtab(0)
 
-    def _get_tab_button_style(self, is_dark: bool) -> str:
-        if is_dark:
-            return """
-                QPushButton {
-                    background-color: transparent;
-                    border: 1px solid #334155;
-                    border-radius: 8px;
-                    color: #94a3b8;
-                    padding: 8px 16px;
-                    font-size: 12px;
-                    font-weight: 600;
-                }
-                QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.05);
-                    color: #f8fafc;
-                }
-                QPushButton:checked {
-                    background-color: #065f46;
-                    border-color: #10b981;
-                    color: #ecfdf5;
-                    font-weight: 700;
-                }
-            """
-        return """
-            QPushButton {
-                background-color: #f8fafc;
-                border: 1px solid #cbd5e1;
+    def _get_tab_button_style(self, is_dark: bool, tokens: Any = None) -> str:
+        if tokens is None:
+            from presentation.theme_tokens import get_theme_tokens
+            tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if is_dark else "light"))
+
+        border = tokens.card_border or ("#334155" if is_dark else "#cbd5e1")
+        text_col = tokens.text_secondary or ("#94a3b8" if is_dark else "#475569")
+        hover_bg = tokens.bg_hover or ("rgba(255, 255, 255, 0.05)" if is_dark else "#f1f5f9")
+        hover_text = tokens.text_primary or ("#f8fafc" if is_dark else "#0f172a")
+
+        checked_bg = getattr(tokens, "bg_tab_active", None) or getattr(tokens, "tab_selected_bg", None) or ("#065f46" if is_dark else "#e7f4ec")
+        checked_border = getattr(tokens, "tab_icon_active", None) or getattr(tokens, "tab_indicator", None) or ("#10b981" if is_dark else "#059669")
+        checked_text = getattr(tokens, "tab_text_selected", None) or ("#ecfdf5" if is_dark else "#047857")
+
+        return f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {border};
                 border-radius: 8px;
-                color: #475569;
+                color: {text_col};
                 padding: 8px 16px;
                 font-size: 12px;
                 font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #f1f5f9;
-                color: #0f172a;
-            }
-            QPushButton:checked {
-                background-color: #e7f4ec;
-                border-color: #059669;
-                color: #047857;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+                color: {hover_text};
+            }}
+            QPushButton:checked {{
+                background-color: {checked_bg};
+                border-color: {checked_border};
+                color: {checked_text};
                 font-weight: 700;
-            }
+            }}
         """
 
-    def set_dark_mode(self, is_dark: bool) -> None:
-        self._is_dark_mode = is_dark
-        self.general_tab.set_dark_mode(is_dark)
-        self.weekly_tab.set_dark_mode(is_dark)
-        self.daily_tab.set_dark_mode(is_dark)
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self._is_dark_mode = tokens.is_dark
 
-        style = self._get_tab_button_style(is_dark)
+        if hasattr(self, "empty_state_page") and hasattr(self.empty_state_page, "set_dark_mode"):
+            self.empty_state_page.set_dark_mode(tokens.is_dark)
+
+        if hasattr(self.general_tab, "set_theme"):
+            self.general_tab.set_theme(theme)
+        else:
+            self.general_tab.set_dark_mode(tokens.is_dark)
+
+        if hasattr(self.weekly_tab, "set_theme"):
+            self.weekly_tab.set_theme(theme)
+        else:
+            self.weekly_tab.set_dark_mode(tokens.is_dark)
+
+        if hasattr(self.daily_tab, "set_theme"):
+            self.daily_tab.set_theme(theme)
+        else:
+            self.daily_tab.set_dark_mode(tokens.is_dark)
+
+        style = self._get_tab_button_style(tokens.is_dark, tokens=tokens)
         self.btn_tab_general.setStyleSheet(style)
         self.btn_tab_weekly.setStyleSheet(style)
         self.btn_tab_daily.setStyleSheet(style)
+
+    def set_dark_mode(self, is_dark: bool) -> None:
+        self.set_theme("dark" if is_dark else "light")
 
     def _build_ui(self) -> None:
         self.main_stack = QStackedWidget(self)

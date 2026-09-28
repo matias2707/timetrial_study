@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from datetime import date, datetime
 import unittest
+from unittest.mock import patch
 
 from application.application_service import StudyApplicationService
 from application.statistics_service import (
     compute_exercise_personal_best_ms,
     compute_today_summary_metrics,
     compute_today_timeline_buckets,
+    resolve_item_time_interval,
 )
 from domain.models import Record, TimerItem
 
@@ -421,6 +423,177 @@ class TestHomeAnalytics(unittest.TestCase):
         self.assertGreater(buckets_study_day[21]["exercise_time_ms"], 0)
         self.assertGreater(buckets_study_day[22]["exercise_time_ms"], 0)
         self.assertGreater(buckets_study_day[23]["exercise_time_ms"], 0)
+
+    def test_user_scenario_1h53m_started_at_16_finished_recently(self) -> None:
+        """Verifica el caso reportado por el usuario:
+
+        Ejercicio de ~1h53m de estudio neto (+ 9m receso) iniciado a las 16:09 y finalizado a las 18:12.
+        - Las horas 14 y 15 deben tener CERO actividad.
+        - Las horas 16, 17 y 18 deben contener la actividad distribuida correctamente.
+        - La celda de la hora 18 (hora actual al momento de finalizar) NO debe quedar gris.
+        """
+        target_date = date(2026, 9, 26)
+        now_reference = datetime(2026, 9, 26, 18, 17, 39)
+        self.record.updated_at = "2026-09-26T18:12:16"
+        self.record.items.append(
+            TimerItem(
+                section_type="Guía",
+                section_number=4,
+                exercise=20,
+                inciso=None,
+                exercise_time_ms=6796475,  # 1h 53m 16s
+                break_time_ms=560163,      # 9m 20s
+                created_at="2026-09-26T16:09:51",
+                completed=True,
+            )
+        )
+
+        with patch("application.statistics_service.datetime") as mock_dt:
+            mock_dt.now.return_value = now_reference
+            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.fromisoformat = datetime.fromisoformat
+            mock_dt.combine = datetime.combine
+            mock_dt.min = datetime.min
+            mock_dt.max = datetime.max
+
+            buckets = compute_today_timeline_buckets(self.record, reference_date=target_date)
+
+        # Horas 14 y 15 deben estar estrictamente vacías (0 ms)
+        self.assertEqual(buckets[14]["exercise_time_ms"], 0)
+        self.assertEqual(buckets[15]["exercise_time_ms"], 0)
+        self.assertEqual(buckets[14]["intensity_level"], 0)
+        self.assertEqual(buckets[15]["intensity_level"], 0)
+
+        # Horas 16, 17 y 18 deben registrar la actividad
+        self.assertGreater(buckets[16]["exercise_time_ms"], 40 * 60 * 1000)
+        self.assertEqual(buckets[16]["intensity_level"], 4)
+
+        self.assertGreater(buckets[17]["exercise_time_ms"], 50 * 60 * 1000)
+        self.assertEqual(buckets[17]["intensity_level"], 4)
+
+        self.assertGreater(buckets[18]["exercise_time_ms"], 10 * 60 * 1000)
+        self.assertEqual(buckets[18]["intensity_level"], 1)
+        self.assertTrue(buckets[18]["is_current_hour"])
+
+        # La suma total distribuida debe coincidir con el tiempo neto (margen < 50ms por redondeo)
+        total_dist_ms = (
+            buckets[16]["exercise_time_ms"]
+            + buckets[17]["exercise_time_ms"]
+            + buckets[18]["exercise_time_ms"]
+        )
+        self.assertAlmostEqual(total_dist_ms, 6796475, delta=50)
+
+    def test_today_timeline_buckets_exercise_long_session_up_to_6_hours(self) -> None:
+        """Verifica una sesión continua de 6 horas de estudio (ej: 10:00 a 16:00)."""
+        target_date = date(2026, 9, 20)
+        six_hours_ms = 6 * 3600 * 1000
+        self.record.updated_at = "2026-09-20T16:00:15"
+        self.record.items.append(
+            TimerItem(
+                section_type="Teoría",
+                section_number=1,
+                exercise=1,
+                inciso=None,
+                exercise_time_ms=six_hours_ms,
+                break_time_ms=0,
+                created_at="2026-09-20T10:00:00",
+                completed=True,
+            )
+        )
+
+        buckets = compute_today_timeline_buckets(self.record, reference_date=target_date)
+
+        # Horas 10, 11, 12, 13, 14, 15 deben tener exactamente 60 minutos cada una (3.600.000 ms, Nivel 4)
+        for h in range(10, 16):
+            self.assertEqual(buckets[h]["exercise_time_ms"], 3_600_000)
+            self.assertEqual(buckets[h]["intensity_level"], 4)
+            self.assertEqual(buckets[h]["attempts_count"], 1)
+
+        # Horas fuera del rango deben ser 0
+        self.assertEqual(buckets[9]["exercise_time_ms"], 0)
+        self.assertEqual(buckets[16]["exercise_time_ms"], 0)
+
+    def test_today_timeline_buckets_exercise_6_hours_with_breaks_proportional(self) -> None:
+        """Verifica sesión de 6 horas con descansos (5h estudio neto + 1h descanso)."""
+        target_date = date(2026, 9, 20)
+        study_ms = 5 * 3600 * 1000
+        break_ms = 1 * 3600 * 1000
+        self.record.updated_at = "2026-09-20T16:00:00"
+        self.record.items.append(
+            TimerItem(
+                section_type="Guía",
+                section_number=2,
+                exercise=5,
+                inciso=None,
+                exercise_time_ms=study_ms,
+                break_time_ms=break_ms,
+                created_at="2026-09-20T10:00:00",
+                completed=True,
+            )
+        )
+
+        buckets = compute_today_timeline_buckets(self.record, reference_date=target_date)
+
+        # En cada una de las 6 horas (10 a 15) debe haber 50 min netos de estudio (5/6 de 60m)
+        expected_per_hour = 50 * 60 * 1000
+        for h in range(10, 16):
+            self.assertEqual(buckets[h]["exercise_time_ms"], expected_per_hour)
+            self.assertEqual(buckets[h]["intensity_level"], 4)
+            self.assertEqual(buckets[h]["attempts_count"], 1)
+
+        total_distributed = sum(buckets[h]["exercise_time_ms"] for h in range(24))
+        self.assertEqual(total_distributed, study_ms)
+
+    def test_today_timeline_buckets_6_hours_crossing_midnight(self) -> None:
+        """Verifica que una sesión de 6 horas que cruza la medianoche divida el tiempo equitativamente."""
+        d1 = date(2026, 9, 20)
+        d2 = date(2026, 9, 21)
+        # Inicio 21:00 día 20, 6 horas continuas -> finaliza 03:00 día 21
+        self.record.updated_at = "2026-09-21T03:00:20"
+        self.record.items.append(
+            TimerItem(
+                section_type="Parcial",
+                section_number=1,
+                exercise=1,
+                inciso=None,
+                exercise_time_ms=6 * 3600 * 1000,
+                break_time_ms=0,
+                created_at="2026-09-20T21:00:00",
+                completed=True,
+            )
+        )
+
+        buckets_d1 = compute_today_timeline_buckets(self.record, reference_date=d1)
+        self.assertEqual(buckets_d1[21]["exercise_time_ms"], 3_600_000)
+        self.assertEqual(buckets_d1[22]["exercise_time_ms"], 3_600_000)
+        self.assertEqual(buckets_d1[23]["exercise_time_ms"], 3_600_000)
+        self.assertEqual(sum(b["exercise_time_ms"] for b in buckets_d1), 3 * 3600 * 1000)
+
+        buckets_d2 = compute_today_timeline_buckets(self.record, reference_date=d2)
+        self.assertEqual(buckets_d2[0]["exercise_time_ms"], 3_600_000)
+        self.assertEqual(buckets_d2[1]["exercise_time_ms"], 3_600_000)
+        self.assertEqual(buckets_d2[2]["exercise_time_ms"], 3_600_000)
+        self.assertEqual(buckets_d2[3]["exercise_time_ms"], 0)
+        self.assertEqual(sum(b["exercise_time_ms"] for b in buckets_d2), 3 * 3600 * 1000)
+
+    def test_resolve_item_time_interval_clock_drift_resilience(self) -> None:
+        """Verifica que una pequeña deriva de 30s en una sesión de 3h no invierta el intervalo."""
+        three_hours_ms = 3 * 3600 * 1000
+        item = TimerItem(
+            section_type="Guía",
+            section_number=1,
+            exercise=1,
+            inciso=None,
+            exercise_time_ms=three_hours_ms,
+            break_time_ms=0,
+            created_at="2026-09-20T10:00:00",
+            completed=True,
+        )
+        self.record.updated_at = "2026-09-20T12:59:30"  # 30 segundos antes de 10:00 + 3h
+
+        start, end = resolve_item_time_interval(item, record=self.record)
+        self.assertEqual(start, datetime(2026, 9, 20, 10, 0, 0))
+        self.assertEqual(end, datetime(2026, 9, 20, 13, 0, 0))
 
 
 class TestApplicationServiceHomeFacade(unittest.TestCase):

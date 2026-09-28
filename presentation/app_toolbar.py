@@ -136,6 +136,7 @@ class AppToolbar(QToolBar):
             ("spring", "Spring [Dinámico]", "fa5s.leaf", "#22c55e"),
             ("bamboo", "Bamboo [Dinámico]", "fa5s.tree", "#65a30d"),
             ("midnight", "Midnight [Dinámico]", "fa5s.star", "#8b5cf6"),
+            ("high_night", "High Night [Dinámico]", "fa5s.star-and-crescent", "#9d4edd"),
             ("vampyr", "Vampyr [Dinámico]", "fa5s.tint", "#dc2626"),
             ("halloween", "Halloween [Dinámico]", "fa5s.ghost", "#f97316"),
         ]

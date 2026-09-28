@@ -21,6 +21,7 @@ class WeeklyChartWidget(QWidget):
         super().__init__(parent)
         self.daily_stats: list[DailyStatistic] = []
         self.dark_mode: bool = False
+        self._current_theme: str = "dark" if self.dark_mode else "light"
         self.setMinimumHeight(175)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -29,10 +30,17 @@ class WeeklyChartWidget(QWidget):
         self.daily_stats = daily_stats
         self.update()
 
+    def set_theme(self, theme: str) -> None:
+        """Configura la paleta de colores para el tema dado y repinta."""
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self.dark_mode = tokens.is_dark
+        self.update()
+
     def set_dark_mode(self, dark_mode: bool) -> None:
         """Configura la paleta de colores para modo claro u oscuro y repinta."""
-        self.dark_mode = dark_mode
-        self.update()
+        self.set_theme("dark" if dark_mode else "light")
 
     def paintEvent(self, event) -> None:
         """Dibuja las columnas, barras coloreadas, etiquetas y marcas temporales."""
@@ -55,11 +63,15 @@ class WeeklyChartWidget(QWidget):
         bottom_margin = 46.0
         available_bar_height = height - top_margin - bottom_margin
 
-        bar_bg_color = QColor("#1e293b" if self.dark_mode else "#ede8dd")
-        bar_active_color = QColor("#10b981" if self.dark_mode else "#059669")
-        text_primary = QColor("#f1f5f9" if self.dark_mode else "#1c1917")
-        text_muted = QColor("#94a3b8" if self.dark_mode else "#78716c")
-        text_zero = QColor("#64748b" if self.dark_mode else "#a8a29e")
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.dark_mode else "light"))
+        is_dark = tokens.is_dark
+
+        bar_bg_color = QColor(tokens.activity_bar_bg or tokens.color_absence or ("#1e293b" if is_dark else "#ede8dd"))
+        bar_active_color = QColor(tokens.activity_bar_fill or ("#10b981" if is_dark else "#059669"))
+        text_primary = QColor(tokens.text_primary or ("#f1f5f9" if is_dark else "#1c1917"))
+        text_muted = QColor(tokens.text_muted or ("#94a3b8" if is_dark else "#78716c"))
+        text_zero = QColor(tokens.color_absence or tokens.text_muted or ("#64748b" if is_dark else "#a8a29e"))
 
         for i, stat in enumerate(self.daily_stats):
             center_x = i * col_width + (col_width / 2.0)

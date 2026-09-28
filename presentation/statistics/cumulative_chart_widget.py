@@ -21,6 +21,7 @@ class CumulativeEvolutionChartWidget(QWidget):
         super().__init__(parent)
         self._data: CumulativeEvolutionData | None = None
         self._dark_mode: bool = False
+        self._current_theme: str = "dark" if self._dark_mode else "light"
         self.setMinimumHeight(240)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Preferred)
 
@@ -29,10 +30,17 @@ class CumulativeEvolutionChartWidget(QWidget):
         self._data = data
         self.update()
 
+    def set_theme(self, theme: str) -> None:
+        """Configura el tema visual y solicita repintado."""
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self._dark_mode = tokens.is_dark
+        self.update()
+
     def set_dark_mode(self, is_dark: bool) -> None:
         """Actualiza la paleta visual para adaptarse al tema activo."""
-        self._dark_mode = is_dark
-        self.update()
+        self.set_theme("dark" if is_dark else "light")
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -41,27 +49,24 @@ class CumulativeEvolutionChartWidget(QWidget):
         w = float(self.width())
         h = float(self.height())
 
-        # Paleta de colores según tema
-        if self._dark_mode:
-            bg_color = QColor("#0f172a")
-            border_color = QColor("#334155")
-            text_primary = QColor("#f8fafc")
-            text_muted = QColor("#94a3b8")
-            grid_color = QColor("#1e293b")
-            time_curve_color = QColor("#38bdf8")       # Cyan / Sky
-            time_area_color = QColor(56, 189, 248, 40)
-            completed_color = QColor("#10b981")        # Emerald
-            failed_color = QColor("#ef4444")           # Rose / Red
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self._dark_mode else "light"))
+        is_dark = tokens.is_dark
+
+        bg_color = QColor(tokens.bg_chart or tokens.bg_card or ("#0f172a" if is_dark else "#ffffff"))
+        border_color = QColor(tokens.card_border or ("#334155" if is_dark else "#e2e8f0"))
+        text_primary = QColor(tokens.text_primary or ("#f8fafc" if is_dark else "#0f172a"))
+        text_muted = QColor(tokens.text_muted or ("#94a3b8" if is_dark else "#64748b"))
+        grid_color = QColor(tokens.chart_gridline or tokens.card_border or ("#1e293b" if is_dark else "#f1f5f9"))
+        time_curve_color = QColor(tokens.chart_time_curve or tokens.accent_primary or ("#38bdf8" if is_dark else "#0284c7"))
+
+        if tokens.chart_time_area:
+            time_area_color = QColor(tokens.chart_time_area)
         else:
-            bg_color = QColor("#ffffff")
-            border_color = QColor("#e2e8f0")
-            text_primary = QColor("#0f172a")
-            text_muted = QColor("#64748b")
-            grid_color = QColor("#f1f5f9")
-            time_curve_color = QColor("#0284c7")       # Ocean Blue
-            time_area_color = QColor(2, 132, 199, 35)
-            completed_color = QColor("#059669")        # Emerald Green
-            failed_color = QColor("#dc2626")           # Red
+            time_area_color = QColor(time_curve_color.red(), time_curve_color.green(), time_curve_color.blue(), 40 if is_dark else 35)
+
+        completed_color = QColor(tokens.success_text or ("#10b981" if is_dark else "#059669"))
+        failed_color = QColor(tokens.danger_text or ("#ef4444" if is_dark else "#dc2626"))
 
         # Fondo del card
         card_rect = QRectF(0, 0, w, h)

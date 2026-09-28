@@ -516,5 +516,6 @@ class AudioMixerEngine(QObject):
             try:
                 player.stop()
                 player.player.stop()
+                player.player.setSource(QUrl())
             except Exception:
                 pass

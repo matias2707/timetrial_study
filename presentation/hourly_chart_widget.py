@@ -20,18 +20,31 @@ class Hourly24hChartWidget(QWidget):
         super().__init__(parent)
         self.hourly_data: dict[int, int] = {h: 0 for h in range(24)}
         self.is_dark: bool = is_dark_mode
+        self._current_theme: str = "dark" if is_dark_mode else "light"
         self.hovered_hour: int | None = None
         self.setMouseTracking(True)
         self.setMinimumHeight(150)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_data(self, distribution: dict[int, int]) -> None:
-        self.hourly_data = {h: distribution.get(h, 0) for h in range(24)}
+    def set_data(self, distribution: dict[int, int] | None) -> None:
+        dist = distribution or {}
+        self.hourly_data = {h: dist.get(h, 0) for h in range(24)}
+        self.update()
+
+    def clear(self) -> None:
+        self.hourly_data = {h: 0 for h in range(24)}
+        self.hovered_hour = None
+        self.update()
+
+    def set_theme(self, theme: str) -> None:
+        self._current_theme = theme
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(theme)
+        self.is_dark = tokens.is_dark
         self.update()
 
     def set_dark_mode(self, is_dark: bool) -> None:
-        self.is_dark = is_dark
-        self.update()
+        self.set_theme("dark" if is_dark else "light")
 
     @property
     def dark_mode(self) -> bool:
@@ -96,11 +109,15 @@ class Hourly24hChartWidget(QWidget):
 
         max_ms = max(list(self.hourly_data.values()) + [3_600_000])
 
-        bg_track_color = QColor("#1e293b" if self.is_dark else "#ede8dd")
-        bar_fill_color = QColor("#38bdf8" if self.is_dark else "#0284c7")
-        peak_fill_color = QColor("#10b981" if self.is_dark else "#059669")
-        text_muted = QColor("#94a3b8" if self.is_dark else "#78716c")
-        text_highlight = QColor("#f1f5f9" if self.is_dark else "#1c1917")
+        from presentation.theme_tokens import get_theme_tokens
+        tokens = get_theme_tokens(getattr(self, "_current_theme", "dark" if self.is_dark else "light"))
+        is_dark = tokens.is_dark
+
+        bg_track_color = QColor(tokens.activity_bar_bg or tokens.color_absence or ("#1e293b" if is_dark else "#ede8dd"))
+        bar_fill_color = QColor(tokens.activity_bar_fill or ("#38bdf8" if is_dark else "#0284c7"))
+        peak_fill_color = QColor(tokens.activity_bar_peak or ("#10b981" if is_dark else "#059669"))
+        text_muted = QColor(tokens.text_muted or ("#94a3b8" if is_dark else "#78716c"))
+        text_highlight = QColor(tokens.text_primary or ("#f1f5f9" if is_dark else "#1c1917"))
 
         peak_hour = max(self.hourly_data, key=self.hourly_data.get) if max(self.hourly_data.values()) > 0 else -1
 

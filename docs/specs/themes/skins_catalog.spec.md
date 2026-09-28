@@ -18,6 +18,7 @@ Proveer una colección rica, ergonómica y expandible de pieles visuales (skins)
    * **Spring `[Dinámico]`:** Inspirado en praderas de primavera y rocío matutino. Fondo lino pradera relajante (`#eff5ec`), tarjetas marfil (`#f6faf3`), verde brote y flotación suave de hojas jóvenes (`effect: "leaves"`). Modo claro.
    * **Bamboo `[Dinámico]`:** Bosque zen de Kioto y tatamis de bambú. Fondo papel pergamino cálido (`#f3ede1`), madera clara, verde oliva y hojas alargadas de bambú planeando suavemente (`effect: "bamboo"`). Modo claro.
    * **Midnight `[Dinámico]`:** Abismo astronómico y nebulosas cósmicas. Fondo obsidiana espacial (`#05070e`), violeta nebulosa y cielo titilante de estrellas lejanas (`effect: "stars"`). Modo oscuro.
+   * **High Night `[Dinámico]`:** Noche mineral ultra profunda y cosmos sereno. Fondo turmalina negra monocromática (`#040405`), acentos amatista joya (`#9d4edd`), tipografía cuarzo y perla, con estrellas pequeñas titilantes y destello individual fugaz ("beat") cada 2-5 segundos (`effect: "high_night"`). Modo oscuro.
    * **Vampyr `[Dinámico]`:** Atmósfera gótica noir y misterio nocturno. Fondos abisales de terciopelo oscuro (`#080405`), tipografía ceniza plateada, acentos carmesí sangre y rescoldos ardientes ascendentes (`effect: "vampyr"`). Modo oscuro.
    * **Halloween `[Dinámico]`:** Noche otoñal de Jack-o'-lantern y misterio espectral. Fondo carbón tostado (`#0c0907`), calabaza quemada vibrante (`#ea580c`), acentos naranja dorado y chispas de hoguera (`effect: "halloween"`). Modo oscuro.
 
