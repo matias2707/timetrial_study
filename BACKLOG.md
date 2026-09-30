@@ -38,7 +38,7 @@
 
 ### Sectores Funcionales del Sistema (Functional Domains)
 1. **Sector 1: Cronómetro, Temporizador y Dinámicas de Sesión (`core/` / `presentation/home/`):** Reloj de precisión (`TimerService`), modos (`PLAY`, `BREAK`, `WAITING`), modalidades de estudio (Libre, Pomodoro, Intensiva) y KPIs de jornada.
-2. **Sector 2: Planificación, Metas y Contenido Curricular (`domain/` / `presentation/planner/`):** Estructura jerárquica de guías, ejercicios, incisos, etiquetas/marcadores de color y notas por ejercicio.
+2. **Sector 2: Organización, Metas y Contenido Curricular (`domain/` / `presentation/organizer/`):** Estructura jerárquica de guías, ejercicios, incisos, etiquetas/marcadores de color y notas por ejercicio.
 3. **Sector 3: Registros, Historial y Corrección de Datos (`application/` / `presentation/records/`):** Visualización masiva, filtros estilo Excel, edición en caliente, resolución de incisos y recarga al cronómetro.
 4. **Sector 4: Estadísticas, Análisis y Reportes (`application/` / `presentation/statistics/`):** KPIs globales, ranking de tiempos, calendario de hitos de examen, distribución horaria 24h y exportación CSV/Excel.
 5. **Sector 5: Audio, Efectos Sonoros y Ambientación (`infrastructure/audio/` / `presentation/ambience/`):** Mezclador multicanal adaptativo al cronómetro y reproductor de efectos acústicos discretos (*eyes-free feedback*).
@@ -75,10 +75,12 @@ flowchart TD
         T014 --> T015
     end
 
-    subgraph SEC2["Sector 2: Planificación Curricular"]
+    subgraph SEC2["Sector 2: Organización Curricular"]
         T002["TASK-002<br/>Marcadores & Tags"]:::done
         T003["TASK-003<br/>Notas por Ejercicio"]:::done
+        T025["TASK-025<br/>Renombrado Planificador → Organizador"]:::done
         T002 --> T003
+        T003 --> T025
     end
 
     subgraph SEC3["Sector 3: Registros & Historial"]
@@ -168,12 +170,13 @@ Las siguientes tareas tienen el **100% de sus dependencias cumplidas** y pueden 
 | [TASK-010](#task-010) | ✨ Feature | Modo Pomodoro y Bloques de Enfoque con temporizador adaptativo y metas de intervalo | 🟡 Media | TASK-014, TASK-019 (sugerida para alertas acústicas) | Modalidades avanzadas de sesión estructurada | 🔓 Desbloqueada | `[?] En revisión` |
 | [TASK-015](#task-015) | ✨ Feature | Modo Sesión Intensiva: Sprint por tiempo (hh:mm) o ejercicios con barra de progreso | 🟡 Media | TASK-014, TASK-020 (sugerida para alertas de tiempo límite) | Historial analítico de sesiones intensivas | 🔓 Desbloqueada | `[?] En revisión` |
 
-#### Sector 2: Planificación, Metas y Contenido Curricular
+#### Sector 2: Organización, Metas y Contenido Curricular
 
 | ID | Tipo | Tarea | Prioridad | Prerrequisitos | Desbloquea | Correlatividad | Estado |
 | :--- | :---: | :--- | :---: | :--- | :--- | :---: | :---: |
-| [TASK-002](#task-002) | ✨ Feature | Sistema de marcadores y etiquetas para ejercicios en la planificación | 🔴 Alta | Ninguno | TASK-003 | 🏁 Completada | `[x] Completado` |
-| [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la planificación | 🟡 Media | TASK-002 | Panel rápido de guía en Home, notas en cronómetro | 🏁 Completada | `[x] Completado` |
+| [TASK-002](#task-002) | ✨ Feature | Sistema de marcadores y etiquetas para ejercicios en la organización curricular | 🔴 Alta | Ninguno | TASK-003 | 🏁 Completada | `[x] Completado` |
+| [TASK-003](#task-003) | 🔨 Enhancement | Sistema de notas y apuntes por ejercicio en la organización curricular | 🟡 Media | TASK-002 | Panel rápido de guía en Home, notas en cronómetro | 🏁 Completada | `[x] Completado` |
+| [TASK-025](#task-025) | 🧹 Refactor | Refactorización Arquitectónica Integral: Renombramiento de Planificador a Organizador | 🔴 Alta | TASK-002, TASK-003 | Nuevo Módulo Planificador (TASK-026) | 🏁 Completada | `[x] Completado` |
 
 #### Sector 3: Registros, Historial y Corrección de Datos
 
@@ -530,7 +533,7 @@ Incorporar la modalidad de **Sesión Intensiva** (*Focus Sprint / Deep Work Sess
 ---
 
 
-### Sector 2: Planificación, Metas y Contenido Curricular
+### Sector 2: Organización, Metas y Contenido Curricular
 
 ### TASK-002
 #### Sistema de marcadores y etiquetas para ejercicios en la planificación
@@ -673,6 +676,84 @@ Reemplazar el esquema de comentarios fragmentados por intento (`TimerItem.commen
 - [x] Es posible leer la nota completa en el tooltip y editarla directamente en el popup de detalle del ejercicio.
 - [x] El cronómetro muestra si el ejercicio activo ya tiene notas y permite editarlas o consultarlas en tiempo real.
 - [x] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+
+---
+
+---
+
+### TASK-025
+#### Refactorización Arquitectónica Integral: Renombramiento de Planificador a Organizador y Desacoplamiento para el Nuevo Motor de Planificación
+
+- **Sector:** Sector 2: Organización, Metas y Contenido Curricular  
+- **Tipo:** 🧹 Refactor  
+- **Prioridad:** 🔴 Alta  
+- **Estado:** `[x] Completado`  
+- **Correlatividad / Prerrequisitos:** TASK-002, TASK-003  
+- **Desbloquea / Habilita:** Nuevo Módulo Planificador (TASK-026)  
+- **Estado de correlatividad:** 🏁 Completada  
+- **Capas afectadas:** `domain/`, `application/`, `presentation/`, `infrastructure/`, `docs/`, `tests/`  
+- **Dependencias:** Ninguna  
+
+##### Descripción funcional
+Reclasificar y renombrar integralmente todos los componentes, contratos, interfaces y vistas del actual "Planificador" bajo el concepto formal de **"Organizador"** (*Organizer*).
+
+El sistema actual gestiona la estructura curricular estática de las materias (guías, prácticas, cantidad de ejercicios, incisos, etiquetas de color y notas por ejercicio), lo cual corresponde conceptualmente a la **organización del contenido de estudio**. Esta refactorización libera conceptual y arquitectónicamente el espacio para la implementación futura de un auténtico **Planificador** (*Planner*), enfocado en estrategias temporales de preparación académica: asignación de metas por día/semana, proyecciones basadas en velocidad de resolución y cuenta regresiva hacia exámenes.
+
+##### Casos de uso y flujo de interacción
+1. **Identidad en la Interfaz de Usuario:**
+   - La pestaña principal en la ventana (`MainWindow`) pasa a titularse **"Organizador"** con el ícono unificado de gestión curricular (`fa5s.tasks`).
+   - Los diálogos modales pasan a denominarse bajo la semántica del organizador (`OrganizedSectionDialog`, `ScheduleConfigDialog`, etc.).
+2. **Cero Ruptura de Datos (Retrocompatibilidad 100% Garantizada):**
+   - Los archivos de registro en formato JSON continúan cargando fluidamente registros previos que contengan las claves `"planner_sections"` y `"planner_schedule"`.
+   - Se introduce soporte dual en `Record.from_dict()` y `Record.to_dict()` para garantizar compatibilidad bidireccional sin migraciones destructivas.
+3. **Desacoplamiento Estricto MVP:**
+   - Se mantiene la arquitectura pasiva: `IOrganizerView` como protocolo abstracto, `OrganizerPresenter` en Python puro sin dependencias de Qt, y `OrganizerWidget` como cascarón gráfico en PySide6.
+
+##### Cambios técnicos proyectados por capa
+- **`domain/models.py`**:
+  - Renombrar `PlannedSection` a `OrganizedSection`. Mantener alias `PlannedSection = OrganizedSection` para compatibilidad.
+  - Renombrar `PlannerSchedule` a `OrganizerSchedule`. Mantener alias `PlannerSchedule = OrganizerSchedule`.
+  - En `Record`: `organizer_sections: list[OrganizedSection]` y `organizer_schedule: OrganizerSchedule | None`. Propiedades `planner_sections` y `planner_schedule` como getters/setters delegados para compatibilidad transparente.
+  - Métodos `from_dict()` y `to_dict()` soportando compatibilidad transparente con claves `planner_sections` / `organizer_sections`.
+- **`application/`**:
+  - Renombrar `planner_service.py` a `organizer_service.py`.
+  - Clases: `PlannedSectionStatus` -> `OrganizedSectionStatus`, `PlannerOverview` -> `OrganizerOverview`, `PlannerService` -> `OrganizerService`. (Mantener alias legados en el módulo para no romper código externo).
+  - En `StudyApplicationService`: actualizar `organizer_service`, `get_organizer_overview()`, `sync_organizer_with_records()`, etc., preservando métodos delegados con los nombres anteriores marcados como transición.
+- **`presentation/`**:
+  - Renombrar paquete `presentation/planner/` a `presentation/organizer/`:
+    - `interfaces.py`: `IOrganizerView(Protocol)`.
+    - `organizer_presenter.py`: `OrganizerPresenter(view: IOrganizerView, application: StudyApplicationService)`.
+  - Renombrar `presentation/planner_widget.py` a `presentation/organizer_widget.py`:
+    - Clase `OrganizerWidget(QWidget)`.
+    - `PlannedSectionCard` -> `OrganizedSectionCard`.
+  - Renombrar `presentation/planner_dialogs.py` a `presentation/organizer_dialogs.py`:
+    - `PlannedSectionDialog` -> `OrganizedSectionDialog`.
+  - En `presentation/main_window.py`:
+    - Actualizar pestaña a `"  Organizador"`.
+    - Instanciar `self.organizer = OrganizerWidget(...)` y actualizar slots/métodos de carga.
+  - En `presentation/home_view.py` y `presentation/records_view.py`:
+    - Actualizar nombres y referencias contextuales.
+- **`docs/specs/`**:
+  - Mover y actualizar directorio `docs/specs/planner/` a `docs/specs/organizer/`:
+    - `progress_metrics.spec.md` -> actualizar especificación con la nueva nomenclatura.
+    - `sections_and_goals.spec.md` -> actualizar especificación.
+  - Actualizar `docs/specs/README.md` reflejando `organizer/`.
+- **`tests/`**:
+  - Renombrar y actualizar tests:
+    - `tests/test_planner_models.py` -> `tests/test_organizer_models.py`
+    - `tests/test_planner_service.py` -> `tests/test_organizer_service.py`
+    - `tests/test_planner_and_records_presenters.py` -> `tests/test_organizer_and_records_presenters.py`
+    - `tests/test_main_window_planner.py` -> `tests/test_main_window_organizer.py`
+    - `tests/test_statistics_with_planner.py` -> `tests/test_statistics_with_organizer.py`
+
+##### Criterios de aceptación
+- [x] La pestaña en `MainWindow` se denomina formalmente "Organizador".
+- [x] La capa de dominio define `OrganizedSection` y `OrganizerSchedule`, preservando alias retrocompatibles.
+- [x] La persistencia JSON en `Record` carga archivos con `planner_sections` y `organizer_sections` sin errores ni pérdida de datos.
+- [x] El Presenter `OrganizerPresenter` está en Python puro en `presentation/organizer/` sin imports de PySide6 ni Qt.
+- [x] La vista pasiva `OrganizerWidget` implementa `IOrganizerView` correctamente.
+- [x] La documentación en `docs/specs/organizer/` y `docs/specs/README.md` está 100% sincronizada.
+- [x] Todos los tests de la suite pasan al 100% (`python -m unittest discover -s tests -v`).
 
 ---
 
@@ -1633,10 +1714,11 @@ Proteger la integridad de los datos de estudio frente a sobrescrituras accidenta
 - [ ] **Metas diarias y semanales de estudio:** Indicador visual de progreso y felicitación de cumplimiento en el cronómetro.
 - [ ] **Modo Simulacro / Examen (*Time Attack*):** Selección de ejercicios del planificador con cuenta regresiva.
 
-### Sector 2: Planificación, Metas y Contenido Curricular
-- [ ] **Panel rápido de visualización de guía en pantalla Home:** Drawer o panel lateral colapsable en la vista principal para explorar la estructura completa de la guía activa (ejercicios, incisos, estados, notas y etiquetas) y seleccionar cualquier ejercicio con 1 clic sin cambiar a la pestaña de Planificación.
+### Sector 2: Organización, Metas y Contenido Curricular
+- [ ] **Nuevo Módulo de Planificación Estratégica (Planificador / Planner):** Motor de proyección temporal y planificación dinámica de metas (cronograma de estudio diario/semanal, estimación inteligente de tiempo para finalizar materias según velocidad histórica, ritmo hacia exámenes y asignación de bloques). Se apoyará en la estructura curricular administrada por el Organizador.
+- [ ] **Panel rápido de visualización de guía en pantalla Home:** Drawer o panel lateral colapsable en la vista principal para explorar la estructura completa de la guía activa (ejercicios, incisos, estados, notas y etiquetas) y seleccionar cualquier ejercicio con 1 clic sin cambiar a la pestaña del Organizador.
 - [ ] **Importador de guías desde texto plano o Markdown:** Generación rápida y parsing de universos de estudio a partir de listas de texto o apuntes.
-- [ ] **Exportar y compartir plantillas de planificación:** Estructura de guías y metadatos sin tiempos privados para intercambio entre compañeros de cursada.
+- [ ] **Exportar y compartir plantillas de organización:** Estructura de guías y metadatos sin tiempos privados para intercambio entre compañeros de cursada.
 
 ### Sector 3: Registros, Historial y Corrección de Datos
 - [ ] **Comparativa de rendimiento histórico entre diferentes guías o materias:** Análisis cruzado de tiempos y tasas de compleción.

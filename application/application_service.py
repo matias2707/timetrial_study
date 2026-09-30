@@ -13,13 +13,17 @@ from typing import Any, Sequence
 
 from infrastructure.export_service import ExportResult
 
-from application.planner_service import (
+from application.organizer_service import (
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_PENDING,
     ExerciseNodeStatus,
-    PlannerOverview,
-    PlannerService,
+    OrganizedSectionStatus,
+    OrganizedSectionStatus as PlannedSectionStatus,
+    OrganizerOverview,
+    OrganizerOverview as PlannerOverview,
+    OrganizerService,
+    OrganizerService as PlannerService,
 )
 from application.statistics_service import (
     CumulativeEvolutionData,
@@ -41,7 +45,16 @@ from application.statistics_service import (
     get_top_effort_exercises,
     get_top_effort_exercises_advanced,
 )
-from domain.models import Milestone, PlannedSection, PlannerSchedule, Record, TagDefinition, TimerItem
+from domain.models import (
+    Milestone,
+    OrganizedSection,
+    OrganizerSchedule,
+    PlannedSection,
+    PlannerSchedule,
+    Record,
+    TagDefinition,
+    TimerItem,
+)
 from domain.timer_service import TimerMode, TimerService
 from infrastructure.storage_service import StorageService
 
@@ -282,7 +295,7 @@ class StudyApplicationService:
 
     def load(self, path: Path) -> None:
         self.record = self.storage.load(path)
-        if PlannerService.migrate_legacy_comments_to_notes(self.record) > 0:
+        if OrganizerService.migrate_legacy_comments_to_notes(self.record) > 0:
             self.save()
 
     def import_items(self, path: Path, item_indexes: list[int]) -> int:
@@ -398,38 +411,44 @@ class StudyApplicationService:
             total += current_delta
         return total
 
-    def get_planner_overview(self) -> PlannerOverview:
-        """Calcula el resumen del universo planificado y estados de ejercicios."""
-        return PlannerService.compute_overview(self.record)
+    def get_organizer_overview(self) -> OrganizerOverview:
+        """Calcula el resumen del universo organizado y estados de ejercicios."""
+        return OrganizerService.compute_overview(self.record)
 
-    def sync_planner_with_records(self) -> bool:
-        """Sincroniza la planificación agregando ejercicios no planificados que existan en registros."""
+    def sync_organizer_with_records(self) -> bool:
+        """Sincroniza la organización agregando ejercicios no organizados que existan en registros."""
         if not self.is_record_open:
             return False
-        changed = PlannerService.sync_planner_with_records(self.record)
+        changed = OrganizerService.sync_organizer_with_records(self.record)
         if changed:
             self.save()
         return changed
 
-    def add_or_update_planned_section(self, section: PlannedSection) -> None:
-        """Añade o edita una sección en la planificación y guarda el registro."""
+    def add_or_update_organized_section(self, section: OrganizedSection) -> None:
+        """Añade o edita una sección en la organización y guarda el registro."""
         if not self.is_record_open:
             return
-        PlannerService.add_or_update_section(self.record, section)
+        OrganizerService.add_or_update_section(self.record, section)
         self.save()
 
-    def delete_planned_section(self, section_type: str, section_number: int) -> bool:
-        """Elimina una sección de la planificación y guarda el registro."""
+    def delete_organized_section(self, section_type: str, section_number: int) -> bool:
+        """Elimina una sección de la organización y guarda el registro."""
         if not self.is_record_open:
             return False
-        deleted = PlannerService.delete_section(self.record, section_type, section_number)
+        deleted = OrganizerService.delete_section(self.record, section_type, section_number)
         if deleted:
             self.save()
         return deleted
 
+    # Alias de compatibilidad
+    get_planner_overview = get_organizer_overview
+    sync_planner_with_records = sync_organizer_with_records
+    add_or_update_planned_section = add_or_update_organized_section
+    delete_planned_section = delete_organized_section
+
     def check_location_boundary(self, location: SessionLocation) -> tuple[bool, str]:
-        """Comprueba si la ubicación indicada está dentro de la planificación configurada."""
-        return PlannerService.is_location_within_plan(
+        """Comprueba si la ubicación indicada está dentro de la organización configurada."""
+        return OrganizerService.is_location_within_organizer(
             self.record,
             location.section_type,
             location.section_number,
@@ -441,13 +460,13 @@ class StudyApplicationService:
         """Devuelve el catálogo de etiquetas del registro activo."""
         if not self.is_record_open:
             return []
-        return PlannerService.get_tag_catalog(self.record)
+        return OrganizerService.get_tag_catalog(self.record)
 
     def add_tag_definition(self, name: str, color: str) -> TagDefinition | None:
         """Añade una nueva etiqueta al catálogo y persiste."""
         if not self.is_record_open:
             return None
-        tag = PlannerService.add_tag_definition(self.record, name, color)
+        tag = OrganizerService.add_tag_definition(self.record, name, color)
         self.save()
         return tag
 
@@ -455,7 +474,7 @@ class StudyApplicationService:
         """Actualiza una etiqueta en el catálogo y persiste."""
         if not self.is_record_open:
             return False
-        updated = PlannerService.update_tag_definition(self.record, tag_id, name, color)
+        updated = OrganizerService.update_tag_definition(self.record, tag_id, name, color)
         if updated:
             self.save()
         return updated
@@ -464,7 +483,7 @@ class StudyApplicationService:
         """Elimina una etiqueta del catálogo, limpia referencias y persiste."""
         if not self.is_record_open:
             return False
-        deleted = PlannerService.delete_tag_definition(self.record, tag_id)
+        deleted = OrganizerService.delete_tag_definition(self.record, tag_id)
         if deleted:
             self.save()
         return deleted
@@ -475,7 +494,7 @@ class StudyApplicationService:
         """Devuelve los IDs de etiquetas asociadas a un ejercicio o inciso."""
         if not self.is_record_open:
             return []
-        return PlannerService.get_exercise_tags(
+        return OrganizerService.get_exercise_tags(
             self.record, section_type, section_number, exercise, inciso
         )
 
@@ -490,7 +509,7 @@ class StudyApplicationService:
         """Asigna etiquetas a un ejercicio o inciso y persiste los cambios."""
         if not self.is_record_open:
             return
-        PlannerService.set_exercise_tags(
+        OrganizerService.set_exercise_tags(
             self.record, section_type, section_number, exercise, inciso, tag_ids
         )
         self.save()
@@ -501,7 +520,7 @@ class StudyApplicationService:
         """Devuelve la nota asignada a un ejercicio o inciso."""
         if not self.is_record_open:
             return ""
-        return PlannerService.get_exercise_note(
+        return OrganizerService.get_exercise_note(
             self.record, section_type, section_number, exercise, inciso
         )
 
@@ -516,7 +535,7 @@ class StudyApplicationService:
         """Asigna o actualiza la nota de un ejercicio o inciso y persiste los cambios."""
         if not self.is_record_open:
             return
-        PlannerService.set_exercise_note(
+        OrganizerService.set_exercise_note(
             self.record, section_type, section_number, exercise, inciso, note
         )
         loc = self.location
@@ -529,17 +548,17 @@ class StudyApplicationService:
             self.pending_comment = note.strip()
         self.save()
 
-    def get_schedule(self) -> PlannerSchedule | None:
+    def get_schedule(self) -> OrganizerSchedule | None:
         """Devuelve la configuración del cronograma de cursada del registro activo."""
         if not self.is_record_open:
             return None
-        return self.record.planner_schedule
+        return self.record.organizer_schedule
 
-    def set_schedule(self, schedule: PlannerSchedule | None) -> None:
+    def set_schedule(self, schedule: OrganizerSchedule | None) -> None:
         """Configura o actualiza el cronograma de cursada y persiste los cambios."""
         if not self.is_record_open:
             return
-        self.record.planner_schedule = schedule
+        self.record.organizer_schedule = schedule
         self.save()
 
     def get_course_heatmap_data(self, reference_date: date | None = None) -> dict[str, Any]:
@@ -684,7 +703,7 @@ class StudyApplicationService:
         if not self.is_record_open:
             return 0
         norm_type = section_type.strip().lower()
-        for sec in self.record.planner_sections:
+        for sec in self.record.organizer_sections:
             if (
                 sec.section_type.strip().lower() == norm_type
                 and sec.section_number == section_number
@@ -699,9 +718,9 @@ class StudyApplicationService:
         exercise: int,
         inciso: int | None = None,
     ) -> ExerciseNodeStatus:
-        """Obtiene el ExerciseNodeStatus de la planificación o lo construye al vuelo si no hay plan."""
-        # 1. Si existe en la planificación, buscarlo
-        overview = self.get_planner_overview()
+        """Obtiene el ExerciseNodeStatus del organizador o lo construye al vuelo si no hay plan."""
+        # 1. Si existe en el organizador, buscarlo
+        overview = self.get_organizer_overview()
         norm_type = section_type.strip().lower()
         for sec in overview.sections:
             if (
@@ -719,7 +738,7 @@ class StudyApplicationService:
                             return node
                         return node
 
-        # 2. Si no hay planificación para esta sección/ejercicio, construirlo al vuelo con los datos reales
+        # 2. Si no hay organización para esta sección/ejercicio, construirlo al vuelo con los datos reales
         items = [
             it
             for it in self.record.items
@@ -771,14 +790,14 @@ class StudyApplicationService:
 
         target_items = items if items is not None else (self.record.items if self.is_record_open else [])
         tag_catalog = self.get_tag_catalog() if self.is_record_open else []
-        planner_sections = self.record.planner_sections if self.is_record_open else []
+        organizer_sections = self.record.organizer_sections if self.is_record_open else []
 
         return export_items_to_csv(
             file_path=file_path,
             items=target_items,
             delimiter=delimiter,
             tag_catalog=tag_catalog,
-            planner_sections=planner_sections,
+            planner_sections=organizer_sections,
         )
 
     def export_summary_to_csv(
@@ -792,7 +811,7 @@ class StudyApplicationService:
         if not self.is_record_open:
             return export_summary_to_csv(file_path=file_path, summary_rows=[], delimiter=delimiter)
 
-        overview = self.get_planner_overview()
+        overview = self.get_organizer_overview()
         summary_rows: list[dict[str, Any]] = []
 
         for sec_status in overview.sections:

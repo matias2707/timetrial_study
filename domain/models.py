@@ -101,8 +101,8 @@ def default_tags() -> list[TagDefinition]:
 
 
 @dataclass
-class PlannedSection:
-    """Configuración planificada de una sección de estudio (guía, práctica, etc.)."""
+class OrganizedSection:
+    """Configuración organizada de una sección de estudio (guía, práctica, etc.)."""
 
     section_type: str = "Guía"
     section_number: int = 1
@@ -164,7 +164,7 @@ class PlannedSection:
             self.exercise_notes[key] = cleaned
 
     def to_dict(self) -> dict[str, Any]:
-        """Serializa la sección planificada a un diccionario."""
+        """Serializa la sección organizada a un diccionario."""
         return {
             "section_type": self.section_type,
             "section_number": self.section_number,
@@ -176,8 +176,8 @@ class PlannedSection:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlannedSection":
-        """Reconstruye una sección planificada desde un diccionario JSON."""
+    def from_dict(cls, data: dict[str, Any]) -> "OrganizedSection":
+        """Reconstruye una sección organizada desde un diccionario JSON."""
         raw_configs = data.get("exercise_configs") or {}
         exercise_configs = {int(k): int(v) for k, v in raw_configs.items()}
         raw_exercise_tags = data.get("exercise_tags") or {}
@@ -200,6 +200,10 @@ class PlannedSection:
             exercise_tags=exercise_tags,
             exercise_notes=exercise_notes,
         )
+
+
+# Alias de retrocompatibilidad
+PlannedSection = OrganizedSection
 
 
 @dataclass
@@ -240,7 +244,7 @@ class Milestone:
 
 
 @dataclass
-class PlannerSchedule:
+class OrganizerSchedule:
     """Configuración del período de cursada e hitos evaluativos."""
 
     period_type: str = "Cuatrimestral"  # "Bimestral", "Cuatrimestral", "Semestral", "Personalizado"
@@ -257,7 +261,7 @@ class PlannerSchedule:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlannerSchedule":
+    def from_dict(cls, data: dict[str, Any]) -> "OrganizerSchedule":
         raw_milestones = data.get("milestones", [])
         milestones = [
             Milestone.from_dict(m)
@@ -273,22 +277,71 @@ class PlannerSchedule:
         )
 
 
+# Alias de retrocompatibilidad
+PlannerSchedule = OrganizerSchedule
+
+
 @dataclass
 class Record:
-    """Agrupa todos los items y la planificación de un fichero de registro de la aplicación."""
+    """Agrupa todos los items y la organización de un fichero de registro de la aplicación."""
 
     record_name: str = "StudyTimetrial"
     items: list[TimerItem] = field(default_factory=list)
-    planner_sections: list[PlannedSection] = field(default_factory=list)
+    organizer_sections: list[OrganizedSection] = field(default_factory=list)
     tags: list[TagDefinition] = field(default_factory=default_tags)
-    planner_schedule: PlannerSchedule | None = None
+    organizer_schedule: OrganizerSchedule | None = None
     schema_version: int = 1
     application: str = "Study Timetrial"
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)
 
+    def __init__(
+        self,
+        record_name: str = "StudyTimetrial",
+        items: list[TimerItem] | None = None,
+        organizer_sections: list[OrganizedSection] | None = None,
+        tags: list[TagDefinition] | None = None,
+        organizer_schedule: OrganizerSchedule | None = None,
+        schema_version: int = 1,
+        application: str = "Study Timetrial",
+        created_at: str | None = None,
+        updated_at: str | None = None,
+        planner_sections: list[OrganizedSection] | None = None,
+        planner_schedule: OrganizerSchedule | None = None,
+    ) -> None:
+        self.record_name = str(record_name)
+        self.items = items if items is not None else []
+        if organizer_sections is not None:
+            self.organizer_sections = organizer_sections
+        elif planner_sections is not None:
+            self.organizer_sections = planner_sections
+        else:
+            self.organizer_sections = []
+        self.tags = tags if tags is not None else default_tags()
+        self.organizer_schedule = organizer_schedule if organizer_schedule is not None else planner_schedule
+        self.schema_version = schema_version
+        self.application = application
+        self.created_at = created_at if created_at is not None else now_iso()
+        self.updated_at = updated_at if updated_at is not None else now_iso()
+
+    @property
+    def planner_sections(self) -> list[OrganizedSection]:
+        return self.organizer_sections
+
+    @planner_sections.setter
+    def planner_sections(self, value: list[OrganizedSection]) -> None:
+        self.organizer_sections = value
+
+    @property
+    def planner_schedule(self) -> OrganizerSchedule | None:
+        return self.organizer_schedule
+
+    @planner_schedule.setter
+    def planner_schedule(self, value: OrganizerSchedule | None) -> None:
+        self.organizer_schedule = value
+
     def to_dict(self) -> dict[str, Any]:
-        """Serializa el registro con marca temporal actualizada y secciones planificadas."""
+        """Serializa el registro con marca temporal actualizada y secciones organizadas."""
         self.updated_at = now_iso()
         return {
             "schema_version": self.schema_version,
@@ -297,9 +350,11 @@ class Record:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "items": [item.to_dict() for item in self.items],
-            "planner_sections": [sec.to_dict() for sec in self.planner_sections],
+            "organizer_sections": [sec.to_dict() for sec in self.organizer_sections],
+            "planner_sections": [sec.to_dict() for sec in self.organizer_sections],
             "tags": [tag.to_dict() for tag in self.tags],
-            "planner_schedule": self.planner_schedule.to_dict() if self.planner_schedule else None,
+            "organizer_schedule": self.organizer_schedule.to_dict() if self.organizer_schedule else None,
+            "planner_schedule": self.organizer_schedule.to_dict() if self.organizer_schedule else None,
         }
 
     @classmethod
@@ -308,9 +363,11 @@ class Record:
         if data.get("schema_version") != 1 or not isinstance(data.get("items"), list):
             raise ValueError("El archivo no usa el esquema compatible")
 
-        raw_sections = data.get("planner_sections", [])
-        planner_sections = [
-            PlannedSection.from_dict(s)
+        raw_sections = data.get("organizer_sections")
+        if raw_sections is None:
+            raw_sections = data.get("planner_sections", [])
+        organizer_sections = [
+            OrganizedSection.from_dict(s)
             for s in raw_sections
             if isinstance(s, dict)
         ] if isinstance(raw_sections, list) else []
@@ -325,9 +382,11 @@ class Record:
                 if isinstance(t, dict)
             ]
 
-        raw_schedule = data.get("planner_schedule")
-        planner_schedule = (
-            PlannerSchedule.from_dict(raw_schedule)
+        raw_schedule = data.get("organizer_schedule")
+        if raw_schedule is None:
+            raw_schedule = data.get("planner_schedule")
+        organizer_schedule = (
+            OrganizerSchedule.from_dict(raw_schedule)
             if isinstance(raw_schedule, dict)
             else None
         )
@@ -335,9 +394,9 @@ class Record:
         return cls(
             record_name=str(data.get("record_name") or "StudyTimetrial"),
             items=[TimerItem.from_dict(item) for item in data["items"]],
-            planner_sections=planner_sections,
+            organizer_sections=organizer_sections,
             tags=tags,
-            planner_schedule=planner_schedule,
+            organizer_schedule=organizer_schedule,
             created_at=str(data.get("created_at") or now_iso()),
             updated_at=str(data.get("updated_at") or now_iso()),
         )

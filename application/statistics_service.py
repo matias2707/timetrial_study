@@ -84,12 +84,22 @@ class RecordStatistics:
     planned_completed_units: int = 0
     planned_completed_weight: float = 0.0
     planned_completion_percentage: float = 0.0
+    has_organizer: bool = False
+    organized_total_units: int = 0
+    organized_completed_units: int = 0
+    organized_completed_weight: float = 0.0
+    organized_completion_percentage: float = 0.0
+
+    @property
+    def organized_completed_display(self) -> str:
+        weight = self.organized_completed_weight if self.organized_completed_weight > 0 else self.planned_completed_weight
+        if weight.is_integer():
+            return str(int(weight))
+        return f"{weight:.1f}".rstrip("0").rstrip(".")
 
     @property
     def planned_completed_display(self) -> str:
-        if self.planned_completed_weight.is_integer():
-            return str(int(self.planned_completed_weight))
-        return f"{self.planned_completed_weight:.1f}".rstrip("0").rstrip(".")
+        return self.organized_completed_display
 
     @property
     def total_time_ms(self) -> int:
@@ -237,21 +247,21 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             )
             for day in (end_date - timedelta(days=i) for i in range(6, -1, -1))
         ]
-        has_planner = bool(record.planner_sections)
-        planned_total_units = 0
-        planned_completed_units = 0
-        planned_completed_weight = 0.0
-        planned_completion_percentage = 0.0
+        has_organizer = bool(record.organizer_sections)
+        organized_total_units = 0
+        organized_completed_units = 0
+        organized_completed_weight = 0.0
+        organized_completion_percentage = 0.0
         empty_section_summaries: list[SectionSummary] = []
 
-        if has_planner:
-            from application.planner_service import PlannerService
+        if has_organizer:
+            from application.organizer_service import OrganizerService
 
-            overview = PlannerService.compute_overview(record)
-            planned_total_units = overview.total_units
-            planned_completed_units = overview.completed_units
-            planned_completed_weight = overview.completed_weight
-            planned_completion_percentage = overview.global_completion_percentage
+            overview = OrganizerService.compute_overview(record)
+            organized_total_units = overview.total_units
+            organized_completed_units = overview.completed_units
+            organized_completed_weight = overview.completed_weight
+            organized_completion_percentage = overview.global_completion_percentage
             for s in overview.sections:
                 sec_name = f"{s.section.section_type} {s.section.section_number}"
                 empty_section_summaries.append(
@@ -268,11 +278,16 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             record_name=record.record_name or "StudyTimetrial",
             daily_stats=seven_days,
             section_summaries=empty_section_summaries,
-            has_planner=has_planner,
-            planned_total_units=planned_total_units,
-            planned_completed_units=planned_completed_units,
-            planned_completed_weight=planned_completed_weight,
-            planned_completion_percentage=planned_completion_percentage,
+            has_planner=has_organizer,
+            planned_total_units=organized_total_units,
+            planned_completed_units=organized_completed_units,
+            planned_completed_weight=organized_completed_weight,
+            planned_completion_percentage=organized_completion_percentage,
+            has_organizer=has_organizer,
+            organized_total_units=organized_total_units,
+            organized_completed_units=organized_completed_units,
+            organized_completed_weight=organized_completed_weight,
+            organized_completion_percentage=organized_completion_percentage,
         )
 
     total_exercise_time_ms = 0
@@ -335,7 +350,7 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
 
         # Determinar si el ejercicio se considera completado
         matched_sec = None
-        for s in record.planner_sections:
+        for s in record.organizer_sections:
             if s.section_type.strip().lower() == s_type.lower() and s.section_number == s_num:
                 matched_sec = s
                 break
@@ -385,18 +400,18 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
             )
         )
 
-    # Resumen por secciones y cruce con planificador
-    has_planner = bool(record.planner_sections)
+    # Resumen por secciones y cruce con organizador
+    has_organizer = bool(record.organizer_sections)
     planned_total_units = 0
     planned_completed_units = 0
     planned_completed_weight = 0.0
     planned_completion_percentage = 0.0
     planned_sec_map = {}
 
-    if has_planner:
-        from application.planner_service import PlannerService
+    if has_organizer:
+        from application.organizer_service import OrganizerService
 
-        overview = PlannerService.compute_overview(record)
+        overview = OrganizerService.compute_overview(record)
         planned_total_units = overview.total_units
         planned_completed_units = overview.completed_units
         planned_completed_weight = overview.completed_weight
@@ -455,11 +470,16 @@ def compute_statistics(record: Record, reference_date: date | None = None) -> Re
         completed_attempts=completed_attempts,
         daily_stats=seven_days,
         section_summaries=section_summaries,
-        has_planner=has_planner,
+        has_planner=has_organizer,
         planned_total_units=planned_total_units,
         planned_completed_units=planned_completed_units,
         planned_completed_weight=planned_completed_weight,
         planned_completion_percentage=planned_completion_percentage,
+        has_organizer=has_organizer,
+        organized_total_units=planned_total_units,
+        organized_completed_units=planned_completed_units,
+        organized_completed_weight=planned_completed_weight,
+        organized_completion_percentage=planned_completion_percentage,
     )
 
 
@@ -577,7 +597,7 @@ class HourlyDistribution(dict):
 def get_course_heatmap_data(record: Record, reference_date: date | None = None) -> CourseHeatmapData:
     """Calcula la matriz de semanas, días, hitos evaluativos y rachas para el mapa de calor de cursada."""
     today = reference_date or date.today()
-    schedule = record.planner_schedule
+    schedule = record.organizer_schedule
 
     # Fechas de inicio y fin
     start_d: date | None = None

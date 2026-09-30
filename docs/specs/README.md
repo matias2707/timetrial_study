@@ -18,8 +18,8 @@ docs/specs/
 ├── data/
 │   ├── persistence_contracts.spec.md  <- Esquemas JSON versión 1, invariantes y tipos
 │   └── query_and_filtering.spec.md    <- Motor de ordenamiento y filtrado estilo Excel
-├── planner/
-│   ├── sections_and_goals.spec.md     <- Reglas de secciones planificadas y límites
+├── organizer/
+│   ├── sections_and_goals.spec.md     <- Reglas de secciones organizadas y límites
 │   └── progress_metrics.spec.md       <- Algoritmos de avance, métricas y analítica
 ├── audio/
 │   └── ambient_and_effects.spec.md    <- Especificación de mezcla ambiental y efectos

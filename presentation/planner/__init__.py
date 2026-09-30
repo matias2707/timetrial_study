@@ -1,11 +1,7 @@
-"""Módulo de la vista del Planificador de Estudio con arquitectura MVP."""
+"""Puente de compatibilidad para el módulo presentation.planner."""
 
 from __future__ import annotations
 
-from presentation.planner.interfaces import IPlannerView
-from presentation.planner.planner_presenter import PlannerPresenter
+from presentation.organizer import IOrganizerView, IPlannerView, OrganizerPresenter, PlannerPresenter
 
-__all__ = [
-    "IPlannerView",
-    "PlannerPresenter",
-]
+__all__ = ["IOrganizerView", "IPlannerView", "OrganizerPresenter", "PlannerPresenter"]

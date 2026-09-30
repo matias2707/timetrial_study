@@ -21,9 +21,10 @@ class TestMainWindowPlanner(unittest.TestCase):
         self.window.close()
 
     def test_planner_tab_exists(self):
-        # The window must have 5 tabs (Cronómetro, Registros, Estadísticas, Planificador, Ambientación)
+        # The window must have 5 tabs (Cronómetro, Registros, Estadísticas, Organizador, Ambientación)
         self.assertEqual(self.window.tabs.count(), 5)
-        self.assertIn("Planificador", self.window.tabs.tabText(3))
+        self.assertIn("Organizador", self.window.tabs.tabText(3))
+        self.assertTrue(hasattr(self.window, "organizer"))
         self.assertTrue(hasattr(self.window, "planner"))
 
     def test_planner_load_timer_action(self):

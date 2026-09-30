@@ -52,16 +52,20 @@ class BoundaryExceededError(TimerDomainError):
     """Se lanza cuando un valor temporal o de división (split) excede los límites físicos o lógicos admitidos."""
 
 
-# --- Errores relacionados con la Planificación (Planner) ---
+# --- Errores relacionados con la Organización Curricular (Organizer) ---
 
 
-class PlannerDomainError(StudyTimetrialError):
-    """Excepción base para errores en la configuración de metas y secciones del planificador."""
+class OrganizerDomainError(StudyTimetrialError):
+    """Excepción base para errores en la configuración de metas y secciones del organizador."""
 
 
-class InvalidSectionError(PlannerDomainError):
-    """Se lanza cuando una sección planificada tiene valores o identificadores inválidos."""
+class InvalidSectionError(OrganizerDomainError):
+    """Se lanza cuando una sección organizada tiene valores o identificadores inválidos."""
 
 
-class MilestoneDateError(PlannerDomainError):
+class MilestoneDateError(OrganizerDomainError):
     """Se lanza cuando la fecha de un hito no respeta el formato ISO o el intervalo de cursada."""
+
+
+# Alias de retrocompatibilidad
+PlannerDomainError = OrganizerDomainError

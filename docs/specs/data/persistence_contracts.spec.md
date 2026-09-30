@@ -34,6 +34,17 @@ Definir la estructura de datos canónica, contratos de serialización/deserializ
       "created_at": "YYYY-MM-DDTHH:MM:SS"
     }
   ],
+  "organizer_sections": [
+    {
+      "section_type": "string",
+      "section_number": 1,
+      "title": "string",
+      "total_exercises": 10,
+      "exercise_configs": { "1": 3, "4": 2 },
+      "exercise_tags": { "1.1": ["tag-redo"] },
+      "exercise_notes": { "1": "Notas en Markdown..." }
+    }
+  ],
   "planner_sections": [
     {
       "section_type": "string",
@@ -52,6 +63,20 @@ Definir la estructura de datos canónica, contratos de serialización/deserializ
       "color": "#ef4444"
     }
   ],
+  "organizer_schedule": {
+    "period_type": "Cuatrimestral",
+    "start_date": "YYYY-MM-DD",
+    "end_date": "YYYY-MM-DD",
+    "milestones": [
+      {
+        "name": "Primer Parcial",
+        "date": "YYYY-MM-DD",
+        "type": "parcial",
+        "color": "#ef4444",
+        "icon": "🎯"
+      }
+    ]
+  },
   "planner_schedule": {
     "period_type": "Cuatrimestral",
     "start_date": "YYYY-MM-DD",

@@ -38,7 +38,7 @@ from presentation.ambience_view import AmbienceViewWidget
 from presentation.app_toolbar import AppToolbar
 from presentation.audio_service import AudioService
 from presentation.home_view import APP_TITLE, APP_VERSION, DEFAULT_SECTION_TYPE, MAX_VALUE, HomeViewWidget
-from presentation.planner_widget import PlannerWidget
+from presentation.organizer_widget import OrganizerWidget, PlannerWidget
 from presentation.presentation_dialogs import ImportRecordsDialog
 from presentation.records_view import RecordsViewWidget
 from presentation.statistics_view import StatisticsViewWidget
@@ -111,11 +111,12 @@ class MainWindow(QMainWindow):
             is_dark_mode=self.is_dark_mode,
             parent=self,
         )
-        self.planner = PlannerWidget(
+        self.organizer = OrganizerWidget(
             self.application,
             is_dark_mode=self.is_dark_mode,
             parent=self,
         )
+        self.planner = self.organizer
         self.ambience_view = AmbienceViewWidget(
             is_dark_mode=self.is_dark_mode,
             parent=self,
@@ -138,7 +139,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.home_view, qta.icon("fa5s.stopwatch", color=active_tab_icon), "  Cronómetro")
         self.tabs.addTab(self.records_view, qta.icon("fa5s.history", color=inactive_tab_icon), "  Registros")
         self.tabs.addTab(self.statistics_view, qta.icon("fa5s.chart-bar", color=inactive_tab_icon), "  Estadísticas")
-        self.tabs.addTab(self.planner, qta.icon("fa5s.tasks", color=inactive_tab_icon), "  Planificador")
+        self.tabs.addTab(self.organizer, qta.icon("fa5s.tasks", color=inactive_tab_icon), "  Organizador")
         self.tabs.addTab(self.ambience_view, qta.icon("fa5s.headphones", color=inactive_tab_icon), "  Ambientación")
 
         from presentation.theming import AmbientParticleOverlay
@@ -200,13 +201,13 @@ class MainWindow(QMainWindow):
         self.records_view.request_export.connect(self._on_records_request_export)
         self.records_view.resume_item_requested.connect(self.resume_item_in_timer)
 
-        self.planner.request_load_timer.connect(self._on_planner_load_timer)
+        self.organizer.request_load_timer.connect(self._on_organizer_load_timer)
 
         # Sincronización bidireccional de silenciamiento
         self.audio_service.mute_state_changed.connect(self._on_audio_service_mute_changed)
         if hasattr(self, "ambience_view") and hasattr(self.ambience_view, "engine"):
             self.ambience_view.engine.master_muted_changed.connect(self._on_ambience_engine_muted_changed)
-        self.statistics_view.request_load_timer.connect(self._on_planner_load_timer)
+        self.statistics_view.request_load_timer.connect(self._on_organizer_load_timer)
         self.statistics_view.request_configure_schedule.connect(self._on_request_configure_schedule)
         self.statistics_view.request_export.connect(self._on_request_export)
 
@@ -215,7 +216,7 @@ class MainWindow(QMainWindow):
             ("fa5s.stopwatch", "Cronómetro"),
             ("fa5s.history", "Registros"),
             ("fa5s.chart-bar", "Estadísticas"),
-            ("fa5s.tasks", "Planificador"),
+            ("fa5s.tasks", "Organizador"),
             ("fa5s.headphones", "Ambientación"),
         ]
         tokens = get_theme_tokens(self.current_theme)
@@ -230,20 +231,20 @@ class MainWindow(QMainWindow):
         elif index == 2:
             self.refresh_statistics()
         elif index == 3:
-            self.planner.refresh_view()
+            self.organizer.refresh_view()
         elif index == 4:
             self.ambience_view.sync_ui_state()
 
     def _on_home_item_finished(self, _completed: bool) -> None:
-        self.application.sync_planner_with_records()
-        self.planner.refresh_view()
+        self.application.sync_organizer_with_records()
+        self.organizer.refresh_view()
         self.records_view.mark_dirty()
         self.refresh_table(force=True)
         self.refresh_statistics()
 
     def _on_records_data_modified(self) -> None:
-        self.application.sync_planner_with_records()
-        self.planner.refresh_view()
+        self.application.sync_organizer_with_records()
+        self.organizer.refresh_view()
         self.refresh_statistics()
         if hasattr(self, "home_view"):
             self.home_view.sync_location()
@@ -319,10 +320,10 @@ class MainWindow(QMainWindow):
         else:
             self.statistics_view.set_dark_mode(self.is_dark_mode)
 
-        if hasattr(self.planner, "set_theme"):
-            self.planner.set_theme(self.current_theme)
+        if hasattr(self.organizer, "set_theme"):
+            self.organizer.set_theme(self.current_theme)
         else:
-            self.planner.set_dark_mode(self.is_dark_mode)
+            self.organizer.set_dark_mode(self.is_dark_mode)
 
         self.ambience_view.set_dark_mode(self.is_dark_mode)
 
@@ -344,8 +345,12 @@ class MainWindow(QMainWindow):
         return self.records_view.table
 
     @property
+    def organizer_view(self) -> OrganizerWidget:
+        return self.organizer
+
+    @property
     def planner_view(self) -> PlannerWidget:
-        return self.planner
+        return self.organizer
 
     @property
     def column_sort_states(self) -> dict[str, str]:
@@ -580,7 +585,7 @@ class MainWindow(QMainWindow):
             self.particle_overlay.setGeometry(self.tabs.rect())
             self.particle_overlay.raise_()
 
-    def _on_planner_load_timer(
+    def _on_organizer_load_timer(
         self, section_type: str, section_number: int, exercise: int, inciso: int | None
     ) -> None:
         if self.application.mode is not TimerMode.WAITING:
@@ -602,9 +607,11 @@ class MainWindow(QMainWindow):
         self.sync_location()
         self.tabs.setCurrentIndex(0)
 
+    _on_planner_load_timer = _on_organizer_load_timer
+
     def _on_request_configure_schedule(self) -> None:
         self.tabs.setCurrentIndex(3)
-        self.planner._on_manage_schedule()
+        self.organizer._on_manage_schedule()
 
     def _on_request_export(self, filtered_items: list[TimerItem] | None = None) -> None:
         """Abre el diálogo modal de exportación a CSV/Excel (TASK-009)."""
@@ -730,7 +737,7 @@ class MainWindow(QMainWindow):
         self.toolbar.set_record_actions_enabled(not is_empty)
         self.home_view.set_empty_state(is_empty)
         self.records_view.set_empty_state(is_empty)
-        self.planner.set_empty_state(is_empty)
+        self.organizer.set_empty_state(is_empty)
         self.update_title()
 
     def new_record(self) -> None:
@@ -895,7 +902,7 @@ class MainWindow(QMainWindow):
         self.application.close_record()
         self.refresh_table()
         self.refresh_statistics()
-        self.planner.refresh_view()
+        self.organizer.refresh_view()
         self.prompt_initial_record_choice(force=True)
         if not self.application.is_record_open:
             self.set_empty_project_state(True)
