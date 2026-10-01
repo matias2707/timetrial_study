@@ -9,8 +9,9 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
+from application.save_policy import SavePolicy
 from infrastructure.export_service import ExportResult
 
 from application.organizer_service import (
@@ -57,6 +58,19 @@ from domain.models import (
 )
 from domain.timer_service import TimerMode, TimerService
 from infrastructure.storage_service import StorageService
+from application.undo import (
+    AddItemCommand,
+    AddOrUpdateSectionCommand,
+    DeleteItemCommand,
+    DeleteSectionCommand,
+    PromoteIncisoCommand,
+    ReplaceItemCommand,
+    SetExerciseNoteCommand,
+    SetExerciseTagsCommand,
+    SetScheduleCommand,
+    UndoManager,
+    UpdateCommentCommand,
+)
 
 
 @dataclass
@@ -77,15 +91,94 @@ class StudyApplicationService:
     para que puedan probarse sin levantar una ventana.
     """
 
-    def __init__(self, storage: StorageService | None = None, timer: TimerService | None = None) -> None:
+    def __init__(
+        self,
+        storage: StorageService | None = None,
+        timer: TimerService | None = None,
+        save_policy: SavePolicy = SavePolicy.AUTO_PERIODIC,
+    ) -> None:
         self.storage = storage or StorageService()
         self.timer = timer or TimerService()
+        self.save_policy = save_policy
         self.record = self.storage.create_automatic()
         self.location = SessionLocation()
         self.pending_comment = ""
         self.editing_item_id: str | None = None
         self.editing_initial_exercise_ms: int = 0
         self.session_started_at: datetime | None = None
+        self.undo_manager = UndoManager(max_depth=50)
+        self._is_dirty: bool = False
+        self._dirty_listeners: list[Callable[[bool], None]] = []
+
+    @property
+    def is_dirty(self) -> bool:
+        """Indica si existen modificaciones en memoria pendientes de persistir en disco."""
+        return self._is_dirty
+
+    def add_dirty_listener(self, listener: Callable[[bool], None]) -> None:
+        """Registra un callback que recibe el nuevo estado booleano de is_dirty."""
+        if listener not in self._dirty_listeners:
+            self._dirty_listeners.append(listener)
+
+    def remove_dirty_listener(self, listener: Callable[[bool], None]) -> None:
+        """Elimina un callback registrado para cambios de dirty state."""
+        if listener in self._dirty_listeners:
+            self._dirty_listeners.remove(listener)
+
+    def _notify_dirty_changed(self) -> None:
+        for listener in list(self._dirty_listeners):
+            try:
+                listener(self._is_dirty)
+            except Exception:
+                pass
+
+    def _mark_dirty(self) -> None:
+        """Marca el estado como sucio y ejecuta guardado inmediato si la política lo exige."""
+        if not self._is_dirty:
+            self._is_dirty = True
+            self._notify_dirty_changed()
+        if self.save_policy == SavePolicy.AUTO_IMMEDIATE:
+            self.save()
+
+    @property
+    def can_undo(self) -> bool:
+        """Indica si hay al menos una acción disponible para deshacer."""
+        return self.undo_manager.can_undo
+
+    @property
+    def can_redo(self) -> bool:
+        """Indica si hay al menos una acción disponible para rehacer."""
+        return self.undo_manager.can_redo
+
+    @property
+    def undo_description(self) -> str:
+        """Descripción de la acción que se desharía."""
+        return self.undo_manager.undo_description
+
+    @property
+    def redo_description(self) -> str:
+        """Descripción de la acción que se reharía."""
+        return self.undo_manager.redo_description
+
+    def undo(self) -> bool:
+        """Revierte la última acción y marca el estado como modificado."""
+        if not self.is_record_open or not self.can_undo:
+            return False
+        cmd = self.undo_manager.undo()
+        if cmd is not None:
+            self._mark_dirty()
+            return True
+        return False
+
+    def redo(self) -> bool:
+        """Reaplica la última acción deshecha y marca el estado como modificado."""
+        if not self.is_record_open or not self.can_redo:
+            return False
+        cmd = self.undo_manager.redo()
+        if cmd is not None:
+            self._mark_dirty()
+            return True
+        return False
 
     @property
     def is_editing(self) -> bool:
@@ -143,6 +236,7 @@ class StudyApplicationService:
 
     def stop_session(self) -> None:
         """Descarta el intento en curso sin crear un registro."""
+        self.discard_session_draft()
         self.editing_item_id = None
         self.editing_initial_exercise_ms = 0
         self.session_started_at = None
@@ -165,6 +259,7 @@ class StudyApplicationService:
 
     def cancel_editing_session(self) -> None:
         """Cancela el modo edición y reinicia el cronómetro a un estado limpio."""
+        self.discard_session_draft()
         self.editing_item_id = None
         self.editing_initial_exercise_ms = 0
         self.session_started_at = None
@@ -213,6 +308,18 @@ class StudyApplicationService:
         if self.editing_item_id and overwrite:
             target = self.editing_item
             if target is not None:
+                old_copy = TimerItem(
+                    id=target.id,
+                    section_type=target.section_type,
+                    section_number=target.section_number,
+                    exercise=target.exercise,
+                    inciso=target.inciso,
+                    exercise_time_ms=target.exercise_time_ms,
+                    break_time_ms=target.break_time_ms,
+                    completed=target.completed,
+                    comment=target.comment,
+                    created_at=target.created_at,
+                )
                 target.section_type = self.location.section_type
                 target.section_number = self.location.section_number
                 target.exercise = self.location.exercise
@@ -221,23 +328,17 @@ class StudyApplicationService:
                 target.break_time_ms = break_ms
                 target.completed = completed
                 target.comment = self.pending_comment
-            else:
-                self.record.items.append(
-                    TimerItem(
-                        section_type=self.location.section_type,
-                        section_number=self.location.section_number,
-                        exercise=self.location.exercise,
-                        inciso=self.location.inciso,
-                        exercise_time_ms=exercise_ms,
-                        break_time_ms=break_ms,
-                        completed=completed,
-                        comment=self.pending_comment,
-                        created_at=item_created_at,
+                self.undo_manager.push_executed(
+                    ReplaceItemCommand(
+                        self.record,
+                        old_copy,
+                        target,
+                        description=f"Actualizar intento Ej. {target.exercise}"
+                        + (f".{target.inciso}" if target.inciso else ""),
                     )
                 )
-        else:
-            self.record.items.append(
-                TimerItem(
+            else:
+                new_item = TimerItem(
                     section_type=self.location.section_type,
                     section_number=self.location.section_number,
                     exercise=self.location.exercise,
@@ -248,9 +349,41 @@ class StudyApplicationService:
                     comment=self.pending_comment,
                     created_at=item_created_at,
                 )
+                self.record.items.append(new_item)
+                self.undo_manager.push_executed(
+                    AddItemCommand(
+                        self.record,
+                        new_item,
+                        description=f"Completar Ej. {new_item.exercise}"
+                        if completed
+                        else f"Intento Ej. {new_item.exercise}",
+                    )
+                )
+        else:
+            new_item = TimerItem(
+                section_type=self.location.section_type,
+                section_number=self.location.section_number,
+                exercise=self.location.exercise,
+                inciso=self.location.inciso,
+                exercise_time_ms=exercise_ms,
+                break_time_ms=break_ms,
+                completed=completed,
+                comment=self.pending_comment,
+                created_at=item_created_at,
+            )
+            self.record.items.append(new_item)
+            self.undo_manager.push_executed(
+                AddItemCommand(
+                    self.record,
+                    new_item,
+                    description=f"Completar Ej. {new_item.exercise}"
+                    if completed
+                    else f"Intento Ej. {new_item.exercise}",
+                )
             )
 
-        self.save()
+        self.discard_session_draft()
+        self._mark_dirty()
         self.timer.reset()
         self.pending_comment = ""
         self.editing_item_id = None
@@ -258,14 +391,118 @@ class StudyApplicationService:
         self.session_started_at = None
         return True
 
-
-    def save(self) -> None:
+    def save(self, force: bool = False) -> None:
+        """Persiste los cambios pendientes en el archivo abierto."""
         if not self.is_record_open:
             return
-        self.storage.save(self.record)
+        try:
+            self.storage.save(self.record, force=force)
+        except TypeError:
+            self.storage.save(self.record)
+        if self._is_dirty:
+            self._is_dirty = False
+            self._notify_dirty_changed()
+
+    def has_external_modification(self) -> bool:
+        """Indica si el archivo en disco ha sufrido cambios externos respecto a la versión en memoria."""
+        if not self.is_record_open:
+            return False
+        if hasattr(self.storage, "has_external_modification"):
+            return bool(self.storage.has_external_modification())
+        return False
+
+    def reload_from_disk(self) -> None:
+        """Recarga el archivo activo desde disco descartando las modificaciones en memoria."""
+        if not self.is_record_open or self.record_path is None:
+            return
+        self.record = self.storage.read(self.record_path)
+        if hasattr(self.storage, "watcher") and self.storage.watcher:
+            self.storage.watcher.update_snapshot()
+        self.undo_manager.clear()
+        if self._is_dirty:
+            self._is_dirty = False
+            self._notify_dirty_changed()
+
+    def save_session_draft(self) -> bool:
+        """Persiste un borrador de la sesión activa en curso para Crash Recovery."""
+        if not self.is_record_open or not self.record_path:
+            return False
+        draft_mgr = getattr(self.storage, "draft_manager", None)
+        if draft_mgr is None:
+            return False
+        if self.mode is TimerMode.WAITING and not self.editing_item_id:
+            draft_mgr.discard_draft(self.record_path)
+            return False
+
+        exercise_ms, break_ms = self.timer.snapshot()
+        loc = {
+            "section_type": self.location.section_type,
+            "section_number": self.location.section_number,
+            "exercise": self.location.exercise,
+            "inciso": self.location.inciso,
+        }
+        draft_mgr.save_draft(
+            record_path=self.record_path,
+            timer_mode=self.mode.value,
+            is_paused=self.is_timer_paused,
+            exercise_time_ms=exercise_ms,
+            break_time_ms=break_ms,
+            location=loc,
+            comment=self.pending_comment,
+            session_started_at=self.session_started_at.isoformat() if self.session_started_at else None,
+            editing_item_id=self.editing_item_id,
+        )
+        return True
+
+    def check_session_draft(self, record_path: Path | None = None) -> dict[str, Any] | None:
+        """Comprueba si existe un borrador de sesión previa no guardada para el archivo."""
+        target = record_path or self.record_path
+        draft_mgr = getattr(self.storage, "draft_manager", None)
+        if not target or draft_mgr is None:
+            return None
+        return draft_mgr.load_draft(target)
+
+    def restore_session_draft(self, draft: dict[str, Any]) -> None:
+        """Restaura el estado de cronómetro y ubicación desde un borrador de Crash Recovery."""
+        loc = draft.get("location", {})
+        self.location = SessionLocation(
+            section_type=str(loc.get("section_type", "Guía")),
+            section_number=int(loc.get("section_number", 1)),
+            exercise=int(loc.get("exercise", 1)),
+            inciso=loc.get("inciso"),
+        )
+        self.pending_comment = str(draft.get("comment", ""))
+        self.editing_item_id = draft.get("editing_item_id")
+        exercise_ms = int(draft.get("exercise_time_ms", 0))
+        break_ms = int(draft.get("break_time_ms", 0))
+        mode_str = str(draft.get("timer_mode", "PLAY"))
+        is_paused = bool(draft.get("is_paused", False))
+        started_iso = draft.get("session_started_at")
+        if started_iso:
+            try:
+                self.session_started_at = datetime.fromisoformat(started_iso)
+            except Exception:
+                self.session_started_at = None
+
+        self.timer.load_accumulated_times(exercise_ms, break_ms)
+        if mode_str == "BREAK":
+            self.timer.start()
+            self.timer.toggle_break()
+        elif mode_str == "PLAY":
+            self.timer.start()
+        if is_paused:
+            self.timer.pause()
+
+    def discard_session_draft(self, record_path: Path | None = None) -> None:
+        """Elimina el borrador de sesión activa del disco."""
+        target = record_path or self.record_path
+        draft_mgr = getattr(self.storage, "draft_manager", None)
+        if target and draft_mgr is not None:
+            draft_mgr.discard_draft(target)
 
     def new_record(self, record_name: str | None = None, directory: Path | None = None) -> Path:
         """Crea un registro nuevo con un nombre único en el directorio especificado o estándar."""
+        self.discard_session_draft()
         requested_name = (record_name or self.record.record_name or "StudyTimetrial").strip()
         if not requested_name:
             requested_name = self.record.record_name or "StudyTimetrial"
@@ -283,7 +520,18 @@ class StudyApplicationService:
             if not path.exists():
                 self.record = Record(record_name=candidate_name)
                 self.storage.path = path
+                lock_mgr = getattr(self.storage, "lock_manager", None)
+                if lock_mgr is not None:
+                    lock_mgr.set_target(path)
+                    lock_mgr.acquire(force=True)
+                watcher = getattr(self.storage, "watcher", None)
+                if watcher is not None:
+                    watcher.set_path(path)
+                self.undo_manager.clear()
                 self.storage.save(self.record, path)
+                if self._is_dirty:
+                    self._is_dirty = False
+                    self._notify_dirty_changed()
                 return path
             candidate_name = f"{base_name}_{suffix}"
             suffix += 1
@@ -291,10 +539,20 @@ class StudyApplicationService:
     def save_as(self, path: Path) -> None:
         self.storage.save(self.record, path)
         self.record.record_name = path.stem
-        self.save()
+        self.storage.path = path
+        if self._is_dirty:
+            self._is_dirty = False
+            self._notify_dirty_changed()
 
-    def load(self, path: Path) -> None:
-        self.record = self.storage.load(path)
+    def load(self, path: Path, force_lock: bool = False) -> None:
+        try:
+            self.record = self.storage.load(path, force_lock=force_lock)
+        except TypeError:
+            self.record = self.storage.load(path)
+        self.undo_manager.clear()
+        if self._is_dirty:
+            self._is_dirty = False
+            self._notify_dirty_changed()
         if OrganizerService.migrate_legacy_comments_to_notes(self.record) > 0:
             self.save()
 
@@ -307,10 +565,11 @@ class StudyApplicationService:
         for item in selected_items:
             item_data = item.to_dict()
             item_data["id"] = None
-            self.record.items.append(TimerItem.from_dict(item_data))
+            new_item = TimerItem.from_dict(item_data)
+            self.undo_manager.push_and_execute(AddItemCommand(self.record, new_item, description=f"Importar Ej. {new_item.exercise}"))
 
         if selected_items:
-            self.save()
+            self._mark_dirty()
         return len(selected_items)
 
     def rename(self, path: Path) -> None:
@@ -322,12 +581,21 @@ class StudyApplicationService:
         self.save()
 
     def close_record(self) -> None:
-        self.storage.path = None
+        self.discard_session_draft()
+        if hasattr(self.storage, "close"):
+            self.storage.close()
+        else:
+            self.storage.path = None
         self.record = Record(record_name="")
+        self.undo_manager.clear()
         self.editing_item_id = None
         self.editing_initial_exercise_ms = 0
         self.timer.reset()
         self.pending_comment = ""
+        if self._is_dirty:
+            self._is_dirty = False
+            self._notify_dirty_changed()
+
 
     def ordered_items(self) -> list[TimerItem]:
         return sorted(self.record.items, key=lambda item: item.created_at, reverse=True)
@@ -335,34 +603,49 @@ class StudyApplicationService:
     def add_item(self, item: TimerItem) -> None:
         if not self.is_record_open:
             return
-        self.record.items.append(item)
-        self.save()
+        self.undo_manager.push_and_execute(AddItemCommand(self.record, item))
+        self._mark_dirty()
 
     def replace_item(self, current: TimerItem, replacement: TimerItem) -> None:
         if not self.is_record_open:
             return
-        self.record.items[self.record.items.index(current)] = replacement
-        self.save()
+        self.undo_manager.push_and_execute(ReplaceItemCommand(self.record, current, replacement))
+        self._mark_dirty()
 
     def reset_item(self, item: TimerItem) -> None:
         if not self.is_record_open:
             return
+        old_copy = TimerItem(
+            id=item.id,
+            section_type=item.section_type,
+            section_number=item.section_number,
+            exercise=item.exercise,
+            inciso=item.inciso,
+            exercise_time_ms=item.exercise_time_ms,
+            break_time_ms=item.break_time_ms,
+            completed=item.completed,
+            comment=item.comment,
+            created_at=item.created_at,
+        )
         item.exercise_time_ms = 0
         item.break_time_ms = 0
-        self.save()
+        self.undo_manager.push_executed(
+            ReplaceItemCommand(self.record, old_copy, item, description=f"Reiniciar tiempos Ej. {item.exercise}")
+        )
+        self._mark_dirty()
 
     def update_comment(self, item: TimerItem, comment: str) -> None:
         """Actualiza el comentario de un item ya guardado."""
         if not self.is_record_open:
             return
-        item.comment = comment.strip()
-        self.save()
+        self.undo_manager.push_and_execute(UpdateCommentCommand(item, comment))
+        self._mark_dirty()
 
     def delete_item(self, item: TimerItem) -> None:
         if not self.is_record_open:
             return
-        self.record.items.remove(item)
-        self.save()
+        self.undo_manager.push_and_execute(DeleteItemCommand(self.record, item))
+        self._mark_dirty()
 
     def find_inciso_gap_candidates(
         self,
@@ -394,8 +677,7 @@ class StudyApplicationService:
         """Actualiza el inciso de los items indicados (generalmente de None a 1) y persiste."""
         if not self.is_record_open or not items:
             return
-        for item in items:
-            item.inciso = target_inciso
+        self.undo_manager.push_and_execute(PromoteIncisoCommand(items, target_inciso))
         self.save()
 
     def get_statistics(self, reference_date: date | None = None) -> RecordStatistics:
@@ -421,24 +703,30 @@ class StudyApplicationService:
             return False
         changed = OrganizerService.sync_organizer_with_records(self.record)
         if changed:
-            self.save()
+            self._mark_dirty()
         return changed
 
     def add_or_update_organized_section(self, section: OrganizedSection) -> None:
-        """Añade o edita una sección en la organización y guarda el registro."""
+        """Añade o edita una sección en la organización y marca dirty."""
         if not self.is_record_open:
             return
-        OrganizerService.add_or_update_section(self.record, section)
-        self.save()
+        self.undo_manager.push_and_execute(AddOrUpdateSectionCommand(self.record, section))
+        self._mark_dirty()
 
     def delete_organized_section(self, section_type: str, section_number: int) -> bool:
-        """Elimina una sección de la organización y guarda el registro."""
+        """Elimina una sección de la organización y marca dirty."""
         if not self.is_record_open:
             return False
-        deleted = OrganizerService.delete_section(self.record, section_type, section_number)
-        if deleted:
-            self.save()
-        return deleted
+        # Verificar que la sección existe antes de registrar el comando
+        exists = any(
+            s.section_type.strip().lower() == section_type.strip().lower() and s.section_number == section_number
+            for s in self.record.organizer_sections
+        )
+        if not exists:
+            return False
+        self.undo_manager.push_and_execute(DeleteSectionCommand(self.record, section_type, section_number))
+        self._mark_dirty()
+        return True
 
     # Alias de compatibilidad
     get_planner_overview = get_organizer_overview
@@ -467,7 +755,7 @@ class StudyApplicationService:
         if not self.is_record_open:
             return None
         tag = OrganizerService.add_tag_definition(self.record, name, color)
-        self.save()
+        self._mark_dirty()
         return tag
 
     def update_tag_definition(self, tag_id: str, name: str, color: str) -> bool:
@@ -476,7 +764,7 @@ class StudyApplicationService:
             return False
         updated = OrganizerService.update_tag_definition(self.record, tag_id, name, color)
         if updated:
-            self.save()
+            self._mark_dirty()
         return updated
 
     def delete_tag_definition(self, tag_id: str) -> bool:
@@ -485,7 +773,7 @@ class StudyApplicationService:
             return False
         deleted = OrganizerService.delete_tag_definition(self.record, tag_id)
         if deleted:
-            self.save()
+            self._mark_dirty()
         return deleted
 
     def get_exercise_tags(
@@ -509,10 +797,10 @@ class StudyApplicationService:
         """Asigna etiquetas a un ejercicio o inciso y persiste los cambios."""
         if not self.is_record_open:
             return
-        OrganizerService.set_exercise_tags(
-            self.record, section_type, section_number, exercise, inciso, tag_ids
+        self.undo_manager.push_and_execute(
+            SetExerciseTagsCommand(self.record, section_type, section_number, exercise, inciso, tag_ids)
         )
-        self.save()
+        self._mark_dirty()
 
     def get_exercise_note(
         self, section_type: str, section_number: int, exercise: int, inciso: int | None = None
@@ -535,8 +823,8 @@ class StudyApplicationService:
         """Asigna o actualiza la nota de un ejercicio o inciso y persiste los cambios."""
         if not self.is_record_open:
             return
-        OrganizerService.set_exercise_note(
-            self.record, section_type, section_number, exercise, inciso, note
+        self.undo_manager.push_and_execute(
+            SetExerciseNoteCommand(self.record, section_type, section_number, exercise, inciso, note)
         )
         loc = self.location
         if (
@@ -546,7 +834,7 @@ class StudyApplicationService:
             and loc.inciso == inciso
         ):
             self.pending_comment = note.strip()
-        self.save()
+        self._mark_dirty()
 
     def get_schedule(self) -> OrganizerSchedule | None:
         """Devuelve la configuración del cronograma de cursada del registro activo."""
@@ -558,8 +846,8 @@ class StudyApplicationService:
         """Configura o actualiza el cronograma de cursada y persiste los cambios."""
         if not self.is_record_open:
             return
-        self.record.organizer_schedule = schedule
-        self.save()
+        self.undo_manager.push_and_execute(SetScheduleCommand(self.record, schedule))
+        self._mark_dirty()
 
     def get_course_heatmap_data(self, reference_date: date | None = None) -> dict[str, Any]:
         """Calcula los datos del mapa de calor de cursada para el registro activo."""

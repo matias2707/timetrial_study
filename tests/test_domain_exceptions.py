@@ -6,6 +6,8 @@ import unittest
 
 from domain.exceptions import (
     BoundaryExceededError,
+    ExternalModificationConflictError,
+    FileLockedError,
     InvalidSectionError,
     MilestoneDateError,
     RecordCorruptedError,
@@ -38,6 +40,14 @@ class TestDomainExceptions(unittest.TestCase):
 
         validation = RecordValidationError("Tiempo negativo")
         self.assertIsInstance(validation, RecordError)
+
+        conflict = ExternalModificationConflictError("Modificación externa")
+        self.assertIsInstance(conflict, RecordError)
+        self.assertIsInstance(conflict, StudyTimetrialError)
+
+        locked = FileLockedError("Archivo bloqueado")
+        self.assertIsInstance(locked, RecordError)
+        self.assertIsInstance(locked, StudyTimetrialError)
 
     def test_timer_exceptions_inheritance(self) -> None:
         conflict = TimerConflictError("Transición inválida")

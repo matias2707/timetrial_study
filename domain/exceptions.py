@@ -37,6 +37,14 @@ class RecordValidationError(RecordError):
     """Se lanza cuando los valores de una sesión o ítem violan invariantes del modelo."""
 
 
+class ExternalModificationConflictError(RecordError):
+    """Se lanza cuando un archivo fue modificado externamente (ej. sincronización en la nube) antes de guardar."""
+
+
+class FileLockedError(RecordError):
+    """Se lanza cuando un archivo está bloqueado por otra instancia en ejecución."""
+
+
 # --- Errores relacionados con el Cronómetro (Timer Engine) ---
 
 

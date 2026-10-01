@@ -41,6 +41,9 @@ class ApplicationServiceTests(unittest.TestCase):
         self.assertEqual(len(application.record.items), 1)
         self.assertEqual(application.record.items[0].section_type, "Parcial")
         self.assertTrue(application.record.items[0].completed)
+        self.assertTrue(application.is_dirty)
+        application.save()
+        self.assertFalse(application.is_dirty)
         self.assertTrue(storage.saved_records)
 
 

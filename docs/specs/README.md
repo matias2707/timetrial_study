@@ -17,7 +17,10 @@ docs/specs/
 │   └── inciso_resolution.spec.md      <- Algoritmo de detección y corrección de incisos
 ├── data/
 │   ├── persistence_contracts.spec.md  <- Esquemas JSON versión 1, invariantes y tipos
+│   ├── file_control_and_autosave.spec.md <- Control robusto de archivos, escritura atómica, autoguardado y crash recovery
 │   └── query_and_filtering.spec.md    <- Motor de ordenamiento y filtrado estilo Excel
+├── history/
+│   └── undo_redo.spec.md              <- Motor de Deshacer y Rehacer (Undo / Redo) con Command Pattern
 ├── organizer/
 │   ├── sections_and_goals.spec.md     <- Reglas de secciones organizadas y límites
 │   └── progress_metrics.spec.md       <- Algoritmos de avance, métricas y analítica
@@ -28,10 +31,12 @@ docs/specs/
 │   └── today_activity_strip.spec.md   <- Franja de actividad 24h y aguja temporal en tiempo real
 ├── export/
 │   └── export_service.spec.md         <- Exportación estandarizada CSV/Excel (RFC 4180, utf-8-sig)
-└── themes/
-    ├── color_tokens.spec.md           <- Diccionario de tokens de color requeridos por tema
-    ├── skins_catalog.spec.md          <- Catálogo ampliado de skins (Pantone, estacionales y selección)
-    └── high_night.spec.md             <- Especificación cromática y física de destellos de High Night
+├── themes/
+│   ├── color_tokens.spec.md           <- Diccionario de tokens de color requeridos por tema
+│   ├── skins_catalog.spec.md          <- Catálogo ampliado de skins (Pantone, estacionales y selección)
+│   └── high_night.spec.md             <- Especificación cromática y física de destellos de High Night
+└── presentation/
+    └── app_toolbar.spec.md            <- Barra principal de herramientas: distribución ergonómica, accesos rápidos y Passive View
 ```
 
 ---

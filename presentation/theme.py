@@ -91,29 +91,129 @@ def build_stylesheet_from_tokens(t: ThemeTokens) -> str:
             font-size: 12px;
         }}
 
-        /* Top Toolbar */
+        /* Top Toolbar & Two-Tier Layout */
         QToolBar#main_toolbar {{
             background: {t.bg_toolbar};
             border-bottom: 1px solid {t.toolbar_border};
-            padding: 5px 12px;
-            spacing: 8px;
+            padding: 2px 6px;
+            spacing: 0px;
         }}
-        QToolButton#file_toolbar_button, QToolButton#view_toolbar_button, QToolButton#config_toolbar_button {{
-            background: {t.toolbar_btn_bg};
+        QWidget#toolbar_container {{
+            background: transparent;
+        }}
+        QWidget#toolbar_menu_row,
+        QWidget#toolbar_actions_row {{
+            background: transparent;
+        }}
+        QToolBar#main_toolbar::separator {{
+            width: 1px;
+            margin: 4px 4px;
+            background: {t.toolbar_border};
+            border: none;
+        }}
+        /* Fila 1: Menús principales compactos y rectangulares */
+        QToolButton#file_toolbar_button,
+        QToolButton#edit_toolbar_button,
+        QToolButton#view_toolbar_button,
+        QToolButton#config_toolbar_button {{
+            background: transparent;
             color: {t.toolbar_btn_fg};
-            border: 1px solid {t.toolbar_btn_border};
-            border-radius: 8px;
-            padding: 6px 14px;
-            font-size: 12px;
-            font-weight: 700;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            min-height: 22px;
+            max-height: 22px;
         }}
-        QToolButton#file_toolbar_button:hover, QToolButton#view_toolbar_button:hover, QToolButton#config_toolbar_button:hover {{
+        QToolButton#file_toolbar_button:hover,
+        QToolButton#edit_toolbar_button:hover,
+        QToolButton#view_toolbar_button:hover,
+        QToolButton#config_toolbar_button:hover {{
             background: {t.toolbar_btn_hover_bg};
             border-color: {t.toolbar_btn_hover_border};
             color: {t.toolbar_btn_hover_fg};
         }}
-        QToolButton#file_toolbar_button:pressed, QToolButton#view_toolbar_button:pressed, QToolButton#config_toolbar_button:pressed {{
+        QToolButton#file_toolbar_button:pressed,
+        QToolButton#edit_toolbar_button:pressed,
+        QToolButton#view_toolbar_button:pressed,
+        QToolButton#config_toolbar_button:pressed {{
             background: {t.toolbar_btn_pressed};
+        }}
+        QToolButton#file_toolbar_button::menu-indicator,
+        QToolButton#edit_toolbar_button::menu-indicator,
+        QToolButton#view_toolbar_button::menu-indicator,
+        QToolButton#config_toolbar_button::menu-indicator {{
+            image: none;
+            width: 0px;
+            height: 0px;
+            margin: 0px;
+            padding: 0px;
+        }}
+        /* Fila 2: Acciones rápidas rectangulares compactas (estilo programas de edición) */
+        QToolButton#quick_new_button,
+        QToolButton#quick_open_button,
+        QToolButton#quick_save_button,
+        QToolButton#quick_save_as_button,
+        QToolButton#quick_undo_button,
+        QToolButton#quick_redo_button,
+        QToolButton#quick_sound_button,
+        QToolButton#quick_theme_button {{
+            background: {t.toolbar_btn_bg};
+            color: {t.toolbar_btn_fg};
+            border: 1px solid {t.toolbar_btn_border};
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-size: 11px;
+            font-weight: 500;
+            min-height: 20px;
+            max-height: 22px;
+        }}
+        QToolButton#quick_new_button:hover,
+        QToolButton#quick_open_button:hover,
+        QToolButton#quick_save_button:hover,
+        QToolButton#quick_save_as_button:hover,
+        QToolButton#quick_undo_button:hover,
+        QToolButton#quick_redo_button:hover,
+        QToolButton#quick_sound_button:hover,
+        QToolButton#quick_theme_button:hover {{
+            background: {t.toolbar_btn_hover_bg};
+            border-color: {t.toolbar_btn_hover_border};
+            color: {t.toolbar_btn_hover_fg};
+        }}
+        QToolButton#quick_new_button:pressed,
+        QToolButton#quick_open_button:pressed,
+        QToolButton#quick_save_button:pressed,
+        QToolButton#quick_save_as_button:pressed,
+        QToolButton#quick_undo_button:pressed,
+        QToolButton#quick_redo_button:pressed,
+        QToolButton#quick_sound_button:pressed,
+        QToolButton#quick_theme_button:pressed {{
+            background: {t.toolbar_btn_pressed};
+        }}
+        /* Estados deshabilitados en acciones de edición */
+        QToolButton#file_toolbar_button:disabled,
+        QToolButton#edit_toolbar_button:disabled,
+        QToolButton#view_toolbar_button:disabled,
+        QToolButton#config_toolbar_button:disabled,
+        QToolButton#quick_new_button:disabled,
+        QToolButton#quick_open_button:disabled,
+        QToolButton#quick_save_button:disabled,
+        QToolButton#quick_save_as_button:disabled,
+        QToolButton#quick_undo_button:disabled,
+        QToolButton#quick_redo_button:disabled,
+        QToolButton#quick_sound_button:disabled,
+        QToolButton#quick_theme_button:disabled {{
+            background: transparent;
+            border-color: {t.border_disabled};
+            color: {t.text_faint};
+        }}
+        QFrame#toolbar_row_separator {{
+            color: {t.toolbar_border};
+            background: {t.toolbar_border};
+            max-width: 1px;
+            min-width: 1px;
+            margin: 2px 4px;
         }}
 
         /* Menus */

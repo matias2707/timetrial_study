@@ -649,7 +649,7 @@ class RecordsViewWidget(QWidget):
         if QMessageBox.question(
             self.window(),
             "Confirmar eliminación",
-            "¿Está seguro de eliminar este registro?\nEsta acción no se puede deshacer.",
+            "¿Está seguro de eliminar este registro?\n(Podrá deshacer esta acción con Ctrl+Z).",
         ) == QMessageBox.StandardButton.Yes:
             self.application.delete_item(item)
             self.mark_dirty()

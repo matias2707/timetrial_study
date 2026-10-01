@@ -132,7 +132,11 @@ flowchart TD
     subgraph SEC6["Sector 6: Infraestructura & Seguridad"]
         T016["TASK-016<br/>Consolidación Compatibilidad"]:::ready
         T013["TASK-013<br/>Backups & Flashcards"]:::blocked
+        T027["TASK-027<br/>Sistema Undo/Redo"]:::done
+        T028["TASK-028<br/>Guardado & Dirty State"]:::done
+        T029["TASK-029<br/>Control Archivos & Crash Recovery"]:::done
         T016 --> T013
+        T028 --> T029
     end
 ```
 
@@ -212,7 +216,9 @@ Las siguientes tareas tienen el **100% de sus dependencias cumplidas** y pueden 
 #### Sector 6: Infraestructura, Respaldo y Compatibilidad
 
 | ID | Tipo | Tarea | Prioridad | Prerrequisitos | Desbloquea | Correlatividad | Estado |
-| :--- | :---: | :--- | :---: | :--- | :--- | :---: | :---: |
+| [TASK-027](#task-027) | ✨ Feature | Sistema de Deshacer y Rehacer (Undo / Redo) mediante Command Pattern | 🔴 Alta | Ninguno (arquitectura base lista) | Flexibilidad operativa en toda la app | 🏁 Completada | `[x] Completado` |
+| [TASK-028](#task-028) | 🔨 Enhancement | Gestión de Guardado Explícito, Estado Dirty e Indicador Visual (`Ctrl+S`) | 🔴 Alta | Ninguno | TASK-029 | 🏁 Completada | `[x] Completado` |
+| [TASK-029](#task-029) | 🛡️ Seguridad | Control Robusto de Archivos: Escritura Atómica, Autoguardado, Cloud Sync Guard y Crash Recovery | 🔴 Alta | TASK-028 | Blindaje absoluto de datos en disco | 🏁 Completada | `[x] Completado` |
 | [TASK-016](#task-016) | 🧹 Refactor | Consolidación de Retrocompatibilidad, Migraciones y Respaldos en infraestructura | 🟡 Media | Ninguno (arquitectura base lista) | TASK-013 | 🔓 Desbloqueada (Lista para tomar) | `[ ] Pendiente` |
 | [TASK-013](#task-013) | 🛡️ Seguridad | Respaldo Automático y Sincronización Segura: Snapshots Rotativos y Flashcards | 🟡 Media | TASK-016 | Snapshots rotativos y flashcards | 🔒 Bloqueada (Requiere TASK-016) | `[?] En revisión` |
 
@@ -1697,7 +1703,106 @@ Proteger la integridad de los datos de estudio frente a sobrescrituras accidenta
 - [ ] La rotación mantiene el límite fijado eliminando los respaldos más antiguos.
 - [ ] El diálogo de restauración recupera la versión seleccionada sin pérdida de consistencia.
 - [ ] La exportación a Anki genera un archivo TSV válido y legible por la plataforma de flashcards.
-- [ ] La suite de pruebas automatizadas pasa al 100% (`python -m unittest discover -s tests -v`).
+---
+
+### TASK-027
+#### Sistema de Deshacer y Rehacer (Undo / Redo) con Command Pattern en la Capa de Aplicación
+
+- **Sector:** Sector 6: Infraestructura, Respaldo y Compatibilidad  
+- **Tipo:** ✨ Feature  
+- **Prioridad:** 🔴 Alta  
+- **Estado:** `[x] Completado`  
+- **Correlatividad / Prerrequisitos:** Ninguno (arquitectura base lista)  
+- **Desbloquea / Habilita:** Flexibilidad operativa en toda la app  
+- **Estado de correlatividad:** 🏁 Completada  
+- **Capas afectadas:** `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+- **Especificación Técnica:** `docs/specs/history/undo_redo.spec.md` (`HIST-SPEC-001`)
+
+##### Descripción funcional
+Incorporar un subsistema completo de reversión y repetición de cambios (*Undo / Redo*) en memoria, protegiendo al estudiante frente a eliminaciones erróneas, ediciones equivocadas de comentarios o notas, y reajustes accidentales en el cronómetro o en el organizador curricular:
+1. **Patrón Command Desacoplado (`application/undo/`):** Implementación en Python puro sin dependencias gráficas (`PySide6`/`Qt`). Cada acción mutable implementa `ICommand` con métodos `execute()`, `undo()` y `redo()`, junto con un texto descriptivo.
+2. **Historial de Operaciones (`UndoManager`):** Pila de comandos con profundidad configurable (50 pasos por defecto). Soporta consulta reactiva de `can_undo`, `can_redo`, `undo_description` y `redo_description`.
+3. **Catálogo de Comandos Reversibles:**
+   - Adición y eliminación de registros (`TimerItem`), preservando UUIDs y tiempos.
+   - Modificación de notas Markdown y etiquetas en ejercicios/incisos.
+   - Creación, edición y eliminación de secciones curriculares en el organizador.
+   - Configuración del cronograma de cursada e hitos evaluativos.
+   - Resolución de incisos en conflicto.
+4. **Integración en la Interfaz de Usuario:**
+   - Atajos universales: `Ctrl+Z` (Deshacer) y `Ctrl+Y` / `Ctrl+Shift+Z` (Rehacer).
+   - Botones en la barra de herramientas y menú Edición/Archivo con tooltips descriptivos.
+   - Sustitución de la advertencia *"Esta acción no se puede deshacer"* por *"Podrá deshacer esta acción con Ctrl+Z"*.
+
+##### Criterios de aceptación
+- [x] `UndoManager` y comandos residen en `application/undo/` sin importar PySide6 ni Qt.
+- [x] `Ctrl+Z` revierte la última mutación y `Ctrl+Y` la reaplica con exactitud de datos.
+- [x] Eliminar un registro y presionar `Ctrl+Z` restaura el ítem exactamente en su índice original con su UUID intacto.
+- [x] Al cambiar o cerrar de archivo, la pila de historial se limpia deterministamente.
+- [x] Los botones de deshacer/rehacer se habilitan y deshabilitan reactivamente según la disponibilidad de comandos.
+- [x] La suite de pruebas unitarias de `application/undo/` pasa al 100%.
+
+---
+
+### TASK-028
+#### Gestión de Guardado Explícito, Estado Dirty e Indicador Visual en Interfaz
+
+- **Sector:** Sector 6: Infraestructura, Respaldo y Compatibilidad  
+- **Tipo:** 🔨 Enhancement  
+- **Prioridad:** 🔴 Alta  
+- **Estado:** `[x] Completado`  
+- **Correlatividad / Prerrequisitos:** Ninguno  
+- **Desbloquea / Habilita:** TASK-029  
+- **Estado de correlatividad:** 🏁 Completada  
+- **Capas afectadas:** `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+- **Especificación Técnica:** `docs/specs/data/file_control_and_autosave.spec.md` (`DATA-SPEC-002`)
+
+##### Descripción funcional
+Separar de forma limpia y transparente las modificaciones en memoria del archivo persistido en disco:
+1. **Seguimiento de Estado Modificado (`is_dirty`):** Propiedad reactiva en `StudyApplicationService` que se activa en `True` ante cualquier mutación del `Record` y vuelve a `False` tras un guardado en disco exitoso.
+2. **Acción "Guardar" (`Ctrl+S`):** Incorporación de botón y atajo de guardado explícito en Menú Archivo y Barra de Herramientas, habilitado reactivamente cuando existen cambios pendientes.
+3. **Indicador Visual Reactivo:** La barra de título refleja el estado sucio mediante un asterisco (ej. `Study Timetrial — Álgebra *`).
+4. **Protección al Salir o Cerrar Archivo:** Diálogo de confirmación modal si el usuario intenta cerrar el programa o cambiar de proyecto con cambios pendientes de guardar (`Guardar`, `Descartar`, `Cancelar`).
+
+##### Criterios de aceptación
+- [x] `StudyApplicationService.is_dirty` refleja con precisión si hay cambios no guardados.
+- [x] La acción `Guardar` (`Ctrl+S`) persiste los datos en disco y restablece `is_dirty = False`.
+- [x] El título de la ventana muestra el asterisco `*` cuando hay cambios sin guardar.
+- [x] Al intentar salir o cerrar con `is_dirty == True`, se despliega el diálogo de confirmación protegiendo contra pérdida accidental.
+- [x] Pruebas unitarias cubriendo la transición del estado `is_dirty`.
+
+---
+
+### TASK-029
+#### Control Robusto de Archivos: Escritura Atómica, Autoguardado Periódico, Cloud Sync Guard y Crash Recovery
+
+- **Sector:** Sector 6: Infraestructura, Respaldo y Compatibilidad  
+- **Tipo:** 🛡️ Seguridad  
+- **Prioridad:** 🔴 Alta  
+- **Estado:** `[x] Completado`  
+- **Correlatividad / Prerrequisitos:** TASK-028  
+- **Desbloquea / Habilita:** Blindaje absoluto de datos en disco  
+- **Estado de correlatividad:** 🏁 Completada  
+- **Capas afectadas:** `infrastructure/`, `application/`, `presentation/`, `tests/`  
+- **Dependencias:** Ninguna  
+- **Especificación Técnica:** `docs/specs/data/file_control_and_autosave.spec.md` (`DATA-SPEC-002`)
+
+##### Descripción funcional
+Implementar mecanismos avanzados de protección física de archivos y tolerancia a fallos:
+1. **Escritura Atómica (`save_atomic`):** Sustituir el volcado directo por escritura en archivo temporal adyacente (`.tmp`) y reemplazo atómico mediante `os.replace()`, evitando corrupción de archivos JSON (0 bytes) ante cortes de energía o caídas del sistema.
+2. **Motor de Autoguardado Periódico y por Eventos:** Temporizador configurable (ej. cada 60s) que guarda cambios en disco solo si `is_dirty == True`, así como guardado automático al minimizar o perder foco.
+3. **Diario de Sesión Activa (*Crash Recovery Journal*):** Checkpoints cada 15 segundos en `data/.drafts/` mientras el cronómetro esté corriendo. Si ocurre un fallo imprevisto, al reabrir la app se detecta el borrador y se permite restaurar el tiempo y ubicación del intento sin perder el esfuerzo invertido.
+4. **Detección Preventiva de Nube (*Cloud Sync Guard*):** Monitoreo de `st_mtime` y hash SHA-256 para detectar si Google Drive, Dropbox o OneDrive modificó el archivo en disco, ofreciendo diálogo de resolución de conflictos para evitar sobrescrituras ciegas.
+5. **Bloqueo de Concurrencia (*Single-Writer File Lock*):** Archivo de bloqueo `.lock` para prevenir que dos ventanas de la aplicación abran el mismo archivo en modo de escritura concurrente.
+
+##### Criterios de aceptación
+- [x] `StorageService.save()` realiza escrituras atómicas con archivos temporales y reemplazo vía `os.replace`.
+- [x] El temporizador de autoguardado guarda automáticamente a intervalos regulares si `is_dirty == True`.
+- [x] Si la app se cierra bruscamente durante un cronometraje activo, al reabrir se ofrece restaurar el borrador de la sesión.
+- [x] Modificaciones externas provocadas por sincronización en la nube despliegan diálogo de resolución de conflicto.
+- [x] El bloqueo `.lock` previene colisiones entre múltiples instancias del programa.
+- [x] Suite de pruebas automatizadas pasa al 100%.
 
 ---
 
@@ -1735,7 +1840,7 @@ Proteger la integridad de los datos de estudio frente a sobrescrituras accidenta
 
 ### Sector 6: Infraestructura, Respaldo y Compatibilidad
 - [?] **Copias de seguridad automáticas rotativas (*Auto-backup*) y exportación a flashcards (Anki):** Snapshots periódicos sin intervención del usuario — *En revisión en [TASK-013](#task-013)*.
-- [ ] **Detección preventiva de modificaciones externas del archivo JSON:** Detección de colisiones o cambios simultáneos al sincronizar con nubes tipo Google Drive/OneDrive/Dropbox.
+- [x] **Detección preventiva de modificaciones externas del archivo JSON:** Detección de colisiones o cambios simultáneos al sincronizar con nubes tipo Google Drive/OneDrive/Dropbox (*Implementado en [TASK-029](#task-029)*).
 
 ### Sector 7: Experiencia de Escritorio, Preferencias y UI/UX
 - [ ] **Mini-Reproductor Flotante (*Picture-in-Picture / Always on Top*):** Ventana compacta flotante con controles básicos mientras se usan otras aplicaciones (PDFs, IDEs, navegadores).
